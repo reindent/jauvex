@@ -1,0 +1,51 @@
+{
+  "name": "jauvex",
+  "version": "1.0.0",
+  "description": "Jauvex: your coding agents (Claude and Codex, with Jev for the fast decisions), side by side, by voice. Electron, TypeScript, no server.",
+  "scripts": {
+    "postinstall": "install-electron",
+    "start": "sh start.sh",
+    "dev": "node scripts/bundle-electron.ts && concurrently -k -n web,app -c magenta,blue \"vite\" \"CVC_DEV_URL=http://127.0.0.1:4340 electron .\"",
+    "build": "tsc --noEmit && vite build && node scripts/bundle-electron.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tools.json",
+    "test": "sh tests/run.sh",
+    "check": "tsc --noEmit -p tsconfig.tools.json && sh tests/run.sh --quick",
+    "app": "node scripts/mac-app.ts"
+  },
+  "keywords": [],
+  "author": "Reindent LLC <contact@reindent.com>",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.280",
+    "@openai/codex": "^0.155.1",
+    "dompurify": "^3.4.15",
+    "lucide-react": "^1.47.0",
+    "marked": "^18.0.13",
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@types/dompurify": "^3.0.5",
+    "@types/node": "^26.6.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "electron": "^44.4.3",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  },
+  "private": true,
+  "main": "dist-electron/main.mjs",
+  "contributors": [
+    "Reindent LLC <contact@reindent.com>"
+  ],
+  "engines": {
+    "node": ">=22.18.0"
+  }
+}

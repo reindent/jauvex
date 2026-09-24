@@ -1,0 +1,471 @@
+{
+ "projects": [
+  {
+   "id": "b943fa95-399f-4ee8-ae3f-705641b69f4f",
+   "path": "__ROOT__/tmp/scratch",
+   "name": "scratch",
+   "sessions": [
+    "7956cf18-0c97-4e50-86a5-9c8c2ab81b20",
+    "262cc107-63ef-4890-a0ea-5a5425d15c5f",
+    "01a0c16a-e995-7872-9ece-e36b57304186",
+    "01a0c141-be5a-7403-b1a4-e91bc2b3e48f",
+    "01a0c13e-f6be-74f0-befb-db87f299c9a6",
+    "01a0bfe0-4c70-7363-8582-3e56ac80bc87",
+    "01a0bfde-5539-79b2-b7b5-06290e9efc48",
+    "e041567e-60a6-4162-8ccf-50f28ee455c4",
+    "b25d973e-0d8a-4b5f-ba44-e667c1348035",
+    "f676d440-3cbf-4904-9108-3e2a5f4dec73",
+    "bb8458ff-4184-4e09-bdd9-df26cb81934d",
+    "0f6ed0f9-c7af-43a1-aea7-b436456e72c6",
+    "01a0bf93-b609-7f51-9734-954a0741a1c4",
+    "01a0bf92-facb-7c02-8d7e-9b46b6f37ddd",
+    "01a0bf90-7d21-7e21-95ec-09d2d97d416a",
+    "5522a3d2-f73b-4e3d-af6a-1ef4333874ce",
+    "1ebf0b47-8a96-4ca6-85aa-aef70907d8da",
+    "f5785557-b602-48e9-b9be-327fdaebd5be",
+    "01a0bf5a-6c61-7383-ac46-a865573d32c8",
+    "01a0bf59-daee-7da0-a0d5-c4bb02e1ca99",
+    "01a0bf59-4f41-7f30-9a26-185a7d939c4e",
+    "01a0bf58-9d1f-7152-8239-9250ef4e1e2a",
+    "01a0bf58-1171-7140-92bb-9c6268d45bfe",
+    "01a0bf57-8e4d-75e0-801d-99c060d35e54",
+    "01a0bf56-a64f-7541-a2d3-860a326fd35c",
+    "01a0bf56-22f2-73a1-8bd2-ba028fc49003",
+    "01a0bf55-556a-7482-8029-0689f24a3c07",
+    "01a0bf54-c67e-7351-8976-3247843c9154",
+    "01a0bf53-859f-7dd2-b926-ea9bc2f25084",
+    "01a0bf52-1781-7231-ab46-cea4bf07076c",
+    "01a0bf51-4144-7d70-ad51-198608b35160",
+    "01a0bf4e-8be6-7690-84a8-9d227f791207",
+    "01a0bf36-82b6-7ce1-879e-ba06ba2926d5",
+    "5ba9298a-9e88-4056-9ccd-fe896b807c20",
+    "6b511235-3b90-4abe-ade7-6863c1fd5f67",
+    "4cc37b52-53ad-4cc1-9472-bdc3ed889143",
+    "85c40301-cc6f-4977-9596-cf278fa4e4c5",
+    "a8b351ca-14da-414d-9116-250b592fea87",
+    "a32bd585-21fa-4a63-b9ba-58f4d2d386bf",
+    "5da7f6cc-3ea0-4a47-bc4a-92c2fc36bd53",
+    "9d439ba8-893d-40c7-b22f-d8748f35eb39",
+    "dc1620f0-f993-47c1-949b-41a1d8b2148c",
+    "e2c7dec6-443f-4a88-bc63-10b45df385c8",
+    "f2f16aaa-9e20-479e-abdb-e12efacc2834",
+    "aebd32a7-c1b4-4516-a2a4-6bab25b47abc",
+    "ce0a713c-d681-435e-93f9-cfa40282b346",
+    "bb8b4361-7214-44fe-8a4b-78882a6ae8c0",
+    "662321a3-deec-481b-bc7b-f917faf4efa5",
+    "01a0bd26-d15c-7fe2-a3c3-42fb1eb7e217"
+   ],
+   "providers": {
+    "01a0bd26-d15c-7fe2-a3c3-42fb1eb7e217": "codex",
+    "01a0bd97-5a36-74b2-b9ef-4eb49022e562": "codex",
+    "01a0bf36-82b6-7ce1-879e-ba06ba2926d5": "codex",
+    "01a0bf4e-8be6-7690-84a8-9d227f791207": "codex",
+    "01a0bf51-4144-7d70-ad51-198608b35160": "codex",
+    "01a0bf52-1781-7231-ab46-cea4bf07076c": "codex",
+    "01a0bf53-859f-7dd2-b926-ea9bc2f25084": "codex",
+    "01a0bf54-c67e-7351-8976-3247843c9154": "codex",
+    "01a0bf55-556a-7482-8029-0689f24a3c07": "codex",
+    "01a0bf56-22f2-73a1-8bd2-ba028fc49003": "codex",
+    "01a0bf56-a64f-7541-a2d3-860a326fd35c": "codex",
+    "01a0bf57-8e4d-75e0-801d-99c060d35e54": "codex",
+    "01a0bf58-1171-7140-92bb-9c6268d45bfe": "codex",
+    "01a0bf58-9d1f-7152-8239-9250ef4e1e2a": "codex",
+    "01a0bf59-4f41-7f30-9a26-185a7d939c4e": "codex",
+    "01a0bf59-daee-7da0-a0d5-c4bb02e1ca99": "codex",
+    "01a0bf5a-6c61-7383-ac46-a865573d32c8": "codex",
+    "01a0bf90-7d21-7e21-95ec-09d2d97d416a": "codex",
+    "01a0bf92-facb-7c02-8d7e-9b46b6f37ddd": "codex",
+    "01a0bf93-b609-7f51-9734-954a0741a1c4": "codex",
+    "01a0bfde-5539-79b2-b7b5-06290e9efc48": "codex",
+    "01a0bfe0-4c70-7363-8582-3e56ac80bc87": "codex",
+    "01a0c13e-f6be-74f0-befb-db87f299c9a6": "codex",
+    "01a0c141-be5a-7403-b1a4-e91bc2b3e48f": "codex",
+    "01a0c16a-e995-7872-9ece-e36b57304186": "codex"
+   },
+   "jev": [
+    {
+     "id": "b6973760-51e0-4608-9e23-c437d992cf71",
+     "name": "Jev agent 5",
+     "state": "Customer: I was charged twice for my subscription this month and nobody has answered my two emails. I need this fixed today or I am cancelling.",
+     "questions": "{\n  \"is_urgent\": {\n    \"type\": \"noul\",\n    \"instructions\": \"Does this convey urgency?\",\n    \"criteria\": {\n      \"true\": \"Explicitly time-sensitive\",\n      \"false\": \"No urgency expressed\"\n    }\n  },\n  \"department\": {\n    \"type\": \"choice\",\n    \"instructions\": \"Which team should handle this?\",\n    \"criteria\": {\n      \"billing\": \"Payments, invoicing, refunds\",\n      \"technical\": \"Bugs, outages, integrations\",\n      \"sales\": \"Pricing, upgrades, new accounts\"\n    }\n  },\n  \"frustration\": {\n    \"type\": \"score\",\n    \"instructions\": \"How frustrated is the customer?\",\n    \"criteria\": [\n      \"Calm\",\n      \"Frustrated\",\n      \"Very angry\"\n    ]\n  }\n}",
+     "runs": [],
+     "updatedAt": 1789911124426
+    },
+    {
+     "id": "7c512d1e-1afd-4f60-ae8e-04807959df08",
+     "name": "Jev agent 4",
+     "state": "{\n  \"from\": \"Maya Chen <maya.chen@harborstudio.example>\",\n  \"to\": \"Sam Rivera <sam.rivera@acme.example>\",\n  \"subject\": \"Thursday design review \u2014 can you confirm?\",\n  \"body\": \"Hi Sam,\\n\\nI've updated the onboarding mockups based on our discussion yesterday. Could you review the revised screens before Thursday's meeting and let me know whether 2:30 p.m. still works for you?\\n\\nIf you need more time, we can move the review to Friday morning.\\n\\nThanks,\\nMaya\"\n}",
+     "questions": "{\n  \"category\": {\n    \"type\": \"choice\",\n    \"instructions\": \"Classify the email using `from`, `subject`, and `body`. Choose by its primary purpose. Unwanted solicitations or scams are spam; subscription broadcasts are newsletters; private correspondence is personal; professional correspondence is work.\",\n    \"criteria\": {\n      \"spam\": \"Unwanted solicitation, scam, phishing, or deceptive bulk email.\",\n      \"newsletter\": \"Subscription content, recurring updates, or legitimate promotional broadcasts.\",\n      \"personal\": \"Private correspondence about friendships, family, or non-work matters.\",\n      \"work\": \"Professional correspondence about projects, customers, colleagues, or business operations.\"\n    }\n  },\n  \"reply_needed\": {\n    \"type\": \"noul\",\n    \"instructions\": \"Determine whether the recipient needs to send a reply. Look for direct questions, requests for confirmation, or unresolved matters requiring a response. An action such as reading a document or attending an event does not by itself require a reply. Spam never requires a reply.\",\n    \"criteria\": {\n      \"true\": \"A response is explicitly requested or clearly necessary to resolve the correspondence.\",\n      \"false\": \"The email is informational, unsolicited spam, or requires only an action without a response.\"\n    }\n  }\n}",
+     "runs": [
+      {
+       "at": 1789887222526,
+       "ms": 597,
+       "state": "{\n  \"from\": \"Maya Chen <maya.chen@harborstudio.example>\",\n  \"to\": \"Sam Rivera <sam.rivera@acme.example>\",\n  \"subject\": \"Thursday design review \u2014 can you confirm?\",\n  \"body\": \"Hi Sam,\\n\\nI've updated the onboarding mockups based on our discussion yesterday. Could you review the revised screens before Thursday's meeting and let me know whether 2:30 p.m. still works for you?\\n\\nIf you need more time, we can move the review to Friday morning.\\n\\nThanks,\\nMaya\"\n}",
+       "questions": "{\n  \"category\": {\n    \"type\": \"choice\",\n    \"instructions\": \"Classify the email using `from`, `subject`, and `body`. Choose by its primary purpose. Unwanted solicitations or scams are spam; subscription broadcasts are newsletters; private correspondence is personal; professional correspondence is work.\",\n    \"criteria\": {\n      \"spam\": \"Unwanted solicitation, scam, phishing, or deceptive bulk email.\",\n      \"newsletter\": \"Subscription content, recurring updates, or legitimate promotional broadcasts.\",\n      \"personal\": \"Private correspondence about friendships, family, or non-work matters.\",\n      \"work\": \"Professional correspondence about projects, customers, colleagues, or business operations.\"\n    }\n  },\n  \"reply_needed\": {\n    \"type\": \"noul\",\n    \"instructions\": \"Determine whether the recipient needs to send a reply. Look for direct questions, requests for confirmation, or unresolved matters requiring a response. An action such as reading a document or attending an event does not by itself require a reply. Spam never requires a reply.\",\n    \"criteria\": {\n      \"true\": \"A response is explicitly requested or clearly necessary to resolve the correspondence.\",\n      \"false\": \"The email is informational, unsolicited spam, or requires only an action without a response.\"\n    }\n  }\n}",
+       "ok": true,
+       "model": "jev-1.13.0",
+       "answers": {
+        "category": {
+         "type": "choice",
+         "choice": "work",
+         "confidence": 1,
+         "probabilities": {
+          "personal": 0,
+          "work": 1,
+          "spam": 0,
+          "newsletter": 0
+         }
+        },
+        "reply_needed": {
+         "type": "noul",
+         "noul": 0.97
+        }
+       },
+       "usage": {
+        "input_tokens": 656,
+        "output_tokens": 63
+       }
+      }
+     ],
+     "updatedAt": 1789887222631,
+     "sessionId": "01a0bd97-5a36-74b2-b9ef-4eb49022e562",
+     "llm": "codex"
+    },
+    {
+     "id": "c607eeea-94d4-4db7-be40-22f3e9ddbcf2",
+     "name": "Jev agent 3",
+     "state": "{\n  \"from\": \"Marta Keller <marta.keller@northwind.example>\",\n  \"to\": \"alex@brightpath.example\",\n  \"subject\": \"Q4 rollout timeline - need your sign-off by Thursday\",\n  \"received\": \"2026-09-18T09:42:00Z\",\n  \"body\": \"Hi Alex,\\n\\nThanks for the call on Tuesday. I've attached the revised rollout plan with the two changes we discussed: the warehouse integration moves to the week of October 12, and the driver app pilot starts with the Hamburg depot only.\\n\\nCan you confirm by Thursday whether the October 12 date works for your team? If it doesn't, I need to rebook the integration engineers, and their next open slot is in November.\\n\\nAlso, who should I add from your side to the weekly status call?\\n\\nBest,\\nMarta\"\n}",
+     "questions": "{\n  \"category\": {\n    \"type\": \"choice\",\n    \"instructions\": \"Classify the email using `from`, `subject` and `body`. Pick the single best category.\",\n    \"criteria\": {\n      \"spam\": \"Unsolicited, deceptive or mass-sent junk: phishing, scams, cold promotions from unknown senders\",\n      \"newsletter\": \"A subscription or bulk mailing the recipient signed up for: digests, product updates, marketing from a known brand\",\n      \"personal\": \"Written by a friend, family member or acquaintance about non-work life\",\n      \"work\": \"Written by a colleague, client, vendor or other professional contact about work matters\"\n    }\n  },\n  \"needs_reply\": {\n    \"type\": \"noul\",\n    \"instructions\": \"Does the sender of this email expect a reply from the recipient? Look at `body` for direct questions, requests, or deadlines.\",\n    \"criteria\": {\n      \"true\": \"The email asks a question, requests an action or confirmation, or otherwise expects a response\",\n      \"false\": \"Purely informational, automated, or bulk mail where no response is expected\"\n    }\n  }\n}",
+     "runs": [
+      {
+       "at": 1789887179447,
+       "ms": 834,
+       "state": "{\n  \"from\": \"Marta Keller <marta.keller@northwind.example>\",\n  \"to\": \"alex@brightpath.example\",\n  \"subject\": \"Q4 rollout timeline - need your sign-off by Thursday\",\n  \"received\": \"2026-09-18T09:42:00Z\",\n  \"body\": \"Hi Alex,\\n\\nThanks for the call on Tuesday. I've attached the revised rollout plan with the two changes we discussed: the warehouse integration moves to the week of October 12, and the driver app pilot starts with the Hamburg depot only.\\n\\nCan you confirm by Thursday whether the October 12 date works for your team? If it doesn't, I need to rebook the integration engineers, and their next open slot is in November.\\n\\nAlso, who should I add from your side to the weekly status call?\\n\\nBest,\\nMarta\"\n}",
+       "questions": "{\n  \"category\": {\n    \"type\": \"choice\",\n    \"instructions\": \"Classify the email using `from`, `subject` and `body`. Pick the single best category.\",\n    \"criteria\": {\n      \"spam\": \"Unsolicited, deceptive or mass-sent junk: phishing, scams, cold promotions from unknown senders\",\n      \"newsletter\": \"A subscription or bulk mailing the recipient signed up for: digests, product updates, marketing from a known brand\",\n      \"personal\": \"Written by a friend, family member or acquaintance about non-work life\",\n      \"work\": \"Written by a colleague, client, vendor or other professional contact about work matters\"\n    }\n  },\n  \"needs_reply\": {\n    \"type\": \"noul\",\n    \"instructions\": \"Does the sender of this email expect a reply from the recipient? Look at `body` for direct questions, requests, or deadlines.\",\n    \"criteria\": {\n      \"true\": \"The email asks a question, requests an action or confirmation, or otherwise expects a response\",\n      \"false\": \"Purely informational, automated, or bulk mail where no response is expected\"\n    }\n  }\n}",
+       "ok": true,
+       "model": "jev-1.13.0",
+       "answers": {
+        "category": {
+         "type": "choice",
+         "choice": "work",
+         "confidence": 1,
+         "probabilities": {
+          "spam": 0,
+          "work": 1,
+          "personal": 0,
+          "newsletter": 0
+         }
+        },
+        "needs_reply": {
+         "type": "noul",
+         "noul": 0.99
+        }
+       },
+       "usage": {
+        "input_tokens": 695,
+        "output_tokens": 63
+       }
+      }
+     ],
+     "updatedAt": 1789887179447,
+     "sessionId": "9385e56a-2a2d-4e17-8a4d-1d0a6f427e59",
+     "llm": "claude"
+    },
+    {
+     "id": "8952f0e0-a2f9-4f16-a72c-7d193013dc8f",
+     "name": "Jev agent 2",
+     "state": "Customer: I was charged twice for my subscription this month and nobody has answered my two emails. I need this fixed today or I am cancelling.",
+     "questions": "{\n  \"is_urgent\": {\n    \"type\": \"noul\",\n    \"instructions\": \"Does this convey urgency?\",\n    \"criteria\": {\n      \"true\": \"Explicitly time-sensitive\",\n      \"false\": \"No urgency expressed\"\n    }\n  },\n  \"department\": {\n    \"type\": \"choice\",\n    \"instructions\": \"Which team should handle this?\",\n    \"criteria\": {\n      \"billing\": \"Payments, invoicing, refunds\",\n      \"technical\": \"Bugs, outages, integrations\",\n      \"sales\": \"Pricing, upgrades, new accounts\"\n    }\n  },\n  \"frustration\": {\n    \"type\": \"score\",\n    \"instructions\": \"How frustrated is the customer?\",\n    \"criteria\": [\n      \"Calm\",\n      \"Frustrated\",\n      \"Very angry\"\n    ]\n  }\n}",
+     "runs": [
+      {
+       "at": 1789886919835,
+       "ms": 546,
+       "state": "Customer: I was charged twice for my subscription this month and nobody has answered my two emails. I need this fixed today or I am cancelling.",
+       "questions": "{\n  \"is_urgent\": {\n    \"type\": \"noul\",\n    \"instructions\": \"Does this convey urgency?\",\n    \"criteria\": {\n      \"true\": \"Explicitly time-sensitive\",\n      \"false\": \"No urgency expressed\"\n    }\n  },\n  \"department\": {\n    \"type\": \"choice\",\n    \"instructions\": \"Which team should handle this?\",\n    \"criteria\": {\n      \"billing\": \"Payments, invoicing, refunds\",\n      \"technical\": \"Bugs, outages, integrations\",\n      \"sales\": \"Pricing, upgrades, new accounts\"\n    }\n  },\n  \"frustration\": {\n    \"type\": \"score\",\n    \"instructions\": \"How frustrated is the customer?\",\n    \"criteria\": [\n      \"Calm\",\n      \"Frustrated\",\n      \"Very angry\"\n    ]\n  }\n}",
+       "ok": true,
+       "model": "jev-1.13.0",
+       "answers": {
+        "is_urgent": {
+         "type": "noul",
+         "noul": 0.98
+        },
+        "department": {
+         "type": "choice",
+         "choice": "billing",
+         "confidence": 1,
+         "probabilities": {
+          "technical": 0,
+          "billing": 1,
+          "sales": 0
+         }
+        },
+        "frustration": {
+         "type": "score",
+         "score": 1.79,
+         "confidence": 0.69,
+         "legend": {
+          "0": "Calm",
+          "1": "Frustrated",
+          "2": "Very angry"
+         },
+         "probabilities": {
+          "0": 0,
+          "1": 0.21,
+          "2": 0.79
+         }
+        }
+       },
+       "usage": {
+        "input_tokens": 443,
+        "output_tokens": 73
+       }
+      }
+     ],
+     "updatedAt": 1789886919835
+    },
+    {
+     "id": "529e9114-24da-422b-a363-2df21751c8fa",
+     "name": "Jev agent 1",
+     "state": "Customer: I was charged twice for my subscription this month and nobody has answered my two emails. I need this fixed today or I am cancelling.",
+     "questions": "{\n  \"is_urgent\": {\n    \"type\": \"noul\",\n    \"instructions\": \"Does this convey urgency?\",\n    \"criteria\": {\n      \"true\": \"Explicitly time-sensitive\",\n      \"false\": \"No urgency expressed\"\n    }\n  },\n  \"department\": {\n    \"type\": \"choice\",\n    \"instructions\": \"Which team should handle this?\",\n    \"criteria\": {\n      \"billing\": \"Payments, invoicing, refunds\",\n      \"technical\": \"Bugs, outages, integrations\",\n      \"sales\": \"Pricing, upgrades, new accounts\"\n    }\n  },\n  \"frustration\": {\n    \"type\": \"score\",\n    \"instructions\": \"How frustrated is the customer?\",\n    \"criteria\": [\n      \"Calm\",\n      \"Frustrated\",\n      \"Very angry\"\n    ]\n  }\n}",
+     "runs": [
+      {
+       "at": 1789886892663,
+       "ms": 734,
+       "state": "Customer: I was charged twice for my subscription this month and nobody has answered my two emails. I need this fixed today or I am cancelling.",
+       "questions": "{\n  \"is_urgent\": {\n    \"type\": \"noul\",\n    \"instructions\": \"Does this convey urgency?\",\n    \"criteria\": {\n      \"true\": \"Explicitly time-sensitive\",\n      \"false\": \"No urgency expressed\"\n    }\n  },\n  \"department\": {\n    \"type\": \"choice\",\n    \"instructions\": \"Which team should handle this?\",\n    \"criteria\": {\n      \"billing\": \"Payments, invoicing, refunds\",\n      \"technical\": \"Bugs, outages, integrations\",\n      \"sales\": \"Pricing, upgrades, new accounts\"\n    }\n  },\n  \"frustration\": {\n    \"type\": \"score\",\n    \"instructions\": \"How frustrated is the customer?\",\n    \"criteria\": [\n      \"Calm\",\n      \"Frustrated\",\n      \"Very angry\"\n    ]\n  }\n}",
+       "ok": true,
+       "model": "jev-1.13.0",
+       "answers": {
+        "is_urgent": {
+         "type": "noul",
+         "noul": 0.98
+        },
+        "department": {
+         "type": "choice",
+         "choice": "billing",
+         "confidence": 1,
+         "probabilities": {
+          "sales": 0,
+          "billing": 1,
+          "technical": 0
+         }
+        },
+        "frustration": {
+         "type": "score",
+         "score": 1.81,
+         "confidence": 0.72,
+         "legend": {
+          "0": "Calm",
+          "1": "Frustrated",
+          "2": "Very angry"
+         },
+         "probabilities": {
+          "0": 0,
+          "1": 0.19,
+          "2": 0.81
+         }
+        }
+       },
+       "usage": {
+        "input_tokens": 443,
+        "output_tokens": 73
+       }
+      }
+     ],
+     "updatedAt": 1789886892663
+    }
+   ],
+   "prefs": {
+    "01a0bd26-d15c-7fe2-a3c3-42fb1eb7e217": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "662321a3-deec-481b-bc7b-f917faf4efa5": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "bb8b4361-7214-44fe-8a4b-78882a6ae8c0": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "ce0a713c-d681-435e-93f9-cfa40282b346": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "f2f16aaa-9e20-479e-abdb-e12efacc2834": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "dc1620f0-f993-47c1-949b-41a1d8b2148c": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "9d439ba8-893d-40c7-b22f-d8748f35eb39": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "a8b351ca-14da-414d-9116-250b592fea87": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "85c40301-cc6f-4977-9596-cf278fa4e4c5": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "4cc37b52-53ad-4cc1-9472-bdc3ed889143": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "6b511235-3b90-4abe-ade7-6863c1fd5f67": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "5ba9298a-9e88-4056-9ccd-fe896b807c20": {
+     "model": "",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "01a0bf36-82b6-7ce1-879e-ba06ba2926d5": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0bf4e-8be6-7690-84a8-9d227f791207": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0bf52-1781-7231-ab46-cea4bf07076c": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0bf54-c67e-7351-8976-3247843c9154": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0bf55-556a-7482-8029-0689f24a3c07": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0bf58-1171-7140-92bb-9c6268d45bfe": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0bf58-9d1f-7152-8239-9250ef4e1e2a": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0bf59-daee-7da0-a0d5-c4bb02e1ca99": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "f5785557-b602-48e9-b9be-327fdaebd5be": {
+     "model": "claude-haiku-4-5",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "1ebf0b47-8a96-4ca6-85aa-aef70907d8da": {
+     "model": "claude-haiku-4-5",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "01a0bf90-7d21-7e21-95ec-09d2d97d416a": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0bf92-facb-7c02-8d7e-9b46b6f37ddd": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0bf93-b609-7f51-9734-954a0741a1c4": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "0f6ed0f9-c7af-43a1-aea7-b436456e72c6": {
+     "model": "claude-haiku-4-5",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "bb8458ff-4184-4e09-bdd9-df26cb81934d": {
+     "model": "claude-haiku-4-5",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "f676d440-3cbf-4904-9108-3e2a5f4dec73": {
+     "model": "claude-haiku-4-5",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "b25d973e-0d8a-4b5f-ba44-e667c1348035": {
+     "model": "claude-haiku-4-5",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "e041567e-60a6-4162-8ccf-50f28ee455c4": {
+     "model": "claude-haiku-4-5",
+     "effort": "low",
+     "permissions": "auto"
+    },
+    "01a0bfde-5539-79b2-b7b5-06290e9efc48": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0bfe0-4c70-7363-8582-3e56ac80bc87": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "01a0c16a-e995-7872-9ece-e36b57304186": {
+     "model": "",
+     "effort": "high",
+     "permissions": "auto"
+    },
+    "7956cf18-0c97-4e50-86a5-9c8c2ab81b20": {
+     "model": "claude-haiku-4-5",
+     "effort": "low",
+     "permissions": "auto"
+    }
+   }
+  }
+ ],
+ "ui": {
+  "sidebar": true,
+  "showMeta": false,
+  "voice": {
+   "voice": "",
+   "rate": 185,
+   "pauseMs": 800,
+   "ack": true,
+   "ackModel": "claude-haiku-4-5",
+   "codexAckModel": "",
+   "language": "auto",
+   "sttModel": "",
+   "vocabulary": "Claudex, Codex, Claude, Anthropic, ChatGPT, Haiku",
+   "showVoiceLines": false,
+   "decisions": "jev"
+  },
+  "welcomed": true
+ }
+}

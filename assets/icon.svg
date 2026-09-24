@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Jauvex: two strands that cross, one over the other. macOS icon grid: 824 px tile on a 1024 px canvas. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#232329"/><stop offset="1" stop-color="#111113"/></linearGradient>
+    <mask id="under" maskUnits="userSpaceOnUse" x="0" y="0" width="24" height="24"><rect width="24" height="24" fill="#fff"/><path d="M4 6.5C11 6.5 13 17.5 20 17.5" stroke="#000" stroke-width="6.4" fill="none" stroke-linecap="round"/></mask>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#tile)" stroke="#34343c" stroke-width="4"/>
+  <g transform="translate(212 212) scale(25)" fill="none" stroke-linecap="round" stroke-width="2.7">
+    <path d="M4 17.5C11 17.5 13 6.5 20 6.5" stroke="#eceae3" mask="url(#under)"/>
+    <path d="M4 6.5C11 6.5 13 17.5 20 17.5" stroke="#979dff"/>
+  </g>
+</svg>

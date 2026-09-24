@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noImplicitAny": false,
+    "useUnknownInCatchVariables": false,
+    "noUncheckedIndexedAccess": false,
+    "allowImportingTsExtensions": true,
+    "types": [
+      "node"
+    ],
+    "moduleDetection": "force"
+  },
+  "include": [
+    "scripts",
+    "tests"
+  ]
+}

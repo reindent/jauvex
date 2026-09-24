@@ -1,0 +1,6 @@
+import path from 'node:path'; process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR ??= path.resolve('tmp/testdata');
+// The welcome's three options are matched within one edit of what Whisper heard: "Stark", "Star", "Clon", "Codecs" all count.
+const voice = await import('../electron/voice.ts'); const jev = await import('../electron/jev.ts'); jev.warm(); await new Promise((r) => setTimeout(r, 1200));
+const cases: [string, boolean, 'claude' | 'codex' | null][] = [['Start.', true, null], ['Stark.', true, null], ['Star.', true, null], ['Stat.', true, null], ['Started', true, null], ['Let\'s go.', true, null], ['Clon.', false, 'claude'], ['Quad.', false, 'claude'], ['Cloud.', false, 'claude'], ['Claude.', false, 'claude'], ['Codecs.', false, 'codex'], ['Codex.', false, 'codex'], ['Let\'s start with Codex.', true, 'codex'], ['What is this?', false, null]];
+let bad = 0; for (const [t, start, prov] of cases) { const r = await voice.welcomeIntent(t); const ok = r.start === start && r.provider === prov; if (!ok) bad++; console.log(`${ok ? 'ok  ' : 'BAD '} ${JSON.stringify(t)} -> start=${r.start} provider=${r.provider}`); }
+console.log(bad ? `${bad} FAILED` : 'ALL PASS'); voice.shutdown(); process.exit(bad ? 1 : 0);
