@@ -21,7 +21,7 @@ export function ContextMeter({ usage, provider, compacting, running, autoPct, ha
   const canCompact = hasSession && !running && !compacting;
   return (
     <span className="ctx-wrap" ref={box}>
-      <button className={`ctx ${level}${compacting ? ' busy' : ''}`} onClick={() => setOpen((x) => !x)} aria-label={`Context: ${pct === null ? 'not measured yet' : `${pct}% full`}`} aria-expanded={open}
+      <button className={`ctx-meter ${level}${compacting ? ' busy' : ''}`} /* not "ctx": the session menu is "menu ctx", and this pill's style laid its items out in a row */ onClick={() => setOpen((x) => !x)} aria-label={`Context: ${pct === null ? 'not measured yet' : `${pct}% full`}`} aria-expanded={open}
         title={compacting ? `${name} is compacting the conversation…` : `Context: ${nums}.\n${auto}\nClick for details and to compact now.`}>
         <svg className="ctx-pile" viewBox="0 0 18 16" width="18" height="16" aria-hidden="true">
           <path className="ctx-tray" d="M1.6 11.4V14.6H16.4V11.4" />
