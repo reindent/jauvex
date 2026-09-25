@@ -7,12 +7,13 @@ The product name may change: say "the app" in code comments, prompts and docs, a
 ## What it is
 
 A macOS desktop app (Electron + React 19 + Vite + TypeScript) in which one person runs several coding agents side by
-side, by voice or by text. Providers today: Claude (Claude Agent SDK, `electron/chat.ts`) and Codex
-(`codex app-server` over JSON-RPC, `electron/codex.ts`). A session belongs to one provider for life. Jev agents
+side, by voice or by text. Providers today: Claude (Claude Agent SDK, `electron/chat.ts`), Codex
+(`codex app-server` over JSON-RPC, `electron/codex.ts`) and Grok (`grok agent stdio`, the Agent Client Protocol, `electron/grok.ts`).
+A session belongs to one provider for life. Jev agents
 (`electron/jev.ts`, `web/src/JevPad.tsx`) are typed classifiers from TypeSafe, not chats. `README.md` describes every
 feature and why it works the way it does: read the relevant part before changing a feature, and update it in the same commit.
 
-- `electron/` main process: `main.ts` (window, IPC), `backend.ts` (state, sessions), `chat.ts`, `codex.ts`, `voice.ts`
+- `electron/` main process: `main.ts` (window, IPC), `backend.ts` (state, sessions), `chat.ts`, `codex.ts`, `grok.ts`, `voice.ts`
   (Whisper, `say`, the voice helper, all voice decisions), `jev.ts`, `usage.ts`, `debug.ts`.
 - `web/src/` the window: `App.tsx` (sidebar, `Chat`, `Composer`, debugger), `voice.ts` (VAD and playback), `Orb.tsx`.
 - `shared/types.ts` types and the texts both sides share; `shared/roster.ts` session titles, unique short ids and the
@@ -94,9 +95,10 @@ session is working: do not restart.
 - **How long checks may take:** before every commit, `npm run check` (= `sh tests/run.sh --quick`: the backend and pure
   checks, all at once, seconds). The whole suite (`npm test`, minutes of window checks) runs before a release; while
   working on a part of the window, run that part's window check by name (`sh tests/run.sh <name>`).
-- **Stand-ins:** `tests/mock/claude` and `tests/mock/codex` answer like Claude Code and `codex app-server` with canned
-  replies and no account (`CVC_CLAUDE_BIN`, `CVC_CODEX_BIN` point the app at them). When `chat.ts` or `codex.ts` starts
-  reading a new message or method, teach the stand-in too.
+- **Stand-ins:** `tests/mock/claude`, `tests/mock/codex` and `tests/mock/grok` answer like Claude Code, `codex app-server` and
+  `grok agent stdio` with canned replies and no account (`CVC_CLAUDE_BIN`, `CVC_CODEX_BIN`, `CVC_GROK_BIN` point the app at them).
+  When `chat.ts`, `codex.ts` or `grok.ts` starts reading a new message or method, teach the stand-in too. `run.sh` gives every check
+  the Grok stand-in unless the check's `// env:` says otherwise: a Grok on this Mac is never started by a check.
 - One-off experiments stay in `tmp/` (git-ignored). Speech into the app: `--use-file-for-fake-audio-capture=<file>.wav%noloop`
   with a 48 kHz mono WAV made by `say -o` (pad silence with Python's `wave`; every new capture replays the file).
 
@@ -109,6 +111,13 @@ debug panel.
 
 ## Things that bit us
 
+- Grok (2026-09-24), from its source and a probe: its sessions default to the user's own permission setting (a Grok set to always
+  approve never asks, until a session is made with `yoloMode: false`); the briefing is taken only when a session is made
+  (`_meta.rules`; a resume keeps the old one); a message handed over after a turn's last step is not dropped but run as a prompt
+  of its own (`interject-fallback-…`), whose answer arrives after the turn's own `session/prompt` has answered, so the turn waits
+  for it (`settle` in `grok.ts`); Grok keeps every session it makes, the voice's and one-off prompts' included, so the app
+  deletes them (`x.ai/session/delete`); its own methods go on the wire as `_x.ai/...` and some answer `{ result: ... }`. Grok
+  updates itself: probe the wire again when something stops matching.
 - The Claude SDK folds user messages that arrive mid-turn into the running turn. That is how steering works
   (`chat.ts`), and it is why the voice helper must be asked one question at a time (`ask` in `voice.ts`): two questions
   in flight get one answer and the helper goes silent for good.

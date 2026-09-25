@@ -67,7 +67,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .row:hover { background: var(--row-hover); } .row.on { background: var(--row); color: var(--fg); } .row.ghost { color: var(--muted); }
 .dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--faint); flex: none; } .row.on .dot { border-color: var(--muted); }
 .row .dot { margin: 0 2.5px; } /* a 7 px dot sits in the same 12 px column as a provider mark */
-.provider-icon { flex: none; opacity: .75; } .provider-icon.claude { color: var(--claude); } .provider-icon.codex { color: var(--fg-2); } .provider-icon.jev { width: 12px; height: 12px; max-width: 12px; border-radius: 50%; object-fit: cover; } .row.on .provider-icon, .row:hover .provider-icon { opacity: 1; } /* whose session it is */
+.provider-icon { flex: none; opacity: .75; } .provider-icon.claude { color: var(--claude); } .provider-icon.codex, .provider-icon.grok { color: var(--fg-2); } .provider-icon.jev { width: 12px; height: 12px; max-width: 12px; border-radius: 50%; object-fit: cover; } .row.on .provider-icon, .row:hover .provider-icon { opacity: 1; } /* whose session it is */
 .row-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-listening { flex: none; display: inline-flex; color: var(--accent); margin-right: 2px; }
 .row-working { flex: none; display: inline-flex; } .row-working .mark { width: 17px; height: 17px; }

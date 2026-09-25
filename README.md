@@ -1,10 +1,10 @@
 # Jauvex
 
-Your coding agents, side by side, by voice. Claude and Codex in one desktop app, with Jev (TypeSafe) for the fast
+Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
 decisions. Jauvex Personal, version 1.0, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
-Jauvex is an Electron client for the Claude Code and Codex sessions on your Mac. Add a folder, pick up any of its
+Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
 sessions or start new ones with either provider, and talk to them: a voice channel that answers in three beats (a quick
 word, what it understood, a summary of the agent's answer), steers a working agent without interrupting it, names and
 starts agents by voice, and lets agents talk to each other inside the app. No server: the window talks to the main
@@ -41,6 +41,9 @@ settings after) checks each of them and tells you what is missing.
    itself: Anthropic does not let apps built on its Agent SDK offer the Claude.ai login. The welcome screen and the accounts
    panel (the Jauvex button below the sidebar) say who is signed in and give the command; with one signed in, the Jauvex
    agent can walk you through the other.
+3. **Grok, optional**: Grok Build, xAI's coding agent, when it is on this Mac (`curl -fsSL https://x.ai/cli/install.sh | bash`,
+   then `grok login`). Jauvex runs it as `grok agent stdio` with your Grok account and settings; without it, Grok is simply not
+   offered.
 4. **whisper.cpp for the ears**: `npm start` installs it with Homebrew if it is missing and downloads the two models into
    `models/` (git-ignored): `ggml-small-q5_1.bin` for the transcript and `ggml-base-q5_1.bin` for the live words while you
    speak. Each is checked against the size and SHA-256 Hugging Face lists for it (`scripts/models.sh`): a download goes to a
@@ -69,7 +72,7 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
 
 ## What it does today
 - **Add folder**: native folder dialog. Each folder is a project, like in Claude Code.
-- **+ on a project**: lists every Claude and Codex session recorded for that folder (title, first prompt,
+- **+ on a project**: lists every Claude, Codex and Grok session recorded for that folder (title, first prompt,
   provider, branch, size, last activity), with a switch to see all, only Claude's or only Codex's (with counts) and each
   provider's mark on its rows. Tick the ones you want; they appear under the project in the sidebar.
 - **Folders fold, the sidebar resizes**: a click on a folder's name (its folder icon open or closed) folds its sessions
@@ -84,10 +87,10 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   text (an organisation that disabled subscription access, an allowance run out, a network error), shows as a red card
   in the thread, and the voice says one line about it instead of summing it up.
 - **One provider per session, for life**: a session imported from Claude continues with Claude, one imported from
-  Codex continues with Codex (each session row carries its provider's own tiny mark, Claude's or OpenAI's, and a Jev agent row TypeSafe's; the title bar has a chip. The marks are their owners' trademarks, used only to say whose session it is: the first two from `@lobehub/icons-static-svg`, MIT; TypeSafe's is its site icon, `assets/typesafe.png`). A new session
+  Codex continues with Codex, one from Grok with Grok (each session row carries its provider's own tiny mark, Claude's, OpenAI's or Grok's, and a Jev agent row TypeSafe's; the title bar has a chip. The marks are their owners' trademarks, used only to say whose session it is: the first three from `@lobehub/icons-static-svg`, MIT; TypeSafe's is its site icon, `assets/typesafe.png`). A new session
   lets you pick the provider in the composer until the first message is sent; the model and effort pickers follow the
-  provider (effort: Claude's fixed levels, or the levels Codex reports for the chosen model; applies from the next message)
-  (Codex models come from your account through `model/list`).
+  provider (effort: Claude's fixed levels, or the levels Codex or Grok reports for the chosen model; applies from the next message)
+  (Codex models come from your account through `model/list`, Grok's from its agent's model list).
 - **Open a session**: the conversation loads. User messages as bubbles, Claude's replies as text,
   tool calls and thinking folded into one-line rows you can expand (a Codex call shows the moment it starts and gets
   its result when it completes), harness plumbing (reminders,
@@ -167,6 +170,11 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   Codex sessions work the same way: replies stream, Stop interrupts the turn, and when Codex asks before running a
   command or writing files, the same card appears (Always = for the rest of the session). Approval policy and
   sandbox are whatever your Codex config says, the way the Claude side keeps Claude Code's settings.
+  Grok sessions work the same way too: replies stream, Stop cancels the turn, and when Grok asks before a tool its
+  permission rules do not allow already, the same card appears (Always = Grok's own "don't ask again"). The rest is Grok's
+  own settings, its always-approve setting included; **Auto permissions** is Grok's automatic mode, taken when the session is
+  opened. A message handed to a working Grok is read at its next step (`x.ai/interject`); one handed over after its last step
+  Grok runs as a prompt of its own, and the turn stays open until that one is answered too, so its answer is not lost.
 
 ## Voice
 Press the white round button in the message box. All local except the two Claude calls:
@@ -246,9 +254,9 @@ Press the white round button in the message box. All local except the two Claude
   version (so: conclusion first, short plain answers for simple questions), a turn can be stopped at any moment, and in
   voice mode the text is dictated. It names no product, so a rename does not touch it.
 - **Accounts** (click the footer of the sidebar): who each provider is signed in as, and the command that signs it in or
-  out in Terminal (`claude auth login|logout`, `codex login|logout`); Refresh after using it. The app has no login of its
+  out in Terminal (`claude auth login|logout`, `codex login|logout`, `grok login|logout`); Refresh after using it. The app has no login of its
   own: it uses the sign-in of each provider's own tool on this Mac (Claude: `claude auth status` on the SDK's bundled binary;
-  Codex: the app-server's `account/read`). Signing in, out and switching from inside the app is built (the provider's
+  Codex: the app-server's `account/read`; Grok: its agent's `x.ai/auth/info`). Signing in, out and switching from inside the app is built (the provider's
   browser flow, run from the panel and the welcome) but hidden in this edition (`SIGN_IN_IN_APP` in `shared/types.ts`,
   since 2026-09-24): Anthropic does not let apps built on its Agent SDK offer the Claude.ai login. Sessions are files on this
   Mac and stay whichever account is signed in; a running turn keeps the old account until it ends
@@ -362,11 +370,11 @@ Press the white round button in the message box. All local except the two Claude
   because next to the main answer it reads as the same thing twice): each spoken line appears in the thread as a "Voice" bubble (tinted, tagged,
   on the assistant's side), typed out at the pace it is spoken and cut short if you interrupt it. It is not part of the
   session's transcript, so it is not there after a reload, and the main thread's text, reasoning and tools stay as they were.
-- **Commands for the app itself.** "Create a new agent", "create a new Codex agent in the homepage project", "create a new
+- **Commands for the app itself.** "Create a new agent", "create a new Codex agent in the homepage project", "create a new Grok agent", "create a new
   Jev agent" are caught before anything reaches the main thread: the voice says what it is doing, the agent opens in the
   folder you named (or the open one), and voice mode carries on there. A cheap word gate runs first, so ordinary speech
   pays nothing; then Jev settles whether it was an order for the app or a coding request that merely mentions agents,
-  which kind was meant (it knows Whisper writes Claude as "Cloud", Codex as "codecs", Jev as "Jeff" or "Jet") and which
+  which kind was meant (it knows Whisper writes Claude as "Cloud", Codex as "codecs", Grok as "grog", Jev as "Jeff" or "Jet") and which
   folder. Without Jev the voice model reads the same things in one line (the COMMAND job), and a kind only counts when one
   was actually said. **The app carries an order out on its own only when it is sure** (`shared/orders.ts`): the exact phrase
   ("restart the app"), or Jev at 0.85 or more. When nobody is sure (Jev leaning, unsure or absent, the voice model reading an
@@ -445,7 +453,7 @@ Press the white round button in the message box. All local except the two Claude
 - **Jauvex settings** (the wheel in the sidebar's footer): the app's own settings, apart from the voice's (in a session's
   voice controls) and the accounts (the Jauvex button): the default agent, whether the Jauvex agent shows in the sidebar,
   and the welcome screen (show it again on the next start, or open it now). At the bottom, in red, the danger zone: reset the app to its initial state.
-  It deletes only the app's own data (the sidebar's folders and sessions, which stay untouched in Claude and Codex, the
+  It deletes only the app's own data (the sidebar's folders and sessions, which stay untouched in Claude, Codex and Grok, the
   Jauvex agent's conversation, every setting, the flight recorder), after a confirmation that says it cannot be undone;
   the app then says so and exits, and the next start is a first run.
 - **Debugger** (the bug icon in the title bar; docks as a panel under the conversation), two tabs. **Voice**: a live list of what the voice channel did. What Whisper heard,
@@ -509,11 +517,23 @@ Press the white round button in the message box. All local except the two Claude
   Same login, config and session store as the Codex CLI, nothing in `~/.codex` parsed by hand. The binary is the
   `@openai/codex` npm dependency; `codex app-server generate-ts --out <dir>` prints the protocol types for the
   installed version. One server process starts on first use and is shared by every Codex chat.
-- `electron/chat.ts` routes each turn by the session's provider; both providers send the UI the same `ChatEvent`s.
+- Grok sessions come from **`grok agent stdio`** (`electron/grok.ts`): the Agent Client Protocol (JSON-RPC 2.0, one object per
+  line over stdio) that Grok Build speaks to editors, with its own `x.ai/*` extensions (Grok Build's source is public:
+  github.com/xai-org/grok-build). `session/list` per folder; `session/load` replays a session's history as updates marked
+  `isReplay`, and a session the app is not running is closed again after reading, so a Grok window that goes on with it never
+  races a stale copy here; `session/new` / `session/resume`, `session/prompt`, `session/cancel`, `session/set_config_option`
+  (model, effort), the `session/request_permission` requests, `x.ai/interject`, `x.ai/session/rename`. Grok takes the app's
+  briefing once, when a session is made (`_meta.rules`, folded into its system prompt), so the note on dictation is always in
+  it. One agent process with `--no-leader` (the app's own, never the leader a Grok window on the Mac may share), started on
+  first use, and never when no `grok` is on the Mac. Same login, config and store as the Grok CLI (`~/.grok`), nothing there
+  read by hand. Not yet: Grok's credits in the usage battery (shown as not available) and a Grok row on the welcome screen.
+- `electron/chat.ts` routes each turn by the session's provider; every provider sends the UI the same `ChatEvent`s.
 - Two threads per chat. The main thread is the session itself (Claude or Codex, the model in the picker). The voice
   thread is a small model **from the same provider** (Haiku for Claude sessions; for Codex sessions the account's fast,
-  affordable model, in a throwaway `ephemeral` thread with a read-only sandbox, so nothing lands in your Codex history;
-  both can be changed in the voice settings). About 1.3 to 1.8 s per line once warm; voice mode warms it up. It only
+  affordable model, in a throwaway `ephemeral` thread with a read-only sandbox, so nothing lands in your Codex history; for Grok
+  sessions Grok's fast model, in a session of its own in the system's temporary folder with the voice's prompt as its whole system
+  prompt: Grok keeps every session, so the voice's is deleted when a new one is made, and its id is kept in the data folder for the
+  next run to delete when the app quit before Grok answered; each can be changed in the voice settings). About 1.3 to 1.8 s per line once warm; voice mode warms it up. It only
   speaks for the main thread: every message it gets starts with a `MAIN:` line naming the
   main thread's provider and model, it has no identity of its own, and asked "what model are you?" it relays the main
   thread's answer instead of naming itself (`tmp/e2e-voice.ts` checks this for both providers).

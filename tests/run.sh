@@ -16,6 +16,8 @@ prep() { # prep <check>: its name, a data folder of its own (the fixture state u
   DATA="$ROOT/tmp/testrun/$name"; rm -rf "$DATA"; mkdir -p "$DATA"
   grep -q '^// fresh' "$t" || sed "s|__ROOT__|$ROOT|g" tests/fixtures/state.json > "$DATA/state.json"
   envs=$(sed -n 's|^// env: ||p' "$t" | sed "s|__ROOT__|$ROOT|g" | tr '\n' ' ') # __ROOT__: this repository (the stand-ins in tests/mock)
+  # Grok is the stand-in in every check unless the check says otherwise: a Grok installed on this Mac is never started by a check
+  envs="CVC_GROK_BIN=$ROOT/tests/mock/grok GROK_HOME=$DATA/grok $envs"
 }
 backend() { env $envs CVC_ROOT="$ROOT" CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" npx tsx "$1" 2>&1; }
 judge() { # judge <name> <output>: its lines; a check counts as failed when it failed, crashed, or ended without its summary line

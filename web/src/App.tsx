@@ -12,7 +12,7 @@ import { md } from './md';
 import { Pane, type PaneTarget } from './Pane';
 import { findAgents, shortIds, shortTitle } from '../../shared/roster';
 import { answerIs, stopSaysMore } from '../../shared/orders';
-import { DICTATED_TAG, JAUVEX_HELLO, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
+import { ACK_MODEL_KEY, DICTATED_TAG, JAUVEX_HELLO, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
 import { ago, api, pickFolder, size } from './api';
 import { VoiceEngine, clean, type VoicePhase } from './voice';
 import { Orb } from './Orb';
@@ -56,7 +56,7 @@ export default function App() {
   const [autoCompact, setAutoCompact] = useState(AUTO_COMPACT_DEFAULT); // compact an agent's conversation when its context is this full (T-74); every open chat is told
   const changeAutoCompact = (pct: number) => { setAutoCompact(pct); void api.setUi({ autoCompact: pct }); window.dispatchEvent(new CustomEvent('cvc-auto-compact', { detail: pct })); };
   // Who is signed in: only a signed-in provider can be chosen for a new session, a move or the default (checked at start and after every sign-in or sign-out).
-  const [signedIn, setSignedIn] = useState<Record<Provider, boolean>>({ claude: true, codex: true });
+  const [signedIn, setSignedIn] = useState<Record<Provider, boolean>>({ claude: true, codex: true, grok: true });
   useEffect(() => { const check = () => void Promise.all(PROVIDERS.map((p) => window.desktop.accountStatus(p).then((st) => [p, st.signedIn] as const).catch(() => [p, true] as const))).then((all) => setSignedIn(Object.fromEntries(all) as Record<Provider, boolean>)); check(); return window.desktop.onAccountEvent((e) => { if (e.type === 'done') setTimeout(check, 500); }); }, []);
   const [jauvex, setJauvex] = useState<Project | null>(null); const [jauvexSession, setJauvexSession] = useState<string | null>(null); const [jauvexProvider, setJauvexProvider] = useState<Provider | null>(null); const [jauvexMove, setJauvexMove] = useState<'unified' | 'handoff'>('unified'); const [showJauvex, setShowJauvex] = useState(true); const [defaultProvider, setDefaultProvider] = useState<Provider | null>(null); // the Jauvex agent (the app's own folder as a project) and the default agent
   const [infos, setInfos] = useState<Record<string, SessionInfo[]>>({});
@@ -314,7 +314,7 @@ export default function App() {
             {jauvex && showJauvex && (() => { const key = `${jauvex.id}:jauvex`; const on = sel?.key === key; return (
               <button className={`row jauvex-row${on ? ' on' : ''}${jauvexSession && busy[key] ? ' working' : ''}`} title="The Jauvex agent: the entry point for everything about this app (restart, update, install, agents, folders, how it works, developing it)" onClick={() => open({ projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' })}>
                 <Mark /><span className="row-title">Jauvex</span><small>agent</small></button>); })()}
-            {projects.filter((p) => !p.builtin).length === 0 && <p className="side-empty">Add a folder to see the Claude and Codex sessions that exist for it.</p>}
+            {projects.filter((p) => !p.builtin).length === 0 && <p className="side-empty">Add a folder to see the Claude, Codex and Grok sessions that exist for it.</p>}
             {projects.filter((p) => !p.builtin).map((p) => (
               <ProjectGroup key={p.id} project={p} infos={infos[p.id]} sel={sel} renaming={renameAt === 'row' && renaming?.startsWith(`${p.id}:`) ? renaming.slice(p.id.length + 1) : null} onRenaming={(sid) => { setRenameAt('row'); setRenaming(sid ? `${p.id}:${sid}` : null); }} onRename={(sid, t) => void rename(p.id, sid, t)} onHide={(sid) => void hideSession(p, sid)} onOpenJev={(aid) => openJev(p.id, aid)} onDeleteJev={(aid) => void deleteJev(p.id, aid)} working={new Set(opened.filter((o) => o.projectId === p.id && busy[o.key] && o.sessionId).map((o) => o.sessionId!))} listening={opened.find((o) => o.key === listening && o.projectId === p.id)?.sessionId ?? null} onOpen={(sid) => open({ projectId: p.id, sessionId: sid, key: `${p.id}:${sid}` })} onNew={() => open({ projectId: p.id, sessionId: null, key: `${p.id}:new:${Date.now()}` })} onAdd={() => setPicker(p)} onRemove={() => void removeProject(p)} />
             ))}
@@ -345,7 +345,7 @@ export default function App() {
                 onLost: () => { setJauvexSession(null); void api.setUi({ jauvexSession: null }); const unbind = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: null } : x); setOpened((all) => all.map(unbind)); setSel((cur) => (cur ? unbind(cur) : cur)); setHistory((h) => h.map(unbind)); } } : undefined}
               onTurnEnd={() => void refresh()} onReply={(text, replyTo) => { void routeAgentBlocks(o, text); if (replyTo) void returnReply(o, replyTo, text); }} onBridge={(b) => { if (b) bridges.current.set(o.key, b); else bridges.current.delete(o.key); }} onNew={() => open({ projectId: proj.id, sessionId: null, key: `${proj.id}:new:${Date.now()}` })} /></div>; })}
         {sel && project ? null
-          : <div className="empty"><Mark /><h2>Pick a session</h2><p>Add a folder, choose which of its Claude and Codex sessions to keep in the sidebar, then open one and keep talking, or start a new one with either.</p></div>}
+          : <div className="empty"><Mark /><h2>Pick a session</h2><p>Add a folder, choose which of its Claude, Codex and Grok sessions to keep in the sidebar, then open one and keep talking, or start a new one with either.</p></div>}
       </main>
       {pane && <Pane target={pane} onClose={() => setPane(null)} />}
 
@@ -443,7 +443,7 @@ function SessionPicker({ project, all, onClose, onSave }: { project: Project; al
   const [who, setWho] = useState<Provider | 'all'>('all'); // whose sessions: the list holds both providers' sessions for the folder
   const [picked, setPicked] = useState<Set<string>>(new Set(project.sessions));
   const [saving, setSaving] = useState(false);
-  const counts = useMemo(() => ({ claude: (all ?? []).filter((s) => s.provider === 'claude').length, codex: (all ?? []).filter((s) => s.provider === 'codex').length }), [all]);
+  const counts = useMemo(() => Object.fromEntries(PROVIDERS.map((p) => [p, (all ?? []).filter((s) => s.provider === p).length])) as Record<Provider, number>, [all]);
   const list = useMemo(() => { const n = q.trim().toLowerCase(); return (all ?? []).filter((s) => (who === 'all' || s.provider === who) && (!n || `${s.customTitle ?? ''} ${s.summary} ${s.firstPrompt ?? ''}`.toLowerCase().includes(n))); }, [all, q, who]);
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   return (
@@ -451,10 +451,10 @@ function SessionPicker({ project, all, onClose, onSave }: { project: Project; al
       <div className="modal" role="dialog" aria-label="Add sessions">
         <div className="modal-head"><div><h3>Sessions in {project.name}</h3><p>{project.path}</p></div><button className="icon-btn" onClick={onClose}><X size={16} /></button></div>
         <div className="modal-search"><Search size={15} /><input autoFocus placeholder="Search sessions" value={q} onChange={(e) => setQ(e.target.value)} />
-          <span className="who">{([['all', 'All', counts.claude + counts.codex], ['claude', 'Claude', counts.claude], ['codex', 'Codex', counts.codex]] as const).map(([k, label, n]) => <button key={k} className={who === k ? 'on' : ''} title={k === 'all' ? 'Sessions of both providers' : `${label} sessions only`} onClick={() => setWho(k)}>{k !== 'all' && <ProviderIcon provider={k} size={11} />}{label}{all ? <em>{n}</em> : null}</button>)}</span></div>
+          <span className="who">{([['all', 'All', (all ?? []).length] as const, ...PROVIDERS.filter((p) => p !== 'grok' || counts.grok > 0).map((p) => [p, PROVIDER_LABEL[p], counts[p]] as const)]).map(([k, label, n]) => <button key={k} className={who === k ? 'on' : ''} title={k === 'all' ? 'Sessions of every provider' : `${label} sessions only`} onClick={() => setWho(k)}>{k !== 'all' && <ProviderIcon provider={k} size={11} />}{label}{all ? <em>{n}</em> : null}</button>)}</span></div>
         <div className="modal-list">
           {!all && <p className="modal-empty">Loading…</p>}
-          {all && list.length === 0 && <p className="modal-empty">{q.trim() ? 'No session matches.' : who === 'all' ? 'Neither Claude nor Codex has sessions for this folder yet.' : `${PROVIDER_LABEL[who]} has no sessions for this folder yet.`}</p>}
+          {all && list.length === 0 && <p className="modal-empty">{q.trim() ? 'No session matches.' : who === 'all' ? 'No provider has sessions for this folder yet.' : `${PROVIDER_LABEL[who]} has no sessions for this folder yet.`}</p>}
           {list.map((s) => (
             <button key={s.sessionId} className={`pick${picked.has(s.sessionId) ? ' on' : ''}`} onClick={() => toggle(s.sessionId)}>
               <span className="box">{picked.has(s.sessionId) && <Check size={12} strokeWidth={3} />}</span>
@@ -492,7 +492,7 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
     await api.noteAppend(sid.current, ms.map((m) => ({ after, message: { ...m, uuid: `note-${m.uuid}` } }))).catch(() => {}); };
   const record = (role: 'user' | 'assistant', text: string, extra: Partial<ChatMessage> = {}) => { if (!hybrid || !text.trim()) return; void api.jauvexAppend({ message: { uuid: `jx-${crypto.randomUUID()}`, role, blocks: [{ type: 'text', text }], meta: false, ...extra }, provider, at: Date.now() }).catch(() => {}); };
   // Every message of the provider's turn goes to the transcript as it is (tool calls and results too, results trimmed), so the thread shows the work after a reload.
-  const recordMessage = (m: ChatMessage) => { if (!hybrid) return; if (provider === 'codex' && m.blocks.some((b) => b.type === 'tool_use') && !m.blocks.some((b) => b.type === 'tool_result')) return; /* a Codex call that only started: its completed twin comes with the result */ const blocks = m.blocks.map((b) => (b.type === 'tool_result' && b.text.length > 4000 ? { ...b, text: `${b.text.slice(0, 4000)}\n… (trimmed)` } : b)); if (!blocks.length) return; void api.jauvexAppend({ message: { ...m, blocks }, provider, at: Date.now() }).catch(() => {}); };
+  const recordMessage = (m: ChatMessage) => { if (!hybrid) return; if (provider !== 'claude' && m.blocks.some((b) => b.type === 'tool_use') && !m.blocks.some((b) => b.type === 'tool_result')) return; /* a Codex or Grok call that only started: its completed twin comes with the result */ const blocks = m.blocks.map((b) => (b.type === 'tool_result' && b.text.length > 4000 ? { ...b, text: `${b.text.slice(0, 4000)}\n… (trimmed)` } : b)); if (!blocks.length) return; void api.jauvexAppend({ message: { ...m, blocks }, provider, at: Date.now() }).catch(() => {}); };
   const handover = useRef<{ to: Provider; note: string } | null>(null); const pendingMove = useRef<Provider | null>(null);
   const replayPrelude = (from: Provider): string => { const lines: string[] = []; let size = 0; const plain = (m: ChatMessage) => m.blocks.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n').replace(CONTEXT_TAG, '').trim();
     for (const m of [...messages].reverse()) { if (m.voice || m.meta || (m.role !== 'user' && m.role !== 'assistant')) continue; const t = plain(m); if (!t) continue; const line = `${m.role === 'user' ? 'User' : 'Assistant'}: ${t}`; if (size + line.length > 60_000) { lines.push('(earlier turns omitted)'); break; } lines.push(line); size += line.length; }
@@ -548,18 +548,21 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
   const lastSent = useRef<{ text: string; images?: Attachment[]; at: number; resent: boolean; dictated?: boolean } | null>(null); // the last message sent, to send again once if its turn is swallowed
   const sendRef = useRef<(text: string, spoken?: boolean, preparedAck?: Promise<Spoken | null>, fromQueue?: boolean, images?: Attachment[], resend?: boolean, dictated?: boolean) => Promise<void>>(async () => {});
   // A session belongs to one provider for life. Only a new, still empty session lets you choose.
-  const [provider, setProvider] = useState<Provider>(() => (embed ? embed.provider : hybrid ? hybrid.provider : sessionId ? info?.provider ?? providerOf(project, sessionId) : signedIn && signedIn.claude !== signedIn.codex ? (signedIn.claude ? 'claude' : 'codex') : localStorage.getItem('cvc.provider') === 'codex' ? 'codex' : 'claude'));
+  // A new chat: the provider last chosen (an order for a Grok agent writes it just before), when it is signed in; else the first that is.
+  const [provider, setProvider] = useState<Provider>(() => { if (embed) return embed.provider; if (hybrid) return hybrid.provider; if (sessionId) return info?.provider ?? providerOf(project, sessionId);
+    const want = localStorage.getItem('cvc.provider') as Provider | null; if (want && PROVIDERS.includes(want) && signedIn?.[want] !== false) return want;
+    return PROVIDERS.find((p) => signedIn?.[p]) ?? 'claude'; });
   // Model, effort and permissions belong to the session: what was picked here comes back with it. A new session starts from the last choices made anywhere.
   const kept = sessionId ? project.prefs?.[sessionId] : undefined;
   const [model, setModel] = useState(() => kept?.model ?? localStorage.getItem(modelKey(provider)) ?? (provider === 'claude' ? CLAUDE_DEFAULT_MODEL : ''));
-  const [codexModels, setCodexModels] = useState<ModelOption[]>([]);
-  useEffect(() => { if (provider === 'codex') void api.models('codex').then(setCodexModels).catch(() => { /* the picker keeps "Default model" */ }); }, [provider]);
+  const [listedModels, setListedModels] = useState<ModelOption[]>([]); // Codex's and Grok's lists come from the provider; Claude's is fixed
+  useEffect(() => { setListedModels([]); if (provider !== 'claude') void api.models(provider).then(setListedModels).catch(() => { /* the picker keeps "Default model" */ }); }, [provider]);
   // How hard the main model thinks, per provider. Codex says which levels each model takes; Claude's are fixed.
   const [permissions, setPermissions] = useState<Permissions>(() => kept?.permissions ?? (localStorage.getItem('cvc.permissions') === 'auto' ? 'auto' : 'ask'));
   const [effort, setEffort] = useState(() => kept?.effort ?? localStorage.getItem(effortKey(provider)) ?? '');
   const prefs = useRef({ model, effort, permissions }); prefs.current = { model, effort, permissions };
   const keep = (patch: Partial<SessionPrefs>) => { prefs.current = { ...prefs.current, ...patch }; if (sid.current) void api.setPrefs(project.id, sid.current, prefs.current).catch(() => { /* kept for this window at least */ }); };
-  const efforts = provider === 'codex' ? (codexModels.find((m) => (model ? m.id === model : m.isDefault))?.efforts ?? []) : CLAUDE_EFFORTS;
+  const efforts = provider !== 'claude' ? (listedModels.find((m) => (model ? m.id === model : m.isDefault))?.efforts ?? []) : CLAUDE_EFFORTS;
   const pickProvider = (p: Provider) => { setProvider(p); localStorage.setItem('cvc.provider', p); setModel(localStorage.getItem(modelKey(p)) ?? ''); setEffort(localStorage.getItem(effortKey(p)) ?? ''); };
   const chatId = useRef(adopt ?? crypto.randomUUID()); // a reloaded window takes a running turn back under its old id
   const sid = useRef<string | null>(sessionId);
@@ -586,7 +589,7 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
   const level = useRef(0);       // what the orb breathes with: your voice while you talk, Claude's while it talks
   const micLevel = useRef(0);
   const v = useRef({ engine: null as VoiceEngine | null, gen: 0, starts: 0 /* speech segments begun, so the end of one never clears hearing once the next has started */, asked: '', answer: '', mainStarted: false, speakTurn: false, chain: Promise.resolve(), spec: null as { id: number; p: Promise<{ text: string; ms: number; dropped?: string }>; ackAudio: Promise<Spoken | null>; busy: boolean; triage: Promise<BusyTriage | null> | null } | null, running: !!adopt, stopped: false, speakerOff: false, hearing: false, wording: false, lastHeard: 0, pendingSummary: null as { words: Promise<string> } | null, playing: null as { id: number; label: string; text: string; at: number; ms: number } | null, playId: 0, bridges: new Map<string, ArrayBuffer | null>(), cfg: VOICE_DEFAULTS });
-  v.current.cfg = cfg; speaker.current = { provider, model: provider === 'codex' ? cfg.codexAckModel : cfg.ackModel };
+  v.current.cfg = cfg; speaker.current = { provider, model: cfg[ACK_MODEL_KEY[provider]] ?? '' };
   useEffect(() => { void api.state().then((st) => { const saved = { ...VOICE_DEFAULTS, ...(st.ui?.voice ?? {}) }; if (/\bClaudex\b/.test(saved.vocabulary)) saved.vocabulary = saved.vocabulary.replace(/\bClaudex\b/g, 'Jauvex'); /* the old name in a saved vocabulary would keep biasing Whisper */ setCfg(saved.voice === 'Samantha' ? { ...saved, voice: '' } : saved); }); }, []);
   const stt = (c: VoiceSettings) => ({ model: c.sttModel, vocabulary: [c.vocabulary, project.name].filter(Boolean).join(', ') }); // the folder's name is a word it should know too
   const applyFromElsewhere = useRef<(next: VoiceSettings) => void>(() => {});
@@ -991,7 +994,7 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
             </div>
           </div>}
       <Composer context={sid.current || ctx ? { usage: ctx, compacting, autoPct, hasSession: !!sid.current, last: lastCompact, onCompact: () => { if (!startCompactRef.current('manual')) setNote(v.current.running ? 'The conversation can be compacted once this turn is over.' : 'Nothing to compact yet: this session has no conversation.'); } } : undefined} draftKey={storeKey} signedIn={signedIn} usageTick={turns} usageModel={model || mainModel.current || ''} jev={jev} running={running} disabled={state !== 'ready'} provider={provider} onProvider={hybrid ? (running ? undefined : switchProvider) : !embed && !sessionId && !sid.current && messages.length === 0 && !running ? pickProvider : undefined}
-        models={provider === 'codex' ? codexModels : CLAUDE_MODELS} model={model} onModel={(m) => { setModel(m); localStorage.setItem(modelKey(provider), m); keep({ model: m }); }}
+        models={provider === 'claude' ? CLAUDE_MODELS : listedModels} model={model} onModel={(m) => { setModel(m); localStorage.setItem(modelKey(provider), m); keep({ model: m }); }}
         permissions={permissions} onPermissions={(p) => { setPermissions(p); localStorage.setItem('cvc.permissions', p); keep({ permissions: p }); }}
         efforts={efforts} effort={effort} onEffort={(e) => { setEffort(e); localStorage.setItem(effortKey(provider), e); keep({ effort: e }); }} onSend={(t, images) => void send(t, false, undefined, false, images)} onStop={() => { hush(); v.current.stopped = true; void window.desktop.chatStop(chatId.current); }}
         voice={{ muteIn, on: voiceOn, phase, status: vstatus, cfg, level, micMuted, speakerOff, toggle: () => void toggleVoice(), toggleMic, toggleSpeaker, hush, save: saveCfg, test: () => { if (v.current.engine) enqueue(say('This is the voice. If you hear this, the speaker is right.'), v.current.gen); } }}
@@ -1077,7 +1080,7 @@ function VoiceSettingsForm({ c, set, st, provider, models, onTest }: { c: VoiceS
           <label><span className="lhead">Mute when idle<em>{idle ? (idle >= 60 ? '1 min' : `${idle} s`) : 'off'}</em></span><input type="range" min={0} max={60} step={5} value={idle} onChange={(e) => set({ idleMuteSec: +e.target.value })} /></label>
           <label className="check"><input type="checkbox" checked={c.showVoiceLines} onChange={(e) => set({ showVoiceLines: e.target.checked })} />Show what the voice says in the thread</label>
           <label className="check"><input type="checkbox" checked={c.ack} onChange={(e) => set({ ack: e.target.checked })} />Acknowledge while thinking</label>
-          <VoiceModelPick provider={provider} value={provider === 'codex' ? c.codexAckModel : c.ackModel} options={provider === 'codex' ? (st?.voiceModels.codex.length ? st.voiceModels.codex : models.map((m) => ({ id: m.id, label: m.label }))) : st?.voiceModels.claude ?? []} onChange={(id) => set(provider === 'codex' ? { codexAckModel: id } : { ackModel: id })} />
+          <VoiceModelPick provider={provider} value={c[ACK_MODEL_KEY[provider]] ?? ''} options={provider !== 'claude' ? (st?.voiceModels[provider].length ? st.voiceModels[provider] : models.map((m) => ({ id: m.id, label: m.label }))) : st?.voiceModels.claude ?? []} onChange={(id) => set({ [ACK_MODEL_KEY[provider]]: id })} />
   </>;
 }
 /** The main settings' Voice chat section: the same form, on the saved settings, told to every open chat. */
@@ -1162,7 +1165,7 @@ function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, per
         {!voice.on && !(text.trim() || files.length > 0) && <button className="voice-start" title="Start voice chat" disabled={disabled} onClick={voice.toggle}><AudioLines size={16} /></button>} {/* also while a turn runs: voice can join the work in progress */}
       </div>
       <div className="composer-row"><button className="icon-btn sm" title="Attach images (or paste, or drop them here)" disabled={disabled} onClick={() => void window.desktop.pickImages().then((got) => { if (got.length) setFiles((x) => [...x, ...got.map((a) => ({ ...a, src: `data:${a.mediaType};base64,${a.data}` }))]); })}><Paperclip size={16} /></button>
-        <select className="model" value={permissions} onChange={(e) => onPermissions(e.target.value as Permissions)} title={provider === 'codex' ? "Ask: you approve what Codex's sandbox will not allow. Auto: Codex's automatic reviewer decides." : 'Ask: you approve each tool that needs permission. Auto: Claude\'s permission classifier decides.'}><option value="ask">Ask permission</option><option value="auto">Auto permissions</option></select>
+        <select className="model" value={permissions} onChange={(e) => onPermissions(e.target.value as Permissions)} title={provider === 'codex' ? "Ask: you approve what Codex's sandbox will not allow. Auto: Codex's automatic reviewer decides." : provider === 'grok' ? "Ask: you approve what Grok's own permission settings do not allow already. Auto: Grok's automatic mode decides. Set when the session is opened." : 'Ask: you approve each tool that needs permission. Auto: Claude\'s permission classifier decides.'}><option value="ask">Ask permission</option><option value="auto">Auto permissions</option></select>
         <span className="grow" />
         {context && <ContextMeter {...context} provider={provider} running={running} />}
         <UsageBattery provider={provider} model={usageModel} tick={usageTick} others={PROVIDERS.filter((p) => p !== provider && signedIn?.[p] !== false)} />
@@ -1227,7 +1230,7 @@ function SettingsPanel({ signedIn, welcomeNext, onWelcomeNext, onOpenWelcome, de
         </section>
         <section className="settings-group danger">
           <strong>Danger zone</strong>
-          <p>Reset the app to its initial state: the sidebar's folders and sessions (the sessions stay in Claude and Codex), the Jauvex agent's conversation and every setting. Cannot be undone; the app exits.</p>
+          <p>Reset the app to its initial state: the sidebar's folders and sessions (the sessions stay in Claude, Codex and Grok), the Jauvex agent's conversation and every setting. Cannot be undone; the app exits.</p>
           <div className="row-btns"><button className="btn-danger" onClick={() => void window.desktop.appReset()}>Reset the app…</button></div>
         </section>
         <div className="modal-foot"><span className="app-version">Jauvex Personal {__APP_VERSION__}</span><button onClick={onClose}>Close</button></div>

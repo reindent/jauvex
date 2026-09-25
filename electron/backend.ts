@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { listSessions, getSessionMessages, getSessionInfo, renameSession, type SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import { type JauvexEntry, JEV_TEMPLATE, providerOf, type SessionPrefs, type JevAgent, type JevAnswer, type JevRun, type AppState, type Block, type ChatMessage, type MessagesPage, type ModelOption, type Project, type Provider, type SessionInfo, type UiState } from '../shared/types.js';
 import * as codex from './codex.js';
+import * as grok from './grok.js';
 import type { ContextUsage } from '../shared/context.js';
 import * as jev from './jev.js';
 
@@ -143,7 +144,7 @@ export const backend = {
   // each after the message it followed (data/notes/<session>.json). The provider never sees these lines.
   notes: async (sessionId: string): Promise<{ after: string; message: ChatMessage }[]> => { try { return JSON.parse(await fs.readFile(notesFile(sessionId), 'utf8')); } catch { return []; } },
   noteAppend: async (sessionId: string, entries: { after: string; message: ChatMessage }[]) => { const f = notesFile(sessionId); let all: { after: string; message: ChatMessage }[] = []; try { all = JSON.parse(await fs.readFile(f, 'utf8')); } catch { /* first */ } all.push(...entries); await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, JSON.stringify(all.slice(-500))); return true; },
-  sessionExists: async (id: string, sessionId: string): Promise<boolean> => { const { project } = await projectOr404(id); if (providerOf(project, sessionId) === 'codex') return true; return !!(await getSessionInfo(sessionId, { dir: project.path }).catch(() => undefined)); },
+  sessionExists: async (id: string, sessionId: string): Promise<boolean> => { const { project } = await projectOr404(id); if (providerOf(project, sessionId) !== 'claude') return true; return !!(await getSessionInfo(sessionId, { dir: project.path }).catch(() => undefined)); },
   /** The app's own folder as a project, for the Jauvex agent: created once, marked builtin, never listed with the others. */
   // The Jauvex agent's transcript, kept by the app (user and assistant text only): the one session that moves between providers.
   jauvexTranscript: async (): Promise<JauvexEntry[]> => { try { return JSON.parse(await fs.readFile(JAUVEX_LOG, 'utf8')) as JauvexEntry[]; } catch { return []; } },
@@ -160,13 +161,13 @@ export const backend = {
   removeProject: async (id: string) => { const state = await loadState(); state.projects = state.projects.filter((p) => p.id !== id); if (state.ui?.sel?.projectId === id) state.ui.sel = null; await saveState(state); return true; },
   sessions: async (id: string): Promise<SessionInfo[]> => {
     const { project } = await projectOr404(id);
-    // Both providers' sessions for this folder. Codex being absent or logged out must not hide Claude's.
+    // Every provider's sessions for this folder. Codex or Grok being absent or logged out must not hide Claude's.
     // A failing Claude listing no longer hides Codex's; none found is said in the debug panel with where the app looked, so a user can
     // tell a Claude Code folder moved elsewhere (CLAUDE_CONFIG_DIR, taken from the login shell at start) from a folder with no sessions.
-    const [all, fromCodex] = await Promise.all([listSessions({ dir: project.path, limit: 500 }).catch((e: Error) => { debug.log('note', `Claude Code sessions of ${project.path} could not be listed: ${e.message}`, { by: 'app' }); return []; }), codex.listSessions(project.path).catch(() => [] as SessionInfo[])]);
+    const [all, fromCodex, fromGrok] = await Promise.all([listSessions({ dir: project.path, limit: 500 }).catch((e: Error) => { debug.log('note', `Claude Code sessions of ${project.path} could not be listed: ${e.message}`, { by: 'app' }); return []; }), codex.listSessions(project.path).catch(() => [] as SessionInfo[]), grok.listSessions(project.path).catch(() => [] as SessionInfo[])]);
     if (!all.length) { const cfg = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'); const sub = path.join(cfg, 'projects', project.path.replace(/[^a-zA-Z0-9]/g, '-')); const files = await fs.readdir(sub).then((f) => f.filter((x) => x.endsWith('.jsonl')).length, () => -1);
       debug.log('note', `no Claude Code sessions listed for ${project.path}: looked in ${sub} (${files < 0 ? 'no such folder' : `${files} session files there`}); Claude Code's folder is ${cfg}${process.env.CLAUDE_CONFIG_DIR ? ' (CLAUDE_CONFIG_DIR)' : ''}`, { by: 'app' }); }
-    return [...fromCodex, ...all.map((s): SessionInfo => ({ provider: 'claude', sessionId: s.sessionId, summary: shortTitle(s.summary ?? ''), lastModified: s.lastModified, createdAt: s.createdAt, fileSize: s.fileSize, customTitle: s.customTitle, firstPrompt: s.firstPrompt, gitBranch: s.gitBranch, cwd: s.cwd }))].sort((a, b) => b.lastModified - a.lastModified);
+    return [...fromCodex, ...fromGrok, ...all.map((s): SessionInfo => ({ provider: 'claude', sessionId: s.sessionId, summary: shortTitle(s.summary ?? ''), lastModified: s.lastModified, createdAt: s.createdAt, fileSize: s.fileSize, customTitle: s.customTitle, firstPrompt: s.firstPrompt, gitBranch: s.gitBranch, cwd: s.cwd }))].sort((a, b) => b.lastModified - a.lastModified);
   },
   setSessions: async (id: string, sessionIds: string[], providers: Record<string, Provider> = {}) => {
     const { state, project } = await projectOr404(id);
@@ -174,22 +175,24 @@ export const backend = {
     project.sessions = [...new Set(sessionIds)];
     const known = { ...project.providers, ...providers }; // a session keeps the provider it was imported with
     const trainers = (project.jev ?? []).map((a) => a.sessionId).filter((x): x is string => Boolean(x)); // a Jev agent's trainer session is not in the list, but keeps its provider
-    project.providers = Object.fromEntries([...project.sessions, ...trainers].filter((sid) => known[sid] === 'codex').map((sid) => [sid, 'codex' as const]));
+    project.providers = Object.fromEntries([...project.sessions, ...trainers].flatMap((sid) => { const p = known[sid]; return p && p !== 'claude' ? [[sid, p] as const] : []; }));
     await saveState(state); return project;
   },
   messages: async (id: string, sessionId: string, before?: number, limit = 150): Promise<MessagesPage> => {
     const { project } = await projectOr404(id);
-    const all = providerOf(project, sessionId) === 'codex' ? await codex.transcript(sessionId) : await transcript(project.path, sessionId);
+    const provider = providerOf(project, sessionId);
+    const all = provider === 'codex' ? await codex.transcript(sessionId) : provider === 'grok' ? await grok.transcript(sessionId, project.path) : await transcript(project.path, sessionId);
     const end = before === undefined ? all.length : Math.max(0, Math.min(all.length, before));
     const start = Math.max(0, end - Math.min(500, Math.max(1, limit)));
     return { total: all.length, start, messages: all.slice(start, end) };
   },
-  // The name is written where the provider keeps it (a custom-title entry in Claude's session file, the thread's name in Codex),
-  // so it is the same name in Claude Code, in Codex, and here.
+  // The name is written where the provider keeps it (a custom-title entry in Claude's session file, the thread's name in Codex, the
+  // session's title in Grok), so it is the same name in Claude Code, in Codex, in Grok, and here.
   rename: async (id: string, sessionId: string, title: string) => {
     const { project } = await projectOr404(id); const name = String(title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
     if (!name) throw new HttpError(400, 'A session needs a name');
-    if (providerOf(project, sessionId) === 'codex') await codex.rename(sessionId, name); else await renameSession(sessionId, name, { dir: project.path });
+    const provider = providerOf(project, sessionId);
+    if (provider === 'codex') await codex.rename(sessionId, name); else if (provider === 'grok') await grok.rename(sessionId, name, project.path); else await renameSession(sessionId, name, { dir: project.path });
     return true;
   },
   setPrefs: async (id: string, sessionId: string, prefs: SessionPrefs) => {
@@ -223,6 +226,6 @@ export const backend = {
     if (agent) { agent.state = stateText; agent.questions = questionsText; agent.runs = [run, ...agent.runs].slice(0, 20); agent.updatedAt = run.at; await saveState(state); }
     return run;
   },
-  models: async (provider: Provider): Promise<ModelOption[]> => (provider === 'codex' ? codex.models() : []), // Claude's list is fixed in the UI
+  models: async (provider: Provider): Promise<ModelOption[]> => (provider === 'codex' ? codex.models() : provider === 'grok' ? grok.models() : []), // Claude's list is fixed in the UI
 };
 export type Backend = typeof backend;

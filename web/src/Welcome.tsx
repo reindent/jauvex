@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { Orb } from './Orb';
 import { VoiceEngine, type VoicePhase } from './voice';
-import { SIGN_IN_CLI, SIGN_IN_IN_APP, type AccountStatus, type Provider, type SetupCheck, type VoiceStatus } from '../../shared/types';
+import { PROVIDER_LABEL, SIGN_IN_CLI, SIGN_IN_IN_APP, type AccountStatus, type Provider, type SetupCheck, type VoiceStatus } from '../../shared/types';
 import { ProviderIcon } from './ProviderIcon';
 
 /**
@@ -25,7 +25,7 @@ export function Welcome({ onDone, defaultProvider, onDefault, jauvexMove, onJauv
   ]);
   const [phase, setPhaseState] = useState<VoicePhase>('thinking'); const level = useRef(0); const setPhase = (p: VoicePhase) => { phaseRef.current = p; setPhaseState(p); };
   const [line, setLine] = useState<{ text: string; ms: number; at: number }>({ text: '', ms: 0, at: 0 });
-  const [signed, setSigned] = useState<Provider[]>([]); const [chosen, setChosen] = useState<Provider | null>(defaultProvider); const signedRef = useRef<Provider[]>([]); signedRef.current = signed; const NAME = { claude: 'Claude', codex: 'Codex' } as const;
+  const [signed, setSigned] = useState<Provider[]>([]); const [chosen, setChosen] = useState<Provider | null>(defaultProvider); const signedRef = useRef<Provider[]>([]); signedRef.current = signed; const NAME = PROVIDER_LABEL;
   /* The welcome listens once the checks are in (people talk to an orb that talks): start, Claude or Codex, or, with nobody signed
      in, the honest answer that it cannot reply yet. Whisper is warmed as soon as the screen opens so the ears are ready in time. */
   const engine = useRef<VoiceEngine | null>(null); const canAnswer = useRef(false); const chosenRef = useRef(chosen); chosenRef.current = chosen; const readyRef = useRef(false); const onDoneRef = useRef(onDone); onDoneRef.current = onDone; const onDefaultRef = useRef(onDefault); onDefaultRef.current = onDefault;
