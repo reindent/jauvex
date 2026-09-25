@@ -146,6 +146,8 @@ debug panel.
   `GGML_ASSERT` (`whisperFailure` in `voice.ts`), and stop waiting when its process ends (`waitForServer`): on 2026-09-24, on a new
   Mac, the app showed "exited (null). 9 dyld ... start + 6124" after waiting out a whole minute, for a small model an interrupted
   download had left incomplete (start.sh took any file of that name for done; `scripts/models.sh` checks sizes and SHA-256 now).
+- Class names are global: a bare `.ctx` for the context meter's button (T-74) also styled the session menu, `menu ctx`, and laid its
+  items out in a row (T-131). Give a component's classes its own prefix (`ctx-meter`), and never a short bare word.
 - Words held for "what comes next" must always have a way out (timer or `dropped`), or the message vanishes.
 - The app's own agent lives in `~/.jauvex` (`JAUVEX_HOME`, `CVC_JAUVEX_HOME` in the checks: `run.sh` gives each check its own
   home, never the user's). Never make an agent's home depend on where

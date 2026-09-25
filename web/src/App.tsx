@@ -1124,7 +1124,7 @@ function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, per
   const setText = (t: string) => { setTextState(t); if (dKey) { try { if (t) localStorage.setItem(dKey, t); else localStorage.removeItem(dKey); } catch { /* nothing */ } } }; // typed but not sent: kept across a reload
   const [settings, setSettings] = useState(false);
   const ta = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(220, el.scrollHeight)}px`; } }, [text]);
+  useEffect(() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(220, el.scrollHeight)}px`; el.style.overflowY = el.scrollHeight > 220 ? 'auto' : 'hidden'; } }, [text]); // a scrollbar only past the cap: below it the box fits its text, and a pixel of rounding showed the scrollbar's thumb in an empty box (T-130)
   useEffect(() => { ta.current?.focus(); }, []);
   // Images: pasted (a screenshot from the clipboard), dropped on the composer, or picked with the clip. Shown as thumbnails until sent.
   const [files, setFiles] = useState<(Attachment & { src: string })[]>([]); const [over, setOver] = useState(false);

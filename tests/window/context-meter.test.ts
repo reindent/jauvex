@@ -7,7 +7,7 @@ const { js, close } = await connect(); await sleep(2500);
 // the auto-compact setting the chat compacts by itself after the answer; a message that does not fit is compacted for and sent again, once.
 const run = (...args) => { try { return JSON.parse(execFileSync('node', ['scripts/jauvex.ts', ...args], { env: { ...process.env }, encoding: 'utf8' })); } catch (e) { return { ok: false, raw: `${e.stdout ?? ''}${e.stderr ?? ''}` }; } };
 const until = async (expr, ms = 15000) => { for (let t = 0; t < ms; t += 250) { if (await js(expr)) return true; await sleep(250); } return false; };
-const meter = `${V}?.querySelector('.ctx')`; const notes = `[...${V}.querySelectorAll('.app-note')].map((n) => n.textContent)`;
+const meter = `${V}?.querySelector('.ctx-meter')`; const notes = `[...${V}.querySelectorAll('.app-note')].map((n) => n.textContent)`;
 const compactions = async () => (await js(`${notes}.filter((t) => /compacted/i.test(t)).length`)) ?? 0;
 const idle = `!${V}.querySelector('.send.stop')`; // the stop button is there while a turn (or a compaction) runs
 const type = async (text) => { await js(`(() => { const ta = ${V}.querySelector('.composer textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, ${JSON.stringify(text)}); ta.dispatchEvent(new Event('input', { bubbles: true })); })()`); await sleep(150);
