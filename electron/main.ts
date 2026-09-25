@@ -217,8 +217,8 @@ app.whenReady().then(async () => {
   ipcMain.on('voice:type', (_e, text: string) => { win?.webContents.send('voice:type', String(text)); }); // typed in the tiny bar: to the listening chat, without bringing the app forward
   ipcMain.on('mini:size', (_e, w: number) => { if (!mini) return; const [, h] = mini.getSize(); mini.setSize(Math.max(200, Math.round(w)), h ?? 72, true); }); // the bar grows for its typing box (animated on macOS)
   ipcMain.on('voice:cmd', (_e, cmd: string) => { if ((cmd === 'focus' || cmd === 'new') && !HIDDEN) { win?.show(); win?.focus(); } /* an automated check never comes to the front */ win?.webContents.send('voice:cmd', cmd); });
-  const codex = await import('./codex.js');
-  app.on('before-quit', () => { chat.stopAll(); voice.shutdown(); account.shutdown(); codex.shutdown(); });
+  const codex = await import('./codex.js'); const grok = await import('./grok.js');
+  app.on('before-quit', () => { chat.stopAll(); voice.shutdown(); account.shutdown(); codex.shutdown(); grok.shutdown(); });
   await createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow(); });
 });

@@ -10,13 +10,14 @@ import { claudeExe } from './account.js';
  *   Claude: the data behind `/usage` (the SDK's experimental usage request, so every field is read defensively), asked of a
  *           short-lived idle process: nothing is sent to a model and nothing is persisted. About a second.
  *   Codex:  `account/rateLimits/read` on the app-server that is already running.
+ *   Grok:   not read yet (its credits are behind the agent's `x.ai/billing`): shown as not available.
  * Only percentages, window lengths and reset times leave this file: no account IDs, no credentials.
  */
 const FRESH_MS = 30_000; // several chats are mounted at once: they share one answer
 const cache = new Map<Provider, { at: number; p: Promise<ProviderUsage> }>();
 export function get(provider: Provider, force = false): Promise<ProviderUsage> {
   const hit = cache.get(provider); if (hit && !force && Date.now() - hit.at < FRESH_MS) return hit.p;
-  const p = (provider === 'codex' ? codexUsage() : claudeUsage()).catch((e): ProviderUsage => ({ provider, available: false, windows: [], at: Date.now(), error: e instanceof Error ? e.message : String(e) }));
+  const p = (provider === 'codex' ? codexUsage() : provider === 'grok' ? grokUsage() : claudeUsage()).catch((e): ProviderUsage => ({ provider, available: false, windows: [], at: Date.now(), error: e instanceof Error ? e.message : String(e) }));
   cache.set(provider, { at: Date.now(), p }); return p;
 }
 const clamp = (n: number) => Math.max(0, Math.min(100, n));
@@ -48,6 +49,7 @@ export function claudeFromUsage(u: ClaudeReport, at: number): ProviderUsage {
   return { provider: 'claude', available: windows.length > 0, windows, at, ...(typeof u.subscription_type === 'string' && u.subscription_type ? { plan: u.subscription_type } : {}), ...(notes.length ? { notes } : {}) };
 }
 
+async function grokUsage(): Promise<ProviderUsage> { return { provider: 'grok', available: false, windows: [], at: Date.now(), error: 'the app does not read Grok\'s credits yet' }; }
 async function codexUsage(): Promise<ProviderUsage> { return codexFromLimits(await codex.rateLimits(), Date.now()); }
 /** Codex's windows: its ordinary limit (`codex`) and each model's own extra limit, named after the model (counted only while that model is
  * in use, as Codex's own status does), plus the plan and credits. Pure: tests/usage-panel.test.ts. */

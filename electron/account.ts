@@ -2,6 +2,7 @@ import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import type { AccountEvent, AccountStatus, Provider } from '../shared/types.js';
 import * as codex from './codex.js';
+import * as grok from './grok.js';
 import * as debug from './debug.js';
 
 /**
@@ -11,6 +12,8 @@ import * as debug from './debug.js';
  *           the app, and if it asks for something (a pasted code) the user can type it there.
  *   Codex:  the app-server's account API (`account/read`, `account/login/start` with the ChatGPT flow, `account/logout`);
  *           the browser is opened on the URL it returns and `account/login/completed` says when it is done.
+ *   Grok:   who, from the agent's `x.ai/auth/info`; sign-in is the CLI's own flow (`grok login`, it opens the browser), sign-out
+ *           the agent's `x.ai/auth/logout`.
  * Only what the panel shows leaves here (signed in or not, the e-mail, the plan). Tokens and keys are never read.
  */
 const ROOT = process.env.CVC_ROOT || path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -34,6 +37,7 @@ export async function status(provider: Provider): Promise<AccountStatus> {
       const j = JSON.parse(r.out.slice(r.out.indexOf('{'))) as { loggedIn?: boolean; email?: string; subscriptionType?: string; authMethod?: string; apiProvider?: string };
       return { provider, signedIn: !!j.loggedIn, who: j.email ?? '', plan: j.subscriptionType ?? '', method: j.authMethod ?? j.apiProvider ?? '' };
     }
+    if (provider === 'grok') { if (!grok.installed()) return { provider, signedIn: false, who: '', plan: '', method: '', error: 'Grok is not installed on this Mac' }; const g = await grok.account(); const who = g.email ?? ''; return { provider, signedIn: !!(who || g.methodId === 'api_key'), who, plan: g.teamName ?? '', method: g.methodId === 'api_key' ? 'API key' : who ? 'Grok' : '' }; }
     const r = await codex.account();
     const a = r.account; if (!a) return { provider, signedIn: false, who: '', plan: '', method: '' };
     return { provider, signedIn: true, who: a.type === 'chatgpt' ? a.email ?? '' : '', plan: a.type === 'chatgpt' ? String(a.planType ?? '') : '', method: a.type === 'chatgpt' ? 'ChatGPT' : a.type };
@@ -42,7 +46,7 @@ export async function status(provider: Provider): Promise<AccountStatus> {
 
 export async function logout(provider: Provider): Promise<AccountStatus> {
   debug.log('note', `${provider}: signing out`, { by: 'app' });
-  if (provider === 'claude') await run(CLAUDE, ['auth', 'logout']); else await codex.logout();
+  if (provider === 'claude') await run(CLAUDE, ['auth', 'logout']); else if (provider === 'grok') await grok.logout(); else await codex.logout();
   return status(provider);
 }
 
@@ -57,15 +61,16 @@ export async function login(provider: Provider): Promise<boolean> {
     codex.onLoginCompleted((ok, error) => { flows.delete('codex'); emit({ provider, type: 'done', ok, ...(error ? { error } : {}) }); });
     return true;
   }
-  const child = spawn(CLAUDE, ['auth', 'login'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, FORCE_COLOR: '0', NO_COLOR: '1' } });
-  flows.set('claude', child);
+  const [bin, args] = provider === 'grok' ? [grok.bin(), ['login']] : [CLAUDE, ['auth', 'login']];
+  const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, FORCE_COLOR: '0', NO_COLOR: '1' } });
+  flows.set(provider, child);
   const seen = new Set<string>();
   const onText = (d: Buffer) => { const text = d.toString().replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''); // no terminal colours in the panel
     for (const m of text.match(/https?:\/\/[^\s"'<>)]+/g) ?? []) if (!seen.has(m)) { seen.add(m); emit({ provider, type: 'url', url: m }); }
     for (const line of text.split(/\r?\n/)) if (line.trim()) emit({ provider, type: 'line', text: line.trim() }); };
   child.stdout?.on('data', onText); child.stderr?.on('data', onText);
-  child.on('exit', (code) => { flows.delete('claude'); emit({ provider, type: 'done', ok: code === 0, ...(code ? { error: `the sign-in command ended with code ${code}` } : {}) }); });
-  child.on('error', (e) => { flows.delete('claude'); emit({ provider, type: 'done', ok: false, error: e.message }); });
+  child.on('exit', (code) => { flows.delete(provider); emit({ provider, type: 'done', ok: code === 0, ...(code ? { error: `the sign-in command ended with code ${code}` } : {}) }); });
+  child.on('error', (e) => { flows.delete(provider); emit({ provider, type: 'done', ok: false, error: e.message }); });
   return true;
 }
 /** Something the sign-in flow asked for (a pasted code), typed in the panel. */

@@ -11,10 +11,13 @@ type Ev = Parameters<Parameters<typeof chat.startChat>[1]>[0];
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || !got ? '' : `: ${got}`}`); if (!ok) failed++; };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const p = (await backend.state()).projects.find((x) => x.name === 'scratch')!;
-const turn = async (id: string, during: (chatId: string) => Promise<void>): Promise<Ev[]> => { const evs: Ev[] = []; const run = chat.startChat({ chatId: id, projectId: p.id, sessionId: null, provider: 'claude', text: 'a long job, please' }, (e) => evs.push(e)); await during(id); await run; return evs; };
+const turn = async (id: string, during: (chatId: string, evs: Ev[]) => Promise<void>): Promise<Ev[]> => { const evs: Ev[] = []; const run = chat.startChat({ chatId: id, projectId: p.id, sessionId: null, provider: 'claude', text: 'a long job, please' }, (e) => evs.push(e)); await during(id, evs); await run; return evs; };
+// The answer has started once its first words stream in: a fixed wait was not enough on a busy machine (the stand-in starts slower when
+// other checks run at the same time), and the message was handed over before the answer began.
+const answering = async (evs: Ev[]) => { for (let i = 0; i < 100 && !evs.some((e) => e.type === 'delta'); i++) await sleep(50); };
 const done = (evs: Ev[]) => evs.filter((e): e is Extract<Ev, { type: 'done' }> => e.type === 'done').at(-1);
 
-const stopped = await turn('lost-on-stop', async (id) => { await sleep(900); await chat.steerChat(id, 'what we can do later: import from the other app'); await sleep(200); await chat.stopChat(id); });
+const stopped = await turn('lost-on-stop', async (id, evs) => { await answering(evs); await sleep(300); await chat.steerChat(id, 'what we can do later: import from the other app'); await sleep(200); await chat.stopChat(id); });
 check('a message handed over once the answer had started, then a stop: the end says it was never read', done(stopped)?.unsent === 1, JSON.stringify(done(stopped)));
 
 const read = await turn('read-later', async (id) => { await sleep(250); await chat.steerChat(id, 'and one more thing'); });

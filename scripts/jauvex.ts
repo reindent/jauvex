@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // The app's command line, for agents (the Jauvex agent above all): every action in the app, as a request file in
 // data/commands that the running app answers. Usage: node scripts/jauvex.ts <command> [--flag value ...]
-// Commands: list | add-folder <path> | pick-folder | new-agent [--provider claude|codex|jev] [--folder name|path|id] [--name ..] [--purpose ..] [--kickoff ".."] (always started: --no-kickoff gives it its own introduction)
+// Commands: list | add-folder <path> | pick-folder | new-agent [--provider claude|codex|grok|jev] [--folder name|path|id] [--name ..] [--purpose ..] [--kickoff ".."] (always started: --no-kickoff gives it its own introduction)
 //           open [--folder ..] [--session id|title] | send --session id|title [--folder ..] --text ".." | rename --session .. --title ".."
-//           settings [--default-provider claude|codex] [--show-jauvex yes|no] [--welcome-next yes|no] [--jauvex-move unified|handoff] [--auto-compact <percent>|provider] | welcome | reload | restart
+//           settings [--default-provider claude|codex|grok] [--show-jauvex yes|no] [--welcome-next yes|no] [--jauvex-move unified|handoff] [--auto-compact <percent>|provider] | welcome | reload | restart
 // Prints the JSON result; exits 1 when the app said no or did not answer (is it running? same data folder?).
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';

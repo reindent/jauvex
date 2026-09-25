@@ -15,4 +15,6 @@ check('a restart is the agent\'s own, as the restart paragraph says: the two agr
 // 2026-09-24: "call him a coding agent", dictated, came out as "a Codex agent", and the Jauvex agent made a Codex agent. Agents are told
 // the two sound alike, and to ask when that word decides what they do.
 { const v = clientBriefing(true); check('a voice turn is told that Codex and "coding" sound alike, and to ask when it matters', /Codex and "coding" sound alike/.test(v) && /which kind of agent to make/.test(v)); }
+// Grok is one of the app's own words (2026-09-24): Whisper gets it in its vocabulary, so "Grok" is heard as Grok, not "grog".
+{ const { APP_WORDS, withAppWords } = await import('../shared/types.ts'); check('Grok is one of the words Whisper is told to know', APP_WORDS.includes('Grok') && /\bGrok\b/.test(withAppWords('Reindent'))); }
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);
