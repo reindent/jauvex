@@ -3,6 +3,8 @@ import { query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Provider, ProviderUsage, UsageWindow } from '../shared/types.js';
 import * as codex from './codex.js';
 import type { RateSnapshot } from './codex.js';
+import * as grok from './grok.js';
+import type { GrokBilling } from './grok.js';
 import { claudeExe } from './account.js';
 
 /**
@@ -10,7 +12,8 @@ import { claudeExe } from './account.js';
  *   Claude: the data behind `/usage` (the SDK's experimental usage request, so every field is read defensively), asked of a
  *           short-lived idle process: nothing is sent to a model and nothing is persisted. About a second.
  *   Codex:  `account/rateLimits/read` on the app-server that is already running.
- *   Grok:   not read yet (its credits are behind the agent's `x.ai/billing`): shown as not available.
+ *   Grok:   the credits of its plan, from the agent's `x.ai/billing` (what its own usage view reads): one window, the period's included
+ *           credits (a week or a month), or its on-demand spending once those are used up.
  * Only percentages, window lengths and reset times leave this file: no account IDs, no credentials.
  */
 const FRESH_MS = 30_000; // several chats are mounted at once: they share one answer
@@ -49,7 +52,26 @@ export function claudeFromUsage(u: ClaudeReport, at: number): ProviderUsage {
   return { provider: 'claude', available: windows.length > 0, windows, at, ...(typeof u.subscription_type === 'string' && u.subscription_type ? { plan: u.subscription_type } : {}), ...(notes.length ? { notes } : {}) };
 }
 
-async function grokUsage(): Promise<ProviderUsage> { return { provider: 'grok', available: false, windows: [], at: Date.now(), error: 'the app does not read Grok\'s credits yet' }; }
+async function grokUsage(): Promise<ProviderUsage> {
+  if (!grok.installed()) return { provider: 'grok', available: false, windows: [], at: Date.now(), error: 'Grok is not installed on this Mac' };
+  return grokFromBilling(await grok.billing(), Date.now());
+}
+const dollars = (cents: number): string => `$${(cents / 100).toFixed(2).replace(/\.00$/, '')}`;
+/** Grok's credits as a window, the way Grok's own usage view reads them: the share of the period's included credits used (else what was
+ *  used of the monthly limit); once those are used up and on-demand spending is allowed, the on-demand share instead. The period's
+ *  length names the window ("7 d"), its end is the reset. Pure: tests/usage-panel.test.ts. */
+export function grokFromBilling(b: GrokBilling, at: number): ProviderUsage {
+  const c = b.config; const plan = b.subscription_tier ? { plan: b.subscription_tier } : {};
+  if (!c) return { provider: 'grok', available: false, windows: [], at, ...plan, error: 'Grok reported no credits for this sign-in' };
+  const limit = c.monthlyLimit?.val ?? 0; const used = c.used?.val ?? 0; const cap = c.onDemandCap?.val ?? 0; const onDemand = c.onDemandUsed?.val ?? Math.max(0, used - limit);
+  const included = typeof c.creditUsagePercent === 'number' ? clamp(c.creditUsagePercent) : limit > 0 ? clamp((used / limit) * 100) : 0; // absent: none used (Grok leaves zeros out)
+  const start = Date.parse(c.currentPeriod?.start ?? c.billingPeriodStart ?? ''); const end = Date.parse(c.currentPeriod?.end ?? c.billingPeriodEnd ?? '');
+  const length = start && end && end > start ? span((end - start) / 60_000) : /WEEK/.test(c.currentPeriod?.type ?? '') ? '7 d' : /MONTH/.test(c.currentPeriod?.type ?? '') ? '30 d' : 'limit';
+  const extra = included >= 100 && cap > 0; // the included credits are used up: it goes on, on demand, up to the cap
+  const windows: UsageWindow[] = [{ label: extra ? `${length} on demand` : length, usedPercent: extra ? clamp((onDemand / cap) * 100) : included, resetsAt: end || null }];
+  const notes = [...(cap > 0 ? [`On demand: ${dollars(onDemand)} of ${dollars(cap)} this period.`] : []), ...((c.prepaidBalance?.val ?? 0) > 0 ? [`Bought credits left: ${dollars(c.prepaidBalance!.val!)}.`] : [])];
+  return { provider: 'grok', available: true, windows, at, ...plan, ...(notes.length ? { notes } : {}) };
+}
 async function codexUsage(): Promise<ProviderUsage> { return codexFromLimits(await codex.rateLimits(), Date.now()); }
 /** Codex's windows: its ordinary limit (`codex`) and each model's own extra limit, named after the model (counted only while that model is
  * in use, as Codex's own status does), plus the plan and credits. Pure: tests/usage-panel.test.ts. */

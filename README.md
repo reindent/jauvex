@@ -175,6 +175,9 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   own settings, its always-approve setting included; **Auto permissions** is Grok's automatic mode, taken when the session is
   opened. A message handed to a working Grok is read at its next step (`x.ai/interject`); one handed over after its last step
   Grok runs as a prompt of its own, and the turn stays open until that one is answered too, so its answer is not lost.
+  A picture Grok makes (its `imagine` tool) shows under the tool's row, and the answer's link to it points at the file Grok saved
+  in its own session folder: Grok writes it relative to that folder (`images/1.jpg`), which read against the project's folder
+  was a broken image.
 
 ## Voice
 Press the white round button in the message box. All local except the two Claude calls:
@@ -264,15 +267,16 @@ Press the white round button in the message box. All local except the two Claude
 - **Usage battery**: next to the composer's controls, a small battery shows how much of the session's provider plan is
   left: green above 40 %, amber to 15 %, red below. It shows the tightest window that applies (Claude: 5 hours, 7 days,
   and a model's own weekly window only when that model is the one in use; Codex: its ordinary limit, and a model's own
-  extra limit only when that model is in use). A click opens the panel (T-98): every window of this chat's provider and of
-  the other one signed in, how much is left and used, and when it resets (counted down, and on the clock), with the plan,
-  Claude's extra usage and Codex's credits; a model's own window (Claude's Fable week; a Codex model's extra limit, which
+  extra limit only when that model is in use; Grok: its plan's credits for the week or month, or its on-demand spending once
+  those are used up). A click opens the panel (T-98): every window of this chat's provider and of the others signed in, how
+  much is left and used, and when it resets (counted down, and on the clock), with the plan, Claude's extra usage, Codex's
+  credits, Grok's on-demand spending and bought credits; a model's own window (Claude's Fable week; a Codex model's extra limit, which
   Codex names after the model and, in its own status, counts only for that model) is greyed in a chat on another model.
   Refreshed every minute while the window is visible, after each turn, and with the panel's Refresh; a refresh keeps what
   is shown until the new answer is in. When usage is not available for the account (an
   organisation plan, no allowance), the battery is a steady outline with "n/a" and the reason in its tooltip, never a
   flicker. Claude's numbers are the data behind `/usage` (the SDK's experimental usage request, asked of a short-lived
-  idle process: nothing is sent to a model); Codex's come from `account/rateLimits/read`. Only percentages, reset
+  idle process: nothing is sent to a model); Codex's come from `account/rateLimits/read`, Grok's from its agent's `x.ai/billing`. Only percentages, reset
   times, the plan's name, extra usage and the credits balance are read, never account IDs.
 - **Context meter** (T-74): next to the battery, sheets piling up in a small tray show how full the session's context is: one
   flat sheet per fifth of the model's window (an empty tray at 0 %), white, yellow from 50 %, red from 80 %, with the percentage. Claude's number is what the last request
@@ -526,7 +530,8 @@ Press the white round button in the message box. All local except the two Claude
   briefing once, when a session is made (`_meta.rules`, folded into its system prompt), so the note on dictation is always in
   it. One agent process with `--no-leader` (the app's own, never the leader a Grok window on the Mac may share), started on
   first use, and never when no `grok` is on the Mac. Same login, config and store as the Grok CLI (`~/.grok`), nothing there
-  read by hand. Not yet: Grok's credits in the usage battery (shown as not available) and a Grok row on the welcome screen.
+  read by hand. Its plan's credits come from `x.ai/billing`, what Grok's own usage view reads (the share of the period's included
+  credits used, the period, on-demand spending, bought credits, the plan's name). Not yet: a Grok row on the welcome screen.
 - `electron/chat.ts` routes each turn by the session's provider; every provider sends the UI the same `ChatEvent`s.
 - Two threads per chat. The main thread is the session itself (Claude or Codex, the model in the picker). The voice
   thread is a small model **from the same provider** (Haiku for Claude sessions; for Codex sessions the account's fast,

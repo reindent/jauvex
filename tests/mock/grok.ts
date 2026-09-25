@@ -5,7 +5,8 @@
 // prompts streamed as session/update chunks with Grok's own x.ai notifications (response_completed, queue/changed, prompt_complete),
 // cancel, and the x.ai extensions the app uses (auth info and logout, interject, rename, delete). Every message gets one short canned reply
 // that quotes what it got, signed with this machine's name. Sessions are kept in <GROK_HOME>/mock-sessions/<id>.json. No network.
-// In a message: [[tool]] runs a shell command that asks permission first; [[too long]] does not fit; [[slow end]] lingers after its last
+// In a message: [[tool]] runs a shell command that asks permission first; [[image]] makes a picture the way Grok's imagine does (saved in
+// the session's own folder, the answer linking it as images/1.png); [[too long]] does not fit; [[slow end]] lingers after its last
 // step (a message handed over then gets a prompt of its own, as Grok does); /compact compacts.
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -60,7 +61,16 @@ async function modelCall(s, live, text, promptId) {
     xai(s, { sessionUpdate: 'response_completed', usage: call });
     update(s, { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'The command ran; now the answer.' } }, { promptId });
   }
-  for (const piece of replyTo(text.replace('[[tool]]', '').trim() || text).match(/\S+\s*/g) ?? []) { if (live.cut) break; update(s, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: piece } }, { promptId }); await sleep(DELAY); }
+  let picture = '';
+  if (text.includes('[[image]]')) { // Grok's imagine: the picture is saved in the session's folder, the tool's output names it, the answer links it relative to that folder
+    const toolCallId = `call-${randomUUID()}-0`; const folder = path.join(dir, s.id, 'images'); mkdirSync(folder, { recursive: true }); const file = path.join(folder, '1.png');
+    writeFileSync(file, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+    const tool = { version: 1, name: 'imagine', kind: 'other', namespace: 'grok_build', label: 'Imagine', read_only: false };
+    update(s, { sessionUpdate: 'tool_call', toolCallId, title: 'imagine', rawInput: { prompt: 'a small red dot' }, _meta: { 'x.ai/tool': tool } }, { promptId });
+    update(s, { sessionUpdate: 'tool_call_update', toolCallId, status: 'completed', content: [{ type: 'content', content: { type: 'text', text: `Image generated and saved to ${file}.` } }], rawOutput: { type: 'ImageGen', path: file, filename: '1.png', session_folder: 'images' }, _meta: { 'x.ai/tool': tool } }, { promptId });
+    picture = ' ![a small red dot](images/1.png)';
+  }
+  for (const piece of `${replyTo(text.replace('[[tool]]', '').replace('[[image]]', '').trim() || text)}${picture}`.match(/\S+\s*/g) ?? []) { if (live.cut) break; update(s, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: piece } }, { promptId }); await sleep(DELAY); }
   xai(s, { sessionUpdate: 'response_completed', usage: call }); return call;
 }
 type Live = { promptId: string; inbox: string[]; cut: boolean; last: boolean; late?: string[] };
@@ -108,6 +118,8 @@ const methods = {
   },
   '_x.ai/auth/info': () => ({ methodId: 'cached_token', email: 'mock@localhost', firstName: 'Mock', teamName: null }),
   '_x.ai/auth/logout': () => ({ ok: true, was_logged_in: true }),
+  '_x.ai/billing': () => { const now = Date.now(); const period = { type: 'USAGE_PERIOD_TYPE_WEEKLY', start: new Date(now - 2 * 86400_000).toISOString(), end: new Date(now + 5 * 86400_000).toISOString() }; // with MOCK_USAGE: a plan with some credits used
+    return { config: { ...(process.env.MOCK_USAGE ? { creditUsagePercent: 35 } : {}), currentPeriod: period, onDemandCap: {}, onDemandUsed: {}, prepaidBalance: {} }, subscription_tier: 'Mock' }; },
   '_x.ai/interject': (p) => { const s = get(p.sessionId); const live = running.get(s.id); const text = p.text ?? textOf(p.content);
     if (live && !live.last) live.inbox.push(text); else if (live) (live.late ??= []).push(text); else void runPrompt(s, `interject-fallback-${randomUUID()}`, text);
     note('_x.ai/session/interjection', { sessionId: s.id, text }); return { result: { status: 'queued' } }; },

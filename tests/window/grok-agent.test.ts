@@ -27,6 +27,15 @@ await js(`[...${V}.querySelectorAll('.ask .btn')].find((b) => b.textContent === 
 const ran = await waitFor(`/look around/.test([...${V}.querySelectorAll('.assistant .prose')].map((x) => x.textContent).join(' ')) && !${V}.querySelector('.composer .send.stop')`);
 check('allowed, the command runs and Grok answers', ran && !(await js(`!!${V}.querySelector('.ask')`)), (await replies())?.slice(-120));
 
+// A picture Grok made shows: under its tool's row, and in the answer that links it (it was a broken image, 2026-09-24).
+await js(`(() => { const t = ${V}.querySelector('.composer textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, 'draw me something [[image]]'); t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+await sleep(200); await js(`${V}.querySelector('.composer .send').click()`);
+const drawn = await waitFor(`/draw me something/.test([...${V}.querySelectorAll('.assistant .prose')].map((x) => x.textContent).join(' ')) && !${V}.querySelector('.composer .send.stop')`);
+await sleep(600);
+const loaded = (sel: string) => js(`[...${V}.querySelectorAll('${sel}')].map((i) => i.complete && i.naturalWidth > 0).at(-1) ?? false`);
+check('the picture shows under its tool\'s row', drawn && (await loaded('.tool-media img')), await js(`${V}.querySelector('.tool-media img')?.getAttribute('src') ?? 'no picture under the row'`));
+check('and in the answer that links it', await loaded('.assistant .prose img'), await js(`[...${V}.querySelectorAll('.assistant .prose img')].at(-1)?.getAttribute('src') ?? 'no picture in the answer'`));
+
 // The folder's sessions: Grok's are listed with Claude's and Codex's, with a filter of their own, and offered as a provider.
 await js(`(() => { const head = [...document.querySelectorAll('.group-head')].find((g) => g.textContent.includes('scratch') && !g.textContent.includes('scratch2')); head?.querySelector('button[title="Add sessions"]')?.click(); })()`);
 const listed = await waitFor(`[...document.querySelectorAll('.modal .who button')].some((b) => /^Grok[0-9]+$/.test(b.textContent))`, 6000);

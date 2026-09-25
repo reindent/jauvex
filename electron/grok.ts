@@ -80,6 +80,11 @@ async function ext<T>(method: string, params: unknown): Promise<T> {
 export type GrokAccount = { methodId?: string | null; email?: string | null; firstName?: string | null; lastName?: string | null; teamName?: string | null };
 export function account(): Promise<GrokAccount> { return ext('auth/info', {}); }
 export function logout(): Promise<unknown> { return ext('auth/logout', {}); }
+/** The plan's credits, as Grok's own usage view reads them (`x.ai/billing`): the share of the period's included credits used, the period,
+ *  on-demand spending and bought credits (amounts in cents), and the plan's name. */
+export type GrokBilling = { config?: { creditUsagePercent?: number; currentPeriod?: { type?: string; start?: string; end?: string }; monthlyLimit?: { val?: number }; used?: { val?: number };
+  onDemandCap?: { val?: number }; onDemandUsed?: { val?: number }; prepaidBalance?: { val?: number }; billingPeriodStart?: string; billingPeriodEnd?: string } | null; subscription_tier?: string | null };
+export function billing(): Promise<GrokBilling> { return ext('billing', {}); }
 export function shutdown(): void { // the voice's own session goes first; Grok also ends by itself when its input closes
   const s = server; server = null; if (!s) return; if (voice) write(s, { id: s.nextId++, method: '_x.ai/session/delete', params: { sessionId: voice.id } }); voice = null;
   s.child.stdin?.end(); setTimeout(() => { if (s.child.exitCode === null && s.child.signalCode === null) s.child.kill('SIGTERM'); }, 300).unref(); }
@@ -124,9 +129,12 @@ export async function models(): Promise<ModelOption[]> {
 const windowOf = (s: Server, model?: string): number => s.models?.availableModels?.find((m) => m.modelId === (model || s.models?.currentModelId))?._meta?.totalContextTokens ?? 0;
 
 // ---------- updates -> the app's messages, live or replayed
-type Tool = { id: string; name: string; input: unknown; status: string; result: string; failed: boolean };
+type Tool = { id: string; name: string; input: unknown; status: string; result: string; failed: boolean; made?: string };
 type Update = { sessionUpdate?: string; content?: unknown; toolCallId?: string; title?: string | null; kind?: string | null; status?: string | null; rawInput?: unknown; rawOutput?: unknown; entries?: { content?: string; status?: string }[]; _meta?: Record<string, unknown> };
 const ANSI = /\x1b\[[0-9;?]*[A-Za-z]/g;
+/** Grok's tools that make a picture or a video (`imagine` and the like): their output names the file, saved in Grok's own session folder. */
+const MEDIA = /^(ImageGen|ImageEdit|ImageToVideo|ReferenceToVideo)$/;
+const IMAGE_FILE = /\.(png|jpe?g|webp|gif)$/i;
 const TOOL_NAMES: Record<string, string> = { execute: 'Shell', edit: 'Edit', read: 'Read', search: 'Search', fetch: 'Fetch', delete: 'Delete', move: 'Move', think: 'Think' };
 /** A tool's result as text: what it printed, and a file change as its lines out and in. */
 function contentText(content: unknown): string {
@@ -137,18 +145,22 @@ function contentText(content: unknown): string {
     return ''; }).filter(Boolean).join('\n');
 }
 /** One session's stream of updates, turned into the messages the window shows: a model call's thinking and text become one message
- *  when the call ends (or a tool starts), a tool call shows as it starts and again, same uuid, with its result. */
+ *  when the call ends (or a tool starts), a tool call shows as it starts and again, same uuid, with its result. A picture a tool made
+ *  shows under its row (the tool's input carries the file), and the answer's own link to it, written relative to Grok's session
+ *  folder ("images/1.jpg"), is pointed at the file: resolved against the project's folder it was a broken image (2026-09-24). */
 class Thread {
-  text = ''; thought = ''; part = 0; user: Block[] = []; tools = new Map<string, Tool>();
+  text = ''; thought = ''; part = 0; user: Block[] = []; tools = new Map<string, Tool>(); media = new Map<string, string>();
   constructor(readonly sessionId: string, readonly tag: string, readonly emit: (m: ChatMessage) => void, readonly live?: { delta: (t: string) => void; doing: (what: 'thinking' | 'writing' | 'tool', tool?: string) => void }) {}
   flush(): void {
     if (this.user.length) { this.emit({ uuid: `${this.sessionId}:${this.tag}${++this.part}`, role: 'user', blocks: this.user, meta: false }); this.user = []; }
     const blocks: Block[] = [...(this.thought.trim() ? [{ type: 'thinking', text: this.thought.trim() } as Block] : []), ...(this.text.trim() ? [{ type: 'text', text: this.text } as Block] : [])];
     this.thought = ''; this.text = '';
+    for (const b of blocks) if (b.type === 'text') b.text = b.text.replace(/\]\((?:\.\/)?([^)\s]+)\)/g, (all, rel: string) => { const file = this.media.get(rel); return file ? `](${file})` : all; });
     if (blocks.length) this.emit({ uuid: `${this.sessionId}:${this.tag}${++this.part}`, role: 'assistant', blocks, meta: false });
   }
   private tool(t: Tool, done: boolean): void {
-    const uuid = `${this.sessionId}:${t.id}`; const use: Block = { type: 'tool_use', id: uuid, name: t.name, input: t.input };
+    const uuid = `${this.sessionId}:${t.id}`; const input = t.made ? { ...(t.input && typeof t.input === 'object' ? t.input : {}), [IMAGE_FILE.test(t.made) ? 'image' : 'video']: t.made } : t.input;
+    const use: Block = { type: 'tool_use', id: uuid, name: t.name, input };
     this.emit({ uuid, role: 'assistant', blocks: done ? [use, { type: 'tool_result', toolUseId: uuid, text: t.result.slice(0, 20_000), isError: t.failed }] : [use], meta: false });
   }
   update(u: Update): void {
@@ -166,6 +178,9 @@ class Thread {
       if (u.rawInput && typeof u.rawInput === 'object') { const { variant: _v, ...rest } = u.rawInput as Record<string, unknown>; t.input = { ...(u.title ? { title: u.title } : {}), ...rest }; }
       if (u.content !== undefined) { const r = contentText(u.content); if (r || u.status === 'completed' || u.status === 'failed') t.result = r; }
       const exit = (u.rawOutput as { exit_code?: number } | undefined)?.exit_code;
+      const out = (u.rawOutput ?? null) as { type?: string; path?: string; filename?: string; session_folder?: string; uploaded_url?: string } | null;
+      const made = out && MEDIA.test(out.type ?? '') ? out.path || out.uploaded_url || '' : '';
+      if (made) { t.made = made; if (out?.session_folder && out.filename) this.media.set(`${out.session_folder}/${out.filename}`, made); if (!t.result) t.result = `Saved to ${made}`; }
       if (u.status) t.status = u.status; t.failed = t.status === 'failed' || (typeof exit === 'number' && exit !== 0);
       const known = this.tools.has(id); this.tools.set(id, t);
       if (t.status === 'completed' || t.status === 'failed') this.tool(t, true); else if (!known) { this.tool(t, false); this.live?.doing('tool', t.name); }

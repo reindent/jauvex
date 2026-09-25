@@ -2,7 +2,7 @@
 // counts only while the model is in use: Claude's Fable week, a Codex model's extra limit), the plan, extra usage and credits, and
 // the words the panel says (shared/usage.ts).
 import path from 'node:path'; process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR ??= path.resolve('tmp/testdata');
-const { claudeFromUsage, codexFromLimits } = await import('../electron/usage.ts');
+const { claudeFromUsage, codexFromLimits, grokFromBilling } = await import('../electron/usage.ts');
 const { planName, resetText, usageLevel, windowWords } = await import('../shared/usage.ts');
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || !got ? '' : `: ${got}`}`); if (!ok) failed++; };
 const now = Date.parse('2026-09-23T16:00:00Z'); const iso = (m: number) => new Date(now + m * 60_000).toISOString(); const clock = (_at: number, far: boolean) => (far ? 'Sun 19:00' : '18:14');
@@ -23,6 +23,17 @@ check('Codex: the plan and the credits', x.plan === 'pro' && x.notes?.[0] === 'C
 check('Codex: unlimited credits say so', codexFromLimits({ rateLimits: { ...main, credits: { hasCredits: true, unlimited: true, balance: null } } }, now).notes?.[0] === 'Credits: unlimited.');
 check('Codex with no windows: not available, and why', !codexFromLimits({ rateLimits: { primary: null, secondary: null } }, now).available);
 
+// Grok (T-133): its plan's credits (x.ai/billing), as its own usage view reads them. The shape seen from a SuperGrok Plus account on 2026-09-24:
+// a weekly period, nothing used yet (Grok leaves zeros out), no on-demand cap, the plan's name beside the config.
+const week = { type: 'USAGE_PERIOD_TYPE_WEEKLY', start: iso(-6 * 1440), end: iso(1440) };
+const g = grokFromBilling({ config: { currentPeriod: week, onDemandCap: { val: 0 }, onDemandUsed: { val: 0 }, prepaidBalance: { val: 0 }, billingPeriodStart: week.start, billingPeriodEnd: week.end }, subscription_tier: 'SuperGrok Plus' }, now);
+check('Grok: the week of included credits, none used yet, reset at the end of the period', g.available && g.windows.length === 1 && g.windows[0]?.label === '7 d' && g.windows[0].usedPercent === 0 && g.windows[0].resetsAt === now + 1440 * 60_000, JSON.stringify(g.windows));
+check('Grok: the plan by its name', g.plan === 'SuperGrok Plus' && !g.notes, JSON.stringify([g.plan, g.notes]));
+const g2 = grokFromBilling({ config: { creditUsagePercent: 62.5, currentPeriod: week, prepaidBalance: { val: 1250 } }, subscription_tier: 'SuperGrok Heavy' }, now);
+check('Grok: the share used, and bought credits', g2.windows[0]?.usedPercent === 62.5 && g2.notes?.join(' ') === 'Bought credits left: $12.50.', JSON.stringify([g2.windows, g2.notes]));
+const g3 = grokFromBilling({ config: { creditUsagePercent: 100, currentPeriod: week, onDemandCap: { val: 5000 }, onDemandUsed: { val: 1000 } } }, now);
+check('Grok: included credits used up, on demand allowed: the battery shows the on-demand share', g3.windows[0]?.label === '7 d on demand' && g3.windows[0].usedPercent === 20 && g3.notes?.[0] === 'On demand: $10 of $50 this period.', JSON.stringify([g3.windows, g3.notes]));
+check('Grok with no credits reported: not available, and why', !grokFromBilling({ config: null }, now).available && /no credits/.test(grokFromBilling({ config: null }, now).error ?? ''));
 check('windows in words', windowWords('5 h') === '5 hours' && windowWords('1 h') === '1 hour' && windowWords('7 d Fable') === '7 days, Fable' && windowWords('5 h gpt-6-astra') === '5 hours, gpt-6-astra' && windowWords('limit') === 'limit');
 check('a reset later today: counted down, and the time', resetText(now + 134 * 60_000, now, clock) === 'resets in 2 h 14 min (18:14)', resetText(now + 134 * 60_000, now, clock));
 check('a reset days away: days and hours, and the day', resetText(now + (4 * 1440 + 180) * 60_000, now, clock) === 'resets in 4 d 3 h (Sun 19:00)', resetText(now + (4 * 1440 + 180) * 60_000, now, clock));
