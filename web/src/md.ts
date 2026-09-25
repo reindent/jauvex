@@ -5,7 +5,9 @@ marked.setOptions({ gfm: true, breaks: true });
 
 /** Markdown to safe HTML. Images an agent writes with a local path (relative to `base`, its folder, or absolute) are pointed at the file
  *  itself: the window is loaded from a file, so `file://` paths load; DOMPurify would strip that scheme, so it is set after sanitizing. */
+/** A local file as an image source: `file://` when the window itself is loaded from a file (the app), the path as it is otherwise. */
+export const localSrc = (abs: string): string => (location.protocol === 'file:' ? `file://${encodeURI(abs)}` : abs);
 export const md = (text: string, base = ''): string => { const html = DOMPurify.sanitize(marked.parse(text, { async: false }) as string); if (!/<img/i.test(html)) return html;
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  for (const img of doc.querySelectorAll('img')) { const src = img.getAttribute('src') ?? ''; if (!src || /^(https?:|data:|blob:|file:)/i.test(src) || src.startsWith('~')) continue; const abs = src.startsWith('/') ? src : `${base.replace(/\/$/, '')}/${src.replace(/^\.\//, '')}`; img.setAttribute('src', location.protocol === 'file:' ? `file://${encodeURI(abs)}` : abs); img.setAttribute('loading', 'lazy'); }
+  for (const img of doc.querySelectorAll('img')) { const src = img.getAttribute('src') ?? ''; if (!src || /^(https?:|data:|blob:|file:)/i.test(src) || src.startsWith('~')) continue; const abs = src.startsWith('/') ? src : `${base.replace(/\/$/, '')}/${src.replace(/^\.\//, '')}`; img.setAttribute('src', localSrc(abs)); img.setAttribute('loading', 'lazy'); }
   return doc.body.innerHTML; };

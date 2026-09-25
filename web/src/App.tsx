@@ -8,7 +8,7 @@ import { Accounts } from './Accounts';
 import { Welcome } from './Welcome';
 import typesafeMark from '../../assets/typesafe.png'; // TypeSafe's mark, on Jev agent rows: whose agent it is, like the provider marks
 import { Copy, EyeOff as HideIcon, Pencil, Bug, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Paperclip, Settings, Move, Keyboard, ChevronRight, Eye, EyeOff, FolderPlus, Folder, FolderOpen, Laptop, Mic, PanelLeft, Plus, RotateCw, Search, SlidersHorizontal, Settings2, Square, SquarePen, Trash2, MicOff, Volume2, VolumeX, AudioLines, Wrench, Brain, X, Check, ShieldQuestion } from 'lucide-react';
-import { md } from './md';
+import { localSrc, md } from './md';
 import { Pane, type PaneTarget } from './Pane';
 import { findAgents, shortIds, shortTitle } from '../../shared/roster';
 import { answerIs, stopSaysMore } from '../../shared/orders';
@@ -1028,7 +1028,9 @@ function Message({ m, showMeta, results, base }: { m: ChatMessage; showMeta: boo
       {m.blocks.map((b, i) => {
         if (b.type === 'text') return <div key={i} className="prose" dangerouslySetInnerHTML={{ __html: md(b.text, base) }} />;
         if (b.type === 'thinking') return <Fold key={i} label="Thinking" icon={<Brain size={13} />} body={b.text} />;
-        if (b.type === 'tool_use') { const r = results.get(b.id); return <Fold key={i} label={b.name} hint={toolHint(b.input)} icon={<Wrench size={13} />} error={r?.isError} body={`${JSON.stringify(b.input, null, 2)}${r ? `\n\n— result —\n${r.text}` : ''}`} />; }
+        if (b.type === 'tool_use') { const r = results.get(b.id); const image = (b.input as { image?: unknown } | null)?.image; // a picture the tool made (Grok's imagine): shown under its row, a click opens it beside the chat
+          const fold = <Fold key={i} label={b.name} hint={toolHint(b.input)} icon={<Wrench size={13} />} error={r?.isError} body={`${JSON.stringify(b.input, null, 2)}${r ? `\n\n— result —\n${r.text}` : ''}`} />;
+          return typeof image === 'string' && image.startsWith('/') ? <div key={i} className="tool-with-media">{fold}<a className="tool-media" href={image} title="Open it beside the chat"><img src={localSrc(image)} alt="" loading="lazy" /></a></div> : fold; }
         return null;
       })}
     </div>

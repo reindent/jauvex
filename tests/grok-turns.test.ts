@@ -3,7 +3,7 @@
 // that needs permission shows the same card as Claude's and its answer reaches Grok; a message handed to a running turn is read in it,
 // and one handed over after its last step (Grok runs it as a prompt of its own) still ends in the same turn; stop, compaction, a message
 // that does not fit, the model picked in the composer, renaming, the account, and the voice's own Grok session.
-import path from 'node:path';
+import path from 'node:path'; import { existsSync } from 'node:fs';
 process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR ??= path.resolve('tmp/testdata');
 process.env.CVC_GROK_BIN = path.resolve('tests/mock/grok'); process.env.GROK_HOME = path.join(process.env.CVC_DATA_DIR, 'grok'); // the stand-in files its sessions there
 process.env.MOCK_DELAY_MS = '2'; process.env.MOCK_CONTEXT_TOKENS = '150000'; process.env.MOCK_CONTEXT_WINDOW = '200000';
@@ -60,6 +60,15 @@ let lateSent = false; let lateOk: boolean | null = null; let seenContext = 0;
 const t5 = await turn(sid, 'short [[slow end]]', { on: (e, chatId) => { if (e.type === 'context' && ++seenContext === 1 && !lateSent) { lateSent = true; void chat.steerChat(chatId, 'late words').then((ok) => { lateOk = ok; }); } } });
 check('a message handed over after the last step is taken', lateOk === true, String(lateOk));
 check('its answer still comes in the same turn, which ends once, after it', /I got: "late words"/.test(texts(t5)) && t5.filter((e) => e.type === 'done').length === 1 && t5.findIndex((e) => e.type === 'done') === t5.length - 1, texts(t5));
+
+// A picture Grok made (its imagine tool): the file is in Grok's session folder, and the answer links it relative to that folder
+// ("images/1.jpg"); resolved against the project's folder it was a broken image (2026-09-24). The tool's row carries the file, and the
+// answer's link points at it, live and in the history read back.
+const ti = await turn(sid, 'draw me something [[image]]');
+const made = ti.filter((e): e is Extract<Ev, { type: 'message' }> => e.type === 'message').flatMap((e) => e.message.blocks).filter((b) => b.type === 'tool_use').map((b) => (b as { input: { image?: string } }).input.image).find(Boolean) ?? '';
+check('the picture\'s tool row carries the file Grok saved', made.startsWith('/') && made.endsWith('/images/1.png') && existsSync(made), made);
+check('the answer\'s link to the picture points at that file, not at the project\'s folder', texts(ti).includes(`](${made})`) && !texts(ti).includes('](images/1.png)'), texts(ti).slice(-160));
+{ const back = await backend.messages(p.id, sid); const all = back.messages.flatMap((m) => m.blocks); check('the same in the history read back', all.some((b) => b.type === 'text' && b.text.includes(`](${made})`)) && all.some((b) => b.type === 'tool_use' && (b.input as { image?: string }).image === made)); }
 
 // Stop.
 let stopped = false;
