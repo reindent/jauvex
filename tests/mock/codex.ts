@@ -20,7 +20,7 @@ const dir = path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'
 // threads: { thread, items: [{ turnId, item }], ephemeral }
 const threads = new Map();
 if (existsSync(dir)) for (const f of readdirSync(dir)) if (f.endsWith('.json')) { try { const t = JSON.parse(readFileSync(path.join(dir, f), 'utf8')); threads.set(t.thread.id, t); } catch { /* a broken file */ } }
-const save = (t) => { if (t.ephemeral) return; mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, `${t.thread.id}.json`), JSON.stringify({ thread: t.thread, items: t.items })); };
+const save = (t) => { if (t.ephemeral) return; mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, `${t.thread.id}.json`), JSON.stringify({ thread: t.thread, items: t.items, approvalPolicy: t.approvalPolicy, sandbox: t.sandbox })); };
 const get = (id) => { const t = threads.get(id); if (!t) throw Object.assign(new Error(`no thread ${id}`), { code: -32602 }); return t; };
 
 const LINES = ['Nothing ran: I am the stand-in for Codex, here so the app can be checked without an account.', 'No model was asked: this is a canned reply.', 'Every message gets the same kind of answer from me.'];
@@ -79,15 +79,16 @@ const methods = {
   'model/list': () => ({ data: MODELS, nextCursor: null }),
   'thread/start': (p) => {
     const thread = { id: randomUUID(), preview: '', name: null, createdAt: now(), updatedAt: now(), cwd: p.cwd || process.cwd(), gitInfo: null, modelProvider: 'mock' };
-    const t = { thread, items: [], ephemeral: !!p.ephemeral }; threads.set(thread.id, t); save(t); return { thread, model: p.model || 'mock' };
+    const t = { thread, items: [], ephemeral: !!p.ephemeral, approvalPolicy: 'untrusted', sandbox: { type: 'readOnly', networkAccess: false } }; threads.set(thread.id, t); save(t); return { thread, model: p.model || 'mock', approvalPolicy: t.approvalPolicy, sandbox: t.sandbox }; // a user's own read-only config, to be restored after YOLO
   },
-  'thread/resume': (p) => ({ thread: get(p.threadId).thread, model: p.model || 'mock' }),
+  'thread/resume': (p) => ({ thread: get(p.threadId).thread, model: p.model || 'mock', approvalPolicy: get(p.threadId).approvalPolicy, sandbox: get(p.threadId).sandbox }),
   'thread/list': () => ({ data: [...threads.values()].filter((t) => !t.ephemeral && t.items.length).map((t) => t.thread).sort((a, b) => b.updatedAt - a.updatedAt), nextCursor: null }),
   'thread/read': (p) => ({ thread: get(p.threadId).thread }),
   'thread/items/list': (p) => ({ data: get(p.threadId).items, nextCursor: null }),
   'thread/name/set': (p) => { const t = get(p.threadId); t.thread.name = p.name; t.thread.updatedAt = now(); save(t); return {}; },
   'turn/start': (p) => {
     const t = get(p.threadId); if (running.has(p.threadId)) throw new Error('a turn is already running on this thread');
+    if (p.approvalPolicy) t.approvalPolicy = p.approvalPolicy; if (p.sandboxPolicy) t.sandbox = p.sandboxPolicy; save(t); // what the turn was given, kept for the checks
     const turn = { id: randomUUID(), items: [], status: 'inProgress', error: null, durationMs: null };
     setTimeout(() => void runTurn(t, turn, p.input), 0); return { turn };
   },

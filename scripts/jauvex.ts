@@ -2,8 +2,8 @@
 // The app's command line, for agents (the Jauvex agent above all): every action in the app, as a request file in
 // data/commands that the running app answers. Usage: node scripts/jauvex.ts <command> [--flag value ...]
 // Commands: list | add-folder <path> | pick-folder | new-agent [--provider claude|codex|grok|jev] [--folder name|path|id] [--name ..] [--purpose ..] [--kickoff ".."] (always started: --no-kickoff gives it its own introduction)
-//           open [--folder ..] [--session id|title] | send --session id|title [--folder ..] --text ".." | rename --session .. --title ".."
-//           settings [--default-provider claude|codex|grok] [--show-jauvex yes|no] [--welcome-next yes|no] [--jauvex-move unified|handoff] [--auto-compact <percent>|provider] | welcome | reload | restart
+//           open [--folder ..] [--session id|title] | import --folder .. [<session id|title> ...] [--last N] | send --session id|title [--folder ..] --text ".." | rename --session .. --title ".."
+//           settings [--default-provider claude|codex|grok] [--show-jauvex yes|no] [--welcome-next yes|no] [--jauvex-move unified|handoff] [--auto-compact <percent>|provider] [--permission-provider claude|codex|grok --permission-mode ask|auto|yolo|session] | welcome | reload | restart
 // Prints the JSON result; exits 1 when the app said no or did not answer (is it running? same data folder?).
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -20,9 +20,10 @@ const shapes = {
   'pick-folder': () => ({ type: 'pick-folder' }),
   'new-agent': () => ({ type: 'new-agent', provider: flags.provider, folder: flags.folder, name: flags.name, purpose: flags.purpose, kickoff: flags['no-kickoff'] ? '' : flags.kickoff }),
   open: () => ({ type: 'open', folder: flags.folder, session: flags.session ?? bare[0] }),
+  import: () => ({ type: 'import', folder: flags.folder, sessions: [...(typeof flags.session === 'string' ? [flags.session] : []), ...bare], last: flags.last === undefined ? undefined : Number(flags.last) }),
   send: () => ({ type: 'send', folder: flags.folder, session: flags.session, text: flags.text ?? bare.join(' ') }),
   rename: () => ({ type: 'rename', folder: flags.folder, session: flags.session, title: flags.title ?? bare.join(' ') }),
-  settings: () => ({ type: 'settings', defaultProvider: flags['default-provider'], showJauvex: bool('show-jauvex'), welcomeNext: bool('welcome-next'), jauvexMove: flags['jauvex-move'], autoCompact: flags['auto-compact'] === undefined ? undefined : /^provider$/i.test(String(flags['auto-compact'])) ? 0 : Number(String(flags['auto-compact']).replace('%', '')) }), // provider: the provider decides
+  settings: () => ({ type: 'settings', permissionProvider: flags['permission-provider'], permissionMode: flags['permission-mode'], defaultProvider: flags['default-provider'], showJauvex: bool('show-jauvex'), welcomeNext: bool('welcome-next'), jauvexMove: flags['jauvex-move'], autoCompact: flags['auto-compact'] === undefined ? undefined : /^provider$/i.test(String(flags['auto-compact'])) ? 0 : Number(String(flags['auto-compact']).replace('%', '')) }), // provider: the provider decides
   welcome: () => ({ type: 'welcome' }), reload: () => ({ type: 'reload-ui' }), restart: () => ({ type: 'restart-app' }),
 };
 if (!cmd || !shapes[cmd]) { console.error(`usage: node scripts/jauvex.ts <${Object.keys(shapes).join('|')}> [--flag value ...]`); process.exit(2); }

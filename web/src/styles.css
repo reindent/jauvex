@@ -237,6 +237,9 @@ html.is-mini, html.is-mini body, html.is-mini #root { background: transparent; }
 /* a picture a tool made, under its row in the thread (Grok's imagine) */
 .tool-with-media { min-width: 0; } .tool-media { display: inline-block; margin: 4px 0 6px 22px; } .tool-media img { display: block; max-width: min(420px, 100%); max-height: 420px; border-radius: 10px; border: 1px solid #2c2c2a; }
 .use-sec { display: flex; flex-direction: column; gap: 8px; } .use-sec + .use-sec { border-top: 1px solid #2c2c2a; padding-top: 10px; }
+/* one tab per provider in the usage panel (the chat's own selected), with what is left of each at a glance */
+.use-tabs { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: #171716; flex: none; } .use-tab { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 6px; border-radius: 6px; color: var(--muted); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.use-tab:hover { color: var(--fg-2); } .use-tab.on { background: #2c2c2a; color: var(--fg); } .use-tab em { font-style: normal; font-size: 11px; opacity: .6; }
 .use-name { display: flex; align-items: baseline; gap: 6px; color: var(--fg); font-weight: 600; } .use-name em { font-style: normal; font-weight: 400; color: var(--faint); font-size: 11px; }
 .use-row { display: flex; flex-direction: column; gap: 3px; } .use-row.other { opacity: .55; } .use-top { display: flex; justify-content: space-between; gap: 8px; } .use-top b { font-weight: 500; color: var(--fg); font-variant-numeric: tabular-nums; }
 .use-bar { height: 5px; border-radius: 3px; background: #2c2c2a; } .use-bar > span { display: block; height: 100%; border-radius: 3px; background: var(--battery, #6fcf97); } .use-bar.ok { --battery: #6fcf97; } .use-bar.mid { --battery: #e5c15a; } .use-bar.low { --battery: #ef6f6c; }
@@ -258,6 +261,10 @@ html.is-mini, html.is-mini body, html.is-mini #root { background: transparent; }
 /* Accounts: behind the sidebar's footer. */
 .foot-btn { color: inherit; font: inherit; cursor: pointer; padding: 2px 6px; margin-left: -6px; border-radius: 6px; } .foot-btn:hover { background: #ffffff0d; }
 .modal.accounts, .modal.settings { width: min(560px, 92vw); padding: 18px 20px 14px; gap: 10px; overflow-y: auto; } /* taller than the window, they scroll */ .modal.accounts h2, .modal.settings h2 { margin: 0 0 4px; font-size: 17px; } .modal.accounts > p, .modal.settings > p { margin: 0 0 8px; font-size: 13px; line-height: 1.45; }
+/* Jauvex settings: a bar of tabs across the top; the window keeps one size, the tab's body scrolls under the bar */
+.modal.settings { height: min(640px, 78vh); overflow: hidden; } .settings-tabs { display: flex; gap: 4px; margin: 0 -20px; padding: 0 20px; border-bottom: 1px solid #2a2a27; flex: none; }
+.settings-tab { padding: 7px 12px 8px; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer; } .settings-tab:hover { color: var(--fg-2); } .settings-tab.on { color: var(--fg); border-bottom-color: var(--accent); }
+.settings-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px 2px 2px; }
 .settings-group { border: 1px solid #2a2a27; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; } .settings-group strong { font-size: 13.5px; } .settings-group label.check { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--fg-2); } .settings-group .row-btns { display: flex; gap: 8px; } .settings-group .row-btns button { padding: 5px 10px; border-radius: 8px; border: 1px solid #2c2c36; background: #17171d; color: var(--fg); font-size: 12.5px; cursor: pointer; }
 .account { border: 1px solid #2a2a27; border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
 .account-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 14px; } .account-head strong { font-weight: 600; }

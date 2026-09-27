@@ -3,7 +3,7 @@
 // that needs permission shows the same card as Claude's and its answer reaches Grok; a message handed to a running turn is read in it,
 // and one handed over after its last step (Grok runs it as a prompt of its own) still ends in the same turn; stop, compaction, a message
 // that does not fit, the model picked in the composer, renaming, the account, and the voice's own Grok session.
-import path from 'node:path'; import { existsSync } from 'node:fs';
+import path from 'node:path'; import { existsSync, readFileSync } from 'node:fs';
 process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR ??= path.resolve('tmp/testdata');
 process.env.CVC_GROK_BIN = path.resolve('tests/mock/grok'); process.env.GROK_HOME = path.join(process.env.CVC_DATA_DIR, 'grok'); // the stand-in files its sessions there
 process.env.MOCK_DELAY_MS = '2'; process.env.MOCK_CONTEXT_TOKENS = '150000'; process.env.MOCK_CONTEXT_WINDOW = '200000';
@@ -109,5 +109,11 @@ check('the voice model is the fast one when none is picked', (await grok.voiceMo
   await grok.voiceAsk('Another voice.', 'HEARD: again', 'mock', 5000); const second = readFileSync(file, 'utf8').trim(); // another model: a new session, the old one deleted
   check('a new voice session deletes the one before it: Grok keeps no trail of them', second !== first && !kept(first) && kept(second), `${first} -> ${second}`); }
 
+// The app's per-provider setting reaches a session already loaded, in both directions: YOLO, Auto, then Ask again.
+for (const mode of ['yolo', 'auto', 'ask'] as const) {
+  await backend.setUi({ providerPermissions: { grok: mode } }); await turn(sid, 'permission mode check');
+  const saved = JSON.parse(readFileSync(path.join(process.env.GROK_HOME!, 'mock-sessions', `${sid}.json`), 'utf8'));
+  check(`an existing Grok session takes ${mode} from the app's setting`, saved.yoloMode === (mode === 'yolo') && saved.autoMode === (mode === 'auto'), JSON.stringify([saved.yoloMode, saved.autoMode]));
+}
 await sleep(50); grok.shutdown();
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

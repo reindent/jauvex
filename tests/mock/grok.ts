@@ -102,10 +102,10 @@ async function runPrompt(s, promptId: string, first: string, respond?: (result: 
 const methods = {
   initialize: () => ({ protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: false, audio: false, embeddedContext: true }, sessionCapabilities: { list: {}, resume: {}, close: {} } }, authMethods: [{ id: 'cached_token', name: 'cached_token' }], _meta: { agentVersion: '0.0.0-stand-in', modelState: MODELS } }),
   'session/new': (p) => {
-    const m = p._meta ?? {}; const s = { id: randomUUID(), cwd: p.cwd || process.cwd(), title: null, updatedAt: new Date().toISOString(), model: m.modelId || 'mock', effort: m.reasoningEffort || 'high', rules: m.rules ?? '', prompt: m.systemPromptOverride ?? '', autoMode: !!m.autoMode, history: [] };
+    const m = p._meta ?? {}; const s = { id: randomUUID(), cwd: p.cwd || process.cwd(), title: null, updatedAt: new Date().toISOString(), model: m.modelId || 'mock', effort: m.reasoningEffort || 'high', rules: m.rules ?? '', prompt: m.systemPromptOverride ?? '', autoMode: !!m.autoMode, yoloMode: !!m.yoloMode, history: [] };
     sessions.set(s.id, s); save(s); return { sessionId: s.id, models: models(s), configOptions: [] };
   },
-  'session/resume': (p) => { const s = get(p.sessionId); if (p._meta?.reasoningEffort) s.effort = p._meta.reasoningEffort; return { models: models(s), configOptions: [] }; },
+  'session/resume': (p) => { const s = get(p.sessionId); if (typeof p._meta?.yoloMode === 'boolean') s.yoloMode = p._meta.yoloMode; if (typeof p._meta?.autoMode === 'boolean') s.autoMode = p._meta.autoMode; save(s); if (p._meta?.reasoningEffort) s.effort = p._meta.reasoningEffort; return { models: models(s), configOptions: [] }; },
   'session/load': (p) => { const s = get(p.sessionId); for (const h of s.history) note(h.method, { sessionId: s.id, update: h.update, _meta: { isReplay: true } }); return { models: models(s), configOptions: [] }; },
   'session/close': () => ({}),
   'session/list': (p) => ({ sessions: [...sessions.values()].filter((s) => s.history.length && (!p.cwd || s.cwd === p.cwd)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((s) => ({ sessionId: s.id, cwd: s.cwd, title: s.title, updatedAt: s.updatedAt, _meta: { 'x.ai/session': { kind: 'build', facets: { cwd: s.cwd } } } })) }),

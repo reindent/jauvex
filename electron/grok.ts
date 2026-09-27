@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { grokPermissionOptions } from '../shared/permissions.js';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -198,7 +199,7 @@ type LiveTurn = { projectId?: string; server: Server; chatId: string; sessionId:
   answered: PromptResult | null; fallback: boolean; fail: (why: string) => void; finish: (r: PromptResult) => void };
 const turns = new Map<string, LiveTurn>(); // by sessionId: Grok runs one prompt per session at a time
 const loaded = new Set<string>();          // sessions this agent process made or resumed for a turn
-const chosen = new Map<string, { model: string; effort: string; auto: boolean }>(); // what each loaded session was given: a change reaches it before the next turn
+const chosen = new Map<string, { model: string; effort: string; permissions: string }>(); // what each loaded session was given: a change reaches it before the next turn
 const FALLBACK = 'interject-fallback-';     // Grok's own prompt ids for a message handed over after the turn's last step (it runs it as a turn of its own)
 const running = new Map<string, string>();  // sessionId -> the prompt Grok says it is running (x.ai/queue/changed)
 
@@ -208,19 +209,19 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   const { state, project } = await projectOr404(req.projectId);
   if (req.compact && !req.sessionId) { send({ chatId, type: 'done', ok: false, error: 'Nothing to compact yet: this session has no conversation.' }); return; }
   const s = (server ??= boot()); await s.ready;
-  const auto = req.permissions === 'auto'; let sessionId = req.sessionId; let model = req.model || undefined;
-  if (sessionId && loaded.has(sessionId) && chosen.get(sessionId)?.auto !== auto && !turns.has(sessionId)) { await call('session/close', { sessionId }).catch(() => {}); loaded.delete(sessionId); } // Grok takes the permission mode when a session is loaded
+  const permissions = req.permissions ?? 'ask'; let sessionId = req.sessionId; let model = req.model || undefined;
+  if (sessionId && loaded.has(sessionId) && chosen.get(sessionId)?.permissions !== permissions && !turns.has(sessionId)) { await call('session/close', { sessionId }).catch(() => {}); loaded.delete(sessionId); } // Grok takes the permission mode when a session is loaded
   if (!sessionId) {
     // Grok takes the briefing once, when the session is made (`_meta.rules`, folded into its system prompt). The note on dictation goes in
     // whatever the first message was: a session started by typing may be talked to later, and a typed message never carries the tag.
     const rules = clientBriefing(true, req.vocabulary, !!req.steward, APP_ROOT);
-    const r = await call<{ sessionId: string; models?: ModelState }>('session/new', { cwd: project.path, mcpServers: [], _meta: { rules, ...(req.model ? { modelId: req.model } : {}), ...(req.effort ? { reasoningEffort: req.effort } : {}), ...(auto ? { autoMode: true } : {}) } });
-    sessionId = r.sessionId; model = r.models?.currentModelId ?? model; loaded.add(sessionId); chosen.set(sessionId, { model: model ?? '', effort: req.effort ?? '', auto });
+    const r = await call<{ sessionId: string; models?: ModelState }>('session/new', { cwd: project.path, mcpServers: [], _meta: { rules, ...(req.model ? { modelId: req.model } : {}), ...(req.effort ? { reasoningEffort: req.effort } : {}), ...grokPermissionOptions(permissions) } });
+    sessionId = r.sessionId; model = r.models?.currentModelId ?? model; loaded.add(sessionId); chosen.set(sessionId, { model: model ?? '', effort: req.effort ?? '', permissions });
   } else if (!loaded.has(sessionId)) {
-    const r = await call<{ models?: ModelState }>('session/resume', { sessionId, cwd: project.path, mcpServers: [], _meta: { ...(req.effort ? { reasoningEffort: req.effort } : {}), ...(auto ? { autoMode: true } : {}) } });
-    loaded.add(sessionId); chosen.set(sessionId, { model: r.models?.currentModelId ?? '', effort: req.effort ?? '', auto }); model ??= r.models?.currentModelId;
+    const r = await call<{ models?: ModelState }>('session/resume', { sessionId, cwd: project.path, mcpServers: [], _meta: { ...(req.effort ? { reasoningEffort: req.effort } : {}), ...grokPermissionOptions(permissions) } });
+    loaded.add(sessionId); chosen.set(sessionId, { model: r.models?.currentModelId ?? '', effort: req.effort ?? '', permissions }); model ??= r.models?.currentModelId;
   }
-  const had = chosen.get(sessionId) ?? { model: '', effort: '', auto };
+  const had = chosen.get(sessionId) ?? { model: '', effort: '', permissions };
   if (req.model && req.model !== had.model) { await call('session/set_config_option', { sessionId, configId: 'model', value: req.model }).then(() => { had.model = req.model!; }, () => { /* the model it has stays */ }); }
   if (req.effort && req.effort !== had.effort) { await call('session/set_config_option', { sessionId, configId: 'reasoning_effort', value: req.effort }).then(() => { had.effort = req.effort!; }, () => { /* the effort it has stays */ }); }
   chosen.set(sessionId, had); model = had.model || model;

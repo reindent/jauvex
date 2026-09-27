@@ -29,3 +29,9 @@ export function findAgents<T extends { sessionId: string; name: string }>(all: T
   const holds = others.filter((a) => squash(a.name).length >= 6 && want.includes(squash(a.name))); if (!holds.length) return [];
   const longest = Math.max(...holds.map((a) => squash(a.name).length)); return holds.filter((a) => squash(a.name).length === longest);
 }
+
+/** The session a command names, among a folder's: by its id, the start of its id, its own title, or its first message's summary. */
+export function matchSession<T extends { sessionId: string; summary: string; customTitle?: string }>(list: T[], ref: string): T | undefined {
+  const n = ref.trim().toLowerCase(); if (!n) return undefined;
+  return list.find((i) => i.sessionId === ref) ?? list.find((i) => i.sessionId.startsWith(ref)) ?? list.find((i) => (i.customTitle ?? '').toLowerCase() === n) ?? list.find((i) => i.summary.toLowerCase() === n);
+}

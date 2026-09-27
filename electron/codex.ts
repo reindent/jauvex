@@ -1,4 +1,6 @@
 import { APP_ROOT } from './backend.js';
+import type { CodexPermissionBaseline } from '../shared/types.js';
+import { codexPermissionOptions } from '../shared/permissions.js';
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { shortTitle } from '../shared/roster.js';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -158,6 +160,7 @@ type LiveTurn = { projectId?: string; server: Server; chatId: string; threadId: 
 /** Options of one turn: a compaction instead of a message, and what is known of the context so far. */
 type TurnOpts = { compact?: boolean; ctx?: ContextUsage | null; model?: string };
 const turns = new Map<string, LiveTurn>(); // by threadId: Codex runs one turn per thread at a time
+const permissionBaselines = new Map<string, CodexPermissionBaseline>();
 const loaded = new Set<string>();          // threads this server process has already started or resumed
 
 export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): Promise<void> {
@@ -165,19 +168,27 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   if ([...turns.values()].some((t) => t.chatId === chatId)) throw new Error('This chat is already running.');
   const { state, project } = await projectOr404(req.projectId);
   if (req.compact && !req.sessionId) { send({ chatId, type: 'done', ok: false, error: 'Nothing to compact yet: this session has no conversation.' }); return; }
-  // Approval policy and sandbox are left to the user's Codex config, the way the Claude path keeps Claude Code's settings.
+  // Approval policy and sandbox are left to the user's Codex config, except in YOLO; the thread's resolved controls are kept before it,
+  // so leaving it restores even a read-only sandbox.
+  const rememberPermissions = (id: string, r: { approvalPolicy?: unknown; sandbox?: unknown }) => { if (r.approvalPolicy !== undefined && r.sandbox !== undefined) permissionBaselines.set(id, { approvalPolicy: r.approvalPolicy, sandboxPolicy: r.sandbox }); };
   let threadId = req.sessionId; let model = req.model;
   const s = (server ??= boot());
   const spoken = { developerInstructions: clientBriefing(!!req.voice, req.vocabulary, !!req.steward, APP_ROOT) }; // every session is told where it is running; dictated text is read for intent
-  if (!threadId) { const r = await call<{ thread: Thread; model: string }>('thread/start', { cwd: project.path, ...(req.model ? { model: req.model } : {}), ...spoken }); threadId = r.thread.id; model = r.model; loaded.add(threadId); }
-  else if (!loaded.has(threadId)) { const r = await call<{ model: string }>('thread/resume', { threadId, excludeTurns: true, ...spoken }); model ??= r.model; loaded.add(threadId); }
+  if (!threadId) { const r = await call<{ thread: Thread; model: string; approvalPolicy?: unknown; sandbox?: unknown }>('thread/start', { cwd: project.path, ...(req.model ? { model: req.model } : {}), ...spoken }); threadId = r.thread.id; model = r.model; rememberPermissions(threadId, r); loaded.add(threadId); }
+  else if (!loaded.has(threadId)) { const r = await call<{ model: string; approvalPolicy?: unknown; sandbox?: unknown }>('thread/resume', { threadId, excludeTurns: true, ...spoken }); model ??= r.model; rememberPermissions(threadId, r); loaded.add(threadId); }
   if (turns.has(threadId)) throw new Error('This session is already running a turn.');
+  let restore = project.codexPermissionBaseline?.[threadId];
+  if (req.permissions === 'yolo' && !restore) {
+    restore = permissionBaselines.get(threadId);
+    if (!restore) throw new Error('Codex did not return its permission settings; cannot enter YOLO without a restorable baseline.');
+    project.codexPermissionBaseline = { ...project.codexPermissionBaseline, [threadId]: restore }; await saveState(state);
+  }
   if (!req.hidden && !project.sessions.includes(threadId)) project.sessions.unshift(threadId);
   if (project.providers?.[threadId] !== 'codex') { project.providers = { ...project.providers, [threadId]: 'codex' }; await saveState(state); }
   send({ chatId, type: 'init', sessionId: threadId, model });
   const opts: TurnOpts = { ctx: project.context?.[threadId] ?? null, ...(model ? { model } : {}) };
   if (req.compact) { await runTurn(s, threadId, chatId, '', undefined, {}, send, req.projectId, { ...opts, compact: true }); return; } // Codex compacts as a turn of its own
-  await runTurn(s, threadId, chatId, req.text, req.images, { ...(req.model ? { model: req.model } : {}), ...(req.effort ? { effort: req.effort } : {}), approvalsReviewer: req.permissions === 'auto' ? 'auto_review' : 'user' }, send, req.projectId, opts);
+  await runTurn(s, threadId, chatId, req.text, req.images, { ...(req.model ? { model: req.model } : {}), ...(req.effort ? { effort: req.effort } : {}), ...codexPermissionOptions(req.permissions, restore) }, send, req.projectId, opts);
 }
 
 /** Start one turn in a loaded thread and resolve when it is over; everything in between goes to `send`. */
