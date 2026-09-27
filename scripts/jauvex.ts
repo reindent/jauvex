@@ -4,6 +4,7 @@
 // Commands: list | add-folder <path> | pick-folder | new-agent [--provider claude|codex|grok|jev] [--folder name|path|id] [--name ..] [--purpose ..] [--kickoff ".."] (always started: --no-kickoff gives it its own introduction)
 //           open [--folder ..] [--session id|title] | import --folder .. [<session id|title> ...] [--last N] | send --session id|title [--folder ..] --text ".." | rename --session .. --title ".."
 //           settings [--default-provider claude|codex|grok] [--show-jauvex yes|no] [--welcome-next yes|no] [--jauvex-move unified|handoff] [--auto-compact <percent>|provider] [--permission-provider claude|codex|grok --permission-mode ask|auto|yolo|session] | welcome | reload | restart
+//           update [--check] [--now] (the app the install command made, to the latest version: it closes, rebuilds and opens again)
 // Prints the JSON result; exits 1 when the app said no or did not answer (is it running? same data folder?).
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -24,6 +25,7 @@ const shapes = {
   send: () => ({ type: 'send', folder: flags.folder, session: flags.session, text: flags.text ?? bare.join(' ') }),
   rename: () => ({ type: 'rename', folder: flags.folder, session: flags.session, title: flags.title ?? bare.join(' ') }),
   settings: () => ({ type: 'settings', permissionProvider: flags['permission-provider'], permissionMode: flags['permission-mode'], defaultProvider: flags['default-provider'], showJauvex: bool('show-jauvex'), welcomeNext: bool('welcome-next'), jauvexMove: flags['jauvex-move'], autoCompact: flags['auto-compact'] === undefined ? undefined : /^provider$/i.test(String(flags['auto-compact'])) ? 0 : Number(String(flags['auto-compact']).replace('%', '')) }), // provider: the provider decides
+  update: () => ({ type: 'update', check: flags.check ? true : undefined, now: flags.now ? true : undefined }), // the installed app, to the latest version
   welcome: () => ({ type: 'welcome' }), reload: () => ({ type: 'reload-ui' }), restart: () => ({ type: 'restart-app' }),
 };
 if (!cmd || !shapes[cmd]) { console.error(`usage: node scripts/jauvex.ts <${Object.keys(shapes).join('|')}> [--flag value ...]`); process.exit(2); }

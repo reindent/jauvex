@@ -11,6 +11,7 @@ import { Copy, EyeOff as HideIcon, Pencil, Bug, ArrowLeft, ArrowRight, ArrowUp, 
 import { localSrc, md } from './md';
 import { Pane, type PaneTarget } from './Pane';
 import { findAgents, matchSession, shortIds, shortTitle } from '../../shared/roster';
+import { shouldAsk, updateNote, type UpdateStatus } from '../../shared/update';
 import { answerIs, stopSaysMore } from '../../shared/orders';
 import { ACK_MODEL_KEY, DICTATED_TAG, JAUVEX_HELLO, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
 import { ago, api, pickFolder, size } from './api';
@@ -135,6 +136,11 @@ export default function App() {
             return { ok: true, providerPermissions: modes };
           }
           if (c.jauvexMove) { setJauvexMove(c.jauvexMove); ui.jauvexMove = c.jauvexMove; } if (c.defaultProvider) { setDefaultProvider(c.defaultProvider); localStorage.setItem('cvc.provider', c.defaultProvider); ui.defaultProvider = c.defaultProvider; } if (typeof c.showJauvex === 'boolean') { setShowJauvex(c.showJauvex); ui.showJauvex = c.showJauvex; } if (typeof c.welcomeNext === 'boolean') { setWelcomeNext(c.welcomeNext); ui.welcomed = !c.welcomeNext; } if (typeof c.autoCompact === 'number') { if (!(c.autoCompact >= 0 && c.autoCompact <= 100)) return { ok: false, error: '--auto-compact takes a percentage from 1 to 99, or provider (the provider decides)' }; const n = Math.round(c.autoCompact); setAutoCompact(n); window.dispatchEvent(new CustomEvent('cvc-auto-compact', { detail: n })); ui.autoCompact = n; } if (Object.keys(ui).length) await api.setUi(ui); return { ok: true, ...ui }; }
+        case 'update': { // the app the install command made, to the latest version
+          const s = await window.desktop.appUpdateStatus(); if (c.check) return { ok: true, ...s };
+          const busy = roster().filter((a) => a.busy && a.sessionId !== jauvexSession).map((a) => a.name); // the Jauvex agent's own turn ends with its order
+          if (busy.length && !c.now && s.installed && s.available) return { ok: false, error: `${busy.join(', ')} ${busy.length > 1 ? 'are' : 'is'} working, and the update would stop ${busy.length > 1 ? 'them' : 'it'}: update when they finish, or with --now on the user's word.`, busy };
+          return await window.desktop.appUpdate(); }
         case 'welcome': setWelcomeOpen(true); return { ok: true };
         case 'reload-ui': setTimeout(() => void window.desktop.appReload(), 500); return { ok: true };
         case 'restart-app': setTimeout(() => void window.desktop.appRestart(), 500); return { ok: true };
@@ -235,6 +241,14 @@ export default function App() {
     for (let i = 0; i < 60 && !bridges.current.get(key); i++) await new Promise((r) => setTimeout(r, 150));
     const b = bridges.current.get(key); if (!b) return false; await b.deliver(text, replyTo); return true;
   };
+  // A new version (T-165): the main process learns it from jauvex.reindent.com and says so here; the footer shows it, and the Jauvex agent
+  // is told once per version and asks the user in words (never a dialog); their yes runs the `update` order.
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  useEffect(() => { void window.desktop.appUpdateStatus().then(setUpdate); return window.desktop.onAppUpdate(setUpdate); }, []);
+  const offering = useRef(''); const reachJauvexRef = useRef(reachJauvex); reachJauvexRef.current = reachJauvex;
+  useEffect(() => { if (!update?.latest || !jauvex || offering.current === update.latest) return; const u = update; offering.current = u.latest!;
+    void (async () => { if (!shouldAsk(u, (await api.state()).ui?.updateAsked)) return;
+      if (await reachJauvexRef.current(updateNote(u.current, u.latest!))) await api.setUi({ updateAsked: u.latest }); else offering.current = ''; })(); }, [update, jauvex]);
   const deliverTo = async (projectId: string, sessionId: string, text: string, replyTo?: Sel): Promise<boolean> => {
     if (jauvex && projectId === jauvex.id) return reachJauvex(text, replyTo);
     let o = opened.find((x) => x.sessionId === sessionId); const key = o?.key ?? `${projectId}:${sessionId}`;
@@ -357,7 +371,7 @@ export default function App() {
               <div className="side-voice-text"><button className="side-voice-name" onClick={() => { if (o) open(o); }}>{name}</button><span className="side-voice-phase">{voiceUi.micMuted ? 'Muted' : PHASE_LABEL[voiceUi.phase]}</span></div>
               <div className="side-voice-btns"><button className={`${voiceUi.micMuted ? 'muted' : ''}${voiceUi.muteIn != null ? ' counting' : ''}`} title={voiceUi.muteIn != null ? `Muting in ${voiceUi.muteIn} s` : voiceUi.micMuted ? 'Unmute microphone' : 'Mute microphone'} onClick={voiceUi.toggleMic}>{voiceUi.micMuted ? <MicOff size={15} /> : <Mic size={15} />}{voiceUi.muteIn != null && <span className="mute-count" key={voiceUi.muteIn}>{voiceUi.muteIn}</span>}</button><button className={voiceUi.speakerOff ? 'muted' : ''} title={voiceUi.speakerOff ? 'Turn the voice back on' : 'Silence the voice'} onClick={voiceUi.toggleSpeaker}>{voiceUi.speakerOff ? <VolumeX size={15} /> : <Volume2 size={15} />}</button><button title="End voice chat" onClick={voiceUi.end}><X size={15} /></button></div>
             </div>); })()}
-          <footer className="side-foot"><button className="foot-btn" title={SIGN_IN_IN_APP ? 'Accounts: who each provider is signed in as; sign out, sign in, switch' : 'Accounts: who each provider is signed in as, and how to sign in with its own command line'} onClick={() => setAccountsOpen(true)}>Jauvex <em>{__APP_VERSION__}</em></button><button className="icon-btn sm" title="Jauvex settings" onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
+          <footer className="side-foot"><button className="foot-btn" title={SIGN_IN_IN_APP ? 'Accounts: who each provider is signed in as; sign out, sign in, switch' : 'Accounts: who each provider is signed in as, and how to sign in with its own command line'} onClick={() => setAccountsOpen(true)}>Jauvex <em>{__APP_VERSION__}</em></button>{update?.available && update.installed && <span className="foot-update" title={`Jauvex ${update.latest} is out. Tell the Jauvex agent “update the app”: it closes, rebuilds itself in a few minutes and opens again.`}>{update.latest} is out</span>}<button className="icon-btn sm" title="Jauvex settings" onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
           {settingsOpen && <SettingsPanel autoCompact={autoCompact} onAutoCompact={changeAutoCompact} signedIn={signedIn} welcomeNext={welcomeNext} onWelcomeNext={(on) => { setWelcomeNext(on); void api.setUi({ welcomed: !on }); }} onOpenWelcome={() => { setSettingsOpen(false); setWelcomeOpen(true); }} defaultProvider={defaultProvider} onDefaultProvider={(p) => { setDefaultProvider(p); localStorage.setItem('cvc.provider', p); void api.setUi({ defaultProvider: p }); }} showJauvex={showJauvex} onShowJauvex={(on) => { setShowJauvex(on); void api.setUi({ showJauvex: on }); }} jauvexMove={jauvexMove} onJauvexMove={(m) => { setJauvexMove(m); void api.setUi({ jauvexMove: m }); }} onClose={() => setSettingsOpen(false)} />}
           {accountsOpen && <Accounts onClose={() => setAccountsOpen(false)} />}
           {welcomeOpen && <Welcome jauvexMove={jauvexMove} onJauvexMove={(m) => { setJauvexMove(m); void api.setUi({ jauvexMove: m }); }} defaultProvider={defaultProvider} onDefault={(p) => { setDefaultProvider(p); localStorage.setItem('cvc.provider', p); void api.setUi({ defaultProvider: p }); }} onDone={(start) => { setWelcomeOpen(false); setWelcomeNext(false); void api.setUi({ welcomed: true });

@@ -259,6 +259,7 @@ html.is-mini, html.is-mini body, html.is-mini #root { background: transparent; }
 .composer-wrap { display: flex; flex-direction: column; } .composer-wrap .voice-dock { order: -1; } /* the orb rides on the thread; a warning stays readable under it, above the input */
 
 /* Accounts: behind the sidebar's footer. */
+.foot-update { margin-left: 8px; font-size: 11px; color: var(--accent, #979dff); white-space: nowrap; cursor: default; } /* a newer version is out (T-165): the Jauvex agent asks about it in words */
 .foot-btn { color: inherit; font: inherit; cursor: pointer; padding: 2px 6px; margin-left: -6px; border-radius: 6px; } .foot-btn:hover { background: #ffffff0d; }
 .modal.accounts, .modal.settings { width: min(560px, 92vw); padding: 18px 20px 14px; gap: 10px; overflow-y: auto; } /* taller than the window, they scroll */ .modal.accounts h2, .modal.settings h2 { margin: 0 0 4px; font-size: 17px; } .modal.accounts > p, .modal.settings > p { margin: 0 0 8px; font-size: 13px; line-height: 1.45; }
 /* Jauvex settings: a bar of tabs across the top; the window keeps one size, the tab's body scrolls under the bar */
