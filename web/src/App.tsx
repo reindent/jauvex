@@ -10,7 +10,7 @@ import typesafeMark from '../../assets/typesafe.png'; // TypeSafe's mark, on Jev
 import { Copy, EyeOff as HideIcon, Pencil, Bug, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Paperclip, Settings, Move, Keyboard, ChevronRight, Eye, EyeOff, FolderPlus, Folder, FolderOpen, Laptop, Mic, PanelLeft, Plus, RotateCw, Search, SlidersHorizontal, Settings2, Square, SquarePen, Trash2, MicOff, Volume2, VolumeX, AudioLines, Wrench, Brain, X, Check, ShieldQuestion } from 'lucide-react';
 import { localSrc, md } from './md';
 import { Pane, type PaneTarget } from './Pane';
-import { findAgents, shortIds, shortTitle } from '../../shared/roster';
+import { findAgents, matchSession, shortIds, shortTitle } from '../../shared/roster';
 import { answerIs, stopSaysMore } from '../../shared/orders';
 import { ACK_MODEL_KEY, DICTATED_TAG, JAUVEX_HELLO, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
 import { ago, api, pickFolder, size } from './api';
@@ -98,7 +98,7 @@ export default function App() {
   const [accountsOpen, setAccountsOpen] = useState(false);
   // Every action in the app, for an agent: a request file in data/commands (scripts/jauvex.ts) reaches this, the result goes back the same way.
   const findFolder = (ref?: string): Project | null => { if (!ref) return projects.find((p) => p.id === sel?.projectId && !p.builtin) ?? projects.find((p) => !p.builtin) ?? null; const n = ref.trim().toLowerCase(); return projects.find((p) => p.id === ref) ?? projects.find((p) => p.path === ref || p.path.toLowerCase() === n) ?? projects.find((p) => p.name.toLowerCase() === n) ?? null; };
-  const findSession = (folder: Project | null, ref: string): { projectId: string; sessionId: string } | null => { const n = ref.trim().toLowerCase(); const pool = folder ? [folder] : projects; for (const p of pool) { const list = infos[p.id] ?? []; const hit = list.find((i) => i.sessionId === ref) ?? list.find((i) => i.sessionId.startsWith(ref)) ?? list.find((i) => (i.customTitle ?? '').toLowerCase() === n) ?? list.find((i) => i.summary.toLowerCase() === n); if (hit) return { projectId: p.id, sessionId: hit.sessionId }; const o = opened.find((x) => x.projectId === p.id && x.name?.toLowerCase() === n && x.sessionId); if (o?.sessionId) return { projectId: p.id, sessionId: o.sessionId }; } return null; };
+  const findSession = (folder: Project | null, ref: string): { projectId: string; sessionId: string } | null => { const n = ref.trim().toLowerCase(); const pool = folder ? [folder] : projects; for (const p of pool) { const list = infos[p.id] ?? []; const hit = matchSession(list, ref); if (hit) return { projectId: p.id, sessionId: hit.sessionId }; const o = opened.find((x) => x.projectId === p.id && x.name?.toLowerCase() === n && x.sessionId); if (o?.sessionId) return { projectId: p.id, sessionId: o.sessionId }; } return null; };
   const runAgentCommand = async (c: AgentCommand): Promise<AgentResult> => {
     try {
       switch (c.type) {
@@ -109,11 +109,32 @@ export default function App() {
           const provider = c.provider ?? jauvexProvider ?? defaultProvider ?? 'claude'; /* unnamed: the Jauvex agent's own provider, the creator's configuration */ const kickoff = c.kickoff?.trim() ? c.kickoff : kickoffMessage(folder.name, folder.path, c.name, c.purpose); /* always a first message: an agent exists once it has had one, and an empty chat vanished (2026-09-24) */
           if (provider === 'jev') { await newJev(folder.id, undefined, c.name); return { ok: true, folder: folder.name, provider }; }
           localStorage.setItem('cvc.provider', provider); const key = `${folder.id}:new:${Date.now()}`; open({ projectId: folder.id, sessionId: null, key, ...(c.name ? { name: c.name } : {}), ...(c.purpose ? { purpose: c.purpose } : {}), kickoff }); return { ok: true, folder: folder.name, provider, key, started: true }; }
+        case 'import': { // a folder's existing sessions into its sidebar, as its search button does, without taking the screen (the user, 2026-09-26: an agent asked to import sessions had only `open`, and opened them over the chat he was in)
+          const folder = findFolder(c.folder); if (!folder || folder.builtin) return { ok: false, error: c.folder ? `no folder "${c.folder}"` : 'which folder? --folder <name|path|id>' };
+          const [all, st] = await Promise.all([api.sessions(folder.id), api.state()]); const listed = st.projects.find((x) => x.id === folder.id)?.sessions ?? folder.sessions; /* the saved list, not this window's copy */ const title = (x: SessionInfo) => x.customTitle || shortTitle(x.summary) || x.sessionId.slice(0, 8);
+          if (!c.sessions?.length) { const out = all.filter((x) => !listed.includes(x.sessionId)); const max = Math.max(1, Math.min(500, c.last ?? 50)); return { ok: true, folder: folder.name, importable: out.slice(0, max).map((x) => ({ id: x.sessionId, title: title(x), provider: x.provider, modified: new Date(x.lastModified).toISOString().slice(0, 16) })), ...(out.length > max ? { more: out.length - max } : {}) }; }
+          const hits = c.sessions.map((ref) => ({ ref, hit: matchSession(all, ref) })); const found = hits.flatMap((h) => (h.hit ? [h.hit] : [])); const missing = hits.filter((h) => !h.hit).map((h) => h.ref);
+          if (!found.length) return { ok: false, error: `no session of ${folder.name} is ${missing.map((m) => `"${m}"`).join(' or ')} (import --folder "${folder.name}" with no session lists the ones there are)` };
+          await api.setSessions(folder.id, [...listed, ...found.map((x) => x.sessionId)], Object.fromEntries(found.map((x) => [x.sessionId, x.provider]))); await refresh();
+          return { ok: true, folder: folder.name, imported: found.map((x) => ({ id: x.sessionId, title: title(x), provider: x.provider })), ...(missing.length ? { notFound: missing } : {}) }; }
         case 'open': { if (!c.session) { if (!jauvex) return { ok: false, error: 'no Jauvex agent' }; const key = `${jauvex.id}:jauvex`; open({ projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' }); return { ok: true, opened: 'Jauvex' }; }
-          const hit = findSession(c.folder ? findFolder(c.folder) : null, c.session) /* no folder named: every folder */; if (!hit) return { ok: false, error: `no session "${c.session}"` }; open({ projectId: hit.projectId, sessionId: hit.sessionId, key: `${hit.projectId}:${hit.sessionId}` }); return { ok: true, opened: hit.sessionId }; }
+          const hit = findSession(c.folder ? findFolder(c.folder) : null, c.session) /* no folder named: every folder */; if (!hit) return { ok: false, error: `no session "${c.session}"` };
+          // an opened session goes in its folder's list too: shown only as an open chat, it dropped out when other chats took the eight places (the user, 2026-09-26: seven sessions an agent opened, gone a few at a time)
+          const saved = (await api.state()).projects.find((x) => x.id === hit.projectId); const add = !!saved && !saved.builtin && !saved.sessions.includes(hit.sessionId);
+          if (add) { const pv = infos[hit.projectId]?.find((x) => x.sessionId === hit.sessionId)?.provider; await api.setSessions(hit.projectId, [...saved.sessions, hit.sessionId], pv ? { [hit.sessionId]: pv } : {}); await refresh(); }
+          open({ projectId: hit.projectId, sessionId: hit.sessionId, key: `${hit.projectId}:${hit.sessionId}` });
+          return { ok: true, opened: hit.sessionId, ...(add ? { listed: `now in ${saved.name}'s sidebar; to bring sessions in without taking the user's screen, use import --folder "${saved.name}" <session id|title> ...` } : {}) }; }
         case 'send': { const hit = findSession(c.folder ? findFolder(c.folder) : null, c.session) /* no folder named: every folder */; if (!hit) return { ok: false, error: `no session "${c.session}"` }; const ok = await deliverTo(hit.projectId, hit.sessionId, c.text); return ok ? { ok: true, sent: hit.sessionId } : { ok: false, error: 'the session could not take the message' }; }
         case 'rename': { const hit = findSession(c.folder ? findFolder(c.folder) : null, c.session) /* no folder named: every folder */; if (!hit) return { ok: false, error: `no session "${c.session}"` }; await api.rename(hit.projectId, hit.sessionId, c.title); await refresh(); return { ok: true }; }
-        case 'settings': { const ui: Partial<UiState> = {}; if (c.jauvexMove) { setJauvexMove(c.jauvexMove); ui.jauvexMove = c.jauvexMove; } if (c.defaultProvider) { setDefaultProvider(c.defaultProvider); localStorage.setItem('cvc.provider', c.defaultProvider); ui.defaultProvider = c.defaultProvider; } if (typeof c.showJauvex === 'boolean') { setShowJauvex(c.showJauvex); ui.showJauvex = c.showJauvex; } if (typeof c.welcomeNext === 'boolean') { setWelcomeNext(c.welcomeNext); ui.welcomed = !c.welcomeNext; } if (typeof c.autoCompact === 'number') { if (!(c.autoCompact >= 0 && c.autoCompact <= 100)) return { ok: false, error: '--auto-compact takes a percentage from 1 to 99, or provider (the provider decides)' }; const n = Math.round(c.autoCompact); setAutoCompact(n); window.dispatchEvent(new CustomEvent('cvc-auto-compact', { detail: n })); ui.autoCompact = n; } if (Object.keys(ui).length) await api.setUi(ui); return { ok: true, ...ui }; }
+        case 'settings': { const ui: Partial<UiState> = {};
+          if (c.permissionProvider || c.permissionMode) { // one provider's permissions for every session (Settings › Safety), or back to each session's own
+            if (!PROVIDERS.includes(c.permissionProvider!) || !['ask', 'auto', 'yolo', 'session'].includes(c.permissionMode!)) return { ok: false, error: '--permission-provider claude|codex|grok --permission-mode ask|auto|yolo|session' };
+            const modes = { ...(await api.state()).ui?.providerPermissions };
+            if (c.permissionMode === 'session') delete modes[c.permissionProvider!]; else modes[c.permissionProvider!] = c.permissionMode as Permissions;
+            await api.setUi({ providerPermissions: modes }); window.dispatchEvent(new CustomEvent('provider-permissions', { detail: modes }));
+            return { ok: true, providerPermissions: modes };
+          }
+          if (c.jauvexMove) { setJauvexMove(c.jauvexMove); ui.jauvexMove = c.jauvexMove; } if (c.defaultProvider) { setDefaultProvider(c.defaultProvider); localStorage.setItem('cvc.provider', c.defaultProvider); ui.defaultProvider = c.defaultProvider; } if (typeof c.showJauvex === 'boolean') { setShowJauvex(c.showJauvex); ui.showJauvex = c.showJauvex; } if (typeof c.welcomeNext === 'boolean') { setWelcomeNext(c.welcomeNext); ui.welcomed = !c.welcomeNext; } if (typeof c.autoCompact === 'number') { if (!(c.autoCompact >= 0 && c.autoCompact <= 100)) return { ok: false, error: '--auto-compact takes a percentage from 1 to 99, or provider (the provider decides)' }; const n = Math.round(c.autoCompact); setAutoCompact(n); window.dispatchEvent(new CustomEvent('cvc-auto-compact', { detail: n })); ui.autoCompact = n; } if (Object.keys(ui).length) await api.setUi(ui); return { ok: true, ...ui }; }
         case 'welcome': setWelcomeOpen(true); return { ok: true };
         case 'reload-ui': setTimeout(() => void window.desktop.appReload(), 500); return { ok: true };
         case 'restart-app': setTimeout(() => void window.desktop.appRestart(), 500); return { ok: true };
@@ -198,13 +219,24 @@ export default function App() {
   type Agent = { projectId: string; sessionId: string; id: string; name: string; provider: Provider; folder: string; busy: boolean };
   const roster = (): Agent[] => { const rows = projects.flatMap((p) => {
     const row = (sid: string, name?: string): Agent => { const i = infos[p.id]?.find((x) => x.sessionId === sid); const o = opened.find((x) => x.sessionId === sid); return { projectId: p.id, sessionId: sid, id: '', name: name || i?.customTitle || o?.name || shortTitle(i?.summary ?? '') || `Session ${sid.slice(0, 6)}`, provider: i?.provider ?? providerOf(p, sid), folder: p.name, busy: !!o && !!busy[o.key] }; };
-    if (p.builtin === 'jauvex') { const o = opened.find((x) => x.key === `${p.id}:jauvex`); return o?.sessionId ? [row(o.sessionId, 'Jauvex')] : []; }
+    if (p.builtin === 'jauvex') { // listed whether its chat is open or not, so any agent can reach it (the user, 2026-09-26: an agent that wanted to report a
+      // bug to it found three "Jauvex …" agents and not it); with no session yet, its folder's id stands in until its first turn makes one
+      const o = opened.find((x) => x.key === `${p.id}:jauvex`); return [{ ...row(o?.sessionId ?? jauvexSession ?? p.id, 'Jauvex'), provider: jauvexProvider ?? defaultProvider ?? 'claude', busy: !!o && !!busy[o.key] }]; }
     const ids = new Set([...p.sessions, ...opened.filter((o) => o.projectId === p.id && o.sessionId && o.kind !== 'jev').map((o) => o.sessionId!)]);
     return [...ids].map((sid) => row(sid));
   }); const short = shortIds(rows.map((r) => r.sessionId)); return rows.map((r) => ({ ...r, id: short.get(r.sessionId) ?? r.sessionId.slice(0, 6) })); };
   const idOf = (sid: string) => roster().find((a) => a.sessionId === sid)?.id ?? sid.slice(0, 6); // the short id, as long as it needs to be unique in the roster
   const rosterText = () => roster().map((a) => `- "${a.name}" [${a.id}] (${PROVIDER_LABEL[a.provider]}, folder ${a.folder}, ${a.busy ? 'working' : 'idle'})`).join('\n') || '(no other sessions yet)';
+  // The app's own agent: always its own chat (the key its row opens), mounted in the background if it is closed, with its session, or with
+  // none, and then this message starts one.
+  const reachJauvex = async (text: string, replyTo?: Sel): Promise<boolean> => {
+    if (!jauvex) return false; const key = `${jauvex.id}:jauvex`;
+    if (!opened.some((x) => x.key === key)) setOpened((all) => (all.some((x) => x.key === key) ? all : [...all, { projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' }]));
+    for (let i = 0; i < 60 && !bridges.current.get(key); i++) await new Promise((r) => setTimeout(r, 150));
+    const b = bridges.current.get(key); if (!b) return false; await b.deliver(text, replyTo); return true;
+  };
   const deliverTo = async (projectId: string, sessionId: string, text: string, replyTo?: Sel): Promise<boolean> => {
+    if (jauvex && projectId === jauvex.id) return reachJauvex(text, replyTo);
     let o = opened.find((x) => x.sessionId === sessionId); const key = o?.key ?? `${projectId}:${sessionId}`;
     if (!o) { o = { projectId, sessionId, key }; const mounted = o; setOpened((all) => (all.some((x) => x.key === key) ? all : [...all, mounted])); } // mounted in the background, not shown
     for (let i = 0; i < 60 && !bridges.current.get(key); i++) await new Promise((r) => setTimeout(r, 150));
@@ -558,7 +590,8 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
   const [listedModels, setListedModels] = useState<ModelOption[]>([]); // Codex's and Grok's lists come from the provider; Claude's is fixed
   useEffect(() => { setListedModels([]); if (provider !== 'claude') void api.models(provider).then(setListedModels).catch(() => { /* the picker keeps "Default model" */ }); }, [provider]);
   // How hard the main model thinks, per provider. Codex says which levels each model takes; Claude's are fixed.
-  const [permissions, setPermissions] = useState<Permissions>(() => kept?.permissions ?? (localStorage.getItem('cvc.permissions') === 'auto' ? 'auto' : 'ask'));
+  const [permissions, setPermissions] = useState<Permissions>(() => kept?.permissions ?? (() => { const l = localStorage.getItem('cvc.permissions'); return l === 'auto' || l === 'yolo' ? l : 'ask'; })());
+  const providerModes = useProviderPermissions(); const perm = providerModes[provider] ?? permissions; // what its turns run with: the app's setting for this provider, when there is one
   const [effort, setEffort] = useState(() => kept?.effort ?? localStorage.getItem(effortKey(provider)) ?? '');
   const prefs = useRef({ model, effort, permissions }); prefs.current = { model, effort, permissions };
   const keep = (patch: Partial<SessionPrefs>) => { prefs.current = { ...prefs.current, ...patch }; if (sid.current) void api.setPrefs(project.id, sid.current, prefs.current).catch(() => { /* kept for this window at least */ }); };
@@ -594,7 +627,7 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
   const stt = (c: VoiceSettings) => ({ model: c.sttModel, vocabulary: [c.vocabulary, project.name].filter(Boolean).join(', ') }); // the folder's name is a word it should know too
   const applyFromElsewhere = useRef<(next: VoiceSettings) => void>(() => {});
   useEffect(() => { const h = (e: Event) => { const d = (e as CustomEvent<{ cfg: VoiceSettings; from: string }>).detail; if (d && d.from !== chatId.current) applyFromElsewhere.current(d.cfg); }; window.addEventListener('cvc-voice-settings', h); return () => window.removeEventListener('cvc-voice-settings', h); }, []);
-  const saveCfg = (next: VoiceSettings, tell = true) => { const was = stt(cfg), now = stt(next); setCfg(next); if (v.current.engine) { v.current.engine.pauseMs = next.pauseMs; v.current.engine.wake = next.wakeOn !== false && !!(next.wakePhrase ?? '').trim(); if ((next.output ?? '') !== (cfg.output ?? '')) void v.current.engine.setOutput(next.output ?? ''); if (next.decisions !== cfg.decisions) void window.desktop.decisions(next.decisions === 'jev').then(setVstatus);
+  const saveCfg = (next: VoiceSettings, tell = true) => { const was = stt(cfg), now = stt(next); setCfg(next); if (v.current.engine) { v.current.engine.pauseMs = next.pauseMs; v.current.engine.wake = !next.pushToTalk && next.wakeOn !== false && !!(next.wakePhrase ?? '').trim(); if (!!next.pushToTalk !== !!cfg.pushToTalk) { pttHeld.current = false; v.current.engine.muted = !!next.pushToTalk; v.current.engine.pauseMs = next.pauseMs; setMicMuted(!!next.pushToTalk); } /* push to talk turned on: closed until held; off: open */ if ((next.output ?? '') !== (cfg.output ?? '')) void v.current.engine.setOutput(next.output ?? ''); if (next.decisions !== cfg.decisions) void window.desktop.decisions(next.decisions === 'jev').then(setVstatus);
       if (was.model !== now.model || was.vocabulary !== now.vocabulary) void window.desktop.sttConfig(now.model, now.vocabulary).then(() => window.desktop.voiceStatus()).then(setVstatus); } if (tell) { void api.setUi({ voice: next }); window.dispatchEvent(new CustomEvent('cvc-voice-settings', { detail: { cfg: next, from: chatId.current } })); } };
   applyFromElsewhere.current = (next) => saveCfg(next, false);
   useEffect(() => { void api.state().then((st) => { setAutoPct(autoCompactPct(st.ui)); const kept = sid.current ? st.projects.find((x) => x.id === project.id)?.context?.[sid.current] : undefined; if (kept && !ctxRef.current) { ctxRef.current = kept; setCtx(kept); } }).catch(() => {});
@@ -823,7 +856,7 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
             // Closed for its length at a short pause, not because they stopped: held for the next words, which join it. Not counted as a hold.
             if (cut && !isStopCommand(t.text)) { thought.current.text = said; thought.current.done = false; setDraft(`${said} …`); clearTimeout(thought.current.timer); thought.current.timer = setTimeout(() => void flushHeld(), v.current.hearing ? HOLD_STUCK_MS : HOLD_MS); window.desktop.debugPush('thought', `a long dictation, closed at a pause so its words land in time: the next words join it (${said.split(/\s+/).length} words so far)`); settle(); return; }
             // Is the thought finished? Jev judges it from the words (a quarter of a second). A stop command never waits, and nothing is held more than three times.
-            if (!isStopCommand(t.text) && thought.current.parts < 3) { const d = await window.desktop.thoughtDone(said).catch(() => ({ done: true }));
+            if (!v.current.cfg.pushToTalk && !isStopCommand(t.text) && thought.current.parts < 3) { const d = await window.desktop.thoughtDone(said).catch(() => ({ done: true }));
               if (!d.done && !v.current.hearing) { thought.current.text = said; thought.current.parts++; thought.current.done = false; setDraft(`${said} …`); clearTimeout(thought.current.timer); thought.current.timer = setTimeout(flushHeld, HOLD_MS); settle(); return; }
               if (v.current.hearing) { thought.current.text = said; thought.current.parts++; thought.current.done = d.done; clearTimeout(thought.current.timer); thought.current.timer = setTimeout(() => void flushHeld(), HOLD_STUCK_MS); return; } } // they are already talking again: this joins what comes next (and if that sound never ends, the words go anyway)
             thought.current = { ...thought.current, text: '', parts: 0, done: false };
@@ -866,7 +899,7 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
             v.current.chain = v.current.chain.then(settle); settle();
           } catch (e) { setNote(`Voice: ${(e as Error).message}`); settle(); }
       };
-      engine.pauseMs = cfg.pauseMs; engine.muted = micMuted; engine.wake = cfg.wakeOn !== false && !!(cfg.wakePhrase ?? '').trim(); engine.output = cfg.output ?? ''; await engine.start(); v.current.engine = engine;
+      const ptt = !!cfg.pushToTalk; if (ptt) setMicMuted(true); engine.pauseMs = cfg.pauseMs; engine.muted = ptt || micMuted; /* push to talk: closed until its button is held */ engine.wake = !ptt && cfg.wakeOn !== false && !!(cfg.wakePhrase ?? '').trim(); engine.output = cfg.output ?? ''; await engine.start(); v.current.engine = engine;
       const poll = setInterval(() => { void window.desktop.voiceStatus().then((st) => { setVstatus(st); if (st.whisper !== 'starting' || !v.current.engine) clearInterval(poll); }); }, 700);
     } catch (e) { setVoiceOn(false); setPhase('off'); setNote(`Voice could not start: ${(e as Error).message}`); void window.desktop.voiceOn(false, ears.current); }
   };
@@ -879,6 +912,13 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
   const startAutoMute = () => { muteCut.current = false; const c = v.current.cfg; if (!c.autoMute || !v.current.engine || v.current.engine.muted) return; cancelAutoMute(); let left = Math.max(1, Math.round(c.autoMuteSec || 5)); setMuteIn(left);
     muteTimer.current = setInterval(() => { left -= 1; if (left > 0) { setMuteIn(left); return; } cancelAutoMute(); if (v.current.engine && !v.current.engine.muted) { window.desktop.debugPush('note', `auto-mute: muted ${c.autoMuteSec || 5} s after the last message${(c.wakePhrase ?? '').trim() ? `; "${c.wakePhrase}" unmutes` : ''}`); toggleMicRef.current(); } }, 1000); };
   const resumeAutoMute = () => { if (!muteCut.current || v.current.hearing) return; muteCut.current = false; window.desktop.debugPush('note', 'auto-mute: that sound had no words in it: the countdown starts again'); startAutoMute(); };
+  // Push to talk (a voice setting; asked for 2026-09-26): the microphone hears only while its button, or the Option key, is held. A pause
+  // while holding does not end anything; letting go ends what was said at once, a finished thought.
+  const pttHeld = useRef(false);
+  const pttPress = () => { const e = v.current.engine; if (!e || !v.current.cfg.pushToTalk || pttHeld.current) return; pttHeld.current = true; hushPlaying(); e.pauseMs = 60_000; e.muted = false; setMicMuted(false); };
+  const pttRelease = () => { const e = v.current.engine; if (!e || !pttHeld.current) return; pttHeld.current = false; e.muted = true; e.pauseMs = v.current.cfg.pauseMs; setMicMuted(true); };
+  useEffect(() => { if (!voiceOn || !cfg.pushToTalk) return; const down = (e: KeyboardEvent) => { if (e.key === 'Alt' && !e.repeat) pttPress(); }; const up = (e: KeyboardEvent) => { if (e.key === 'Alt') pttRelease(); };
+    window.addEventListener('keydown', down); window.addEventListener('keyup', up); window.addEventListener('blur', pttRelease); return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', pttRelease); }; }, [voiceOn, cfg.pushToTalk]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleMic = () => setMicMuted((m) => { const next = !m; cancelAutoMute(); muteCut.current = false; if (v.current.engine) v.current.engine.muted = next; if (next && thought.current.text) { window.desktop.debugPush('thought', 'mic muted with words held: sending them now'); void flushHeldRef.current(); } return next; });
   const toggleSpeaker = () => setSpeakerOff((o) => { const next = !o; v.current.speakerOff = next; if (next) { v.current.engine?.silence(); void window.desktop.cancelSpeech(); v.current.chain = Promise.resolve(); } return next; });
   // The orb's level, and the mirror the floating controller draws from (10 times a second while voice is on).
@@ -995,9 +1035,9 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
           </div>}
       <Composer context={sid.current || ctx ? { usage: ctx, compacting, autoPct, hasSession: !!sid.current, last: lastCompact, onCompact: () => { if (!startCompactRef.current('manual')) setNote(v.current.running ? 'The conversation can be compacted once this turn is over.' : 'Nothing to compact yet: this session has no conversation.'); } } : undefined} draftKey={storeKey} signedIn={signedIn} usageTick={turns} usageModel={model || mainModel.current || ''} jev={jev} running={running} disabled={state !== 'ready'} provider={provider} onProvider={hybrid ? (running ? undefined : switchProvider) : !embed && !sessionId && !sid.current && messages.length === 0 && !running ? pickProvider : undefined}
         models={provider === 'claude' ? CLAUDE_MODELS : listedModels} model={model} onModel={(m) => { setModel(m); localStorage.setItem(modelKey(provider), m); keep({ model: m }); }}
-        permissions={permissions} onPermissions={(p) => { setPermissions(p); localStorage.setItem('cvc.permissions', p); keep({ permissions: p }); }}
+        permissions={perm} permissionsLocked={!!providerModes[provider]} onPermissions={(p) => { setPermissions(p); localStorage.setItem('cvc.permissions', p); keep({ permissions: p }); }}
         efforts={efforts} effort={effort} onEffort={(e) => { setEffort(e); localStorage.setItem(effortKey(provider), e); keep({ effort: e }); }} onSend={(t, images) => void send(t, false, undefined, false, images)} onStop={() => { hush(); v.current.stopped = true; void window.desktop.chatStop(chatId.current); }}
-        voice={{ muteIn, on: voiceOn, phase, status: vstatus, cfg, level, micMuted, speakerOff, toggle: () => void toggleVoice(), toggleMic, toggleSpeaker, hush, save: saveCfg, test: () => { if (v.current.engine) enqueue(say('This is the voice. If you hear this, the speaker is right.'), v.current.gen); } }}
+        voice={{ ptt: cfg.pushToTalk ? { press: pttPress, release: pttRelease } : null, muteIn, on: voiceOn, phase, status: vstatus, cfg, level, micMuted, speakerOff, toggle: () => void toggleVoice(), toggleMic, toggleSpeaker, hush, save: saveCfg, test: () => { if (v.current.engine) enqueue(say('This is the voice. If you hear this, the speaker is right.'), v.current.gen); } }}
         warning={busyElsewhere ? 'This session was active moments ago, possibly in another window. Writing here at the same time can tangle its history.' : ''} />
     </>
   );
@@ -1076,6 +1116,7 @@ function VoiceSettingsForm({ c, set, st, provider, models, onTest }: { c: VoiceS
           <label>Decisions (is the thought finished, is it a question, queue, stop or replace)<select value={c.decisions} onChange={(e) => set({ decisions: e.target.value as VoiceSettings['decisions'] })}><option value="jev">Jev, by TypeSafe, when its key is on this Mac</option><option value="model">Always the voice model</option></select></label>
           <p className="vnote">Deciding now: <b>{st?.jev ? 'Jev' : 'the voice model'}</b>{st?.jev ? ', with the voice model as backup.' : c.decisions === 'jev' && !st?.jevKey ? ' (no Jev key found on this Mac).' : '.'}</p>
           <OutputPicker value={c.output ?? ''} onChange={(id) => set({ output: id })} onTest={onTest} />
+          <label className="check"><input type="checkbox" checked={!!c.pushToTalk} onChange={(e) => set({ pushToTalk: e.target.checked })} />Push to talk: the microphone hears only while you hold its button, or the Option key</label>
           <label className="check"><input type="checkbox" checked={c.wakeOn !== false} onChange={(e) => set({ wakeOn: e.target.checked })} />Wake phrase: said while muted, it turns the microphone back on</label>
     {c.wakeOn !== false && <label><TextSetting value={c.wakePhrase ?? ''} placeholder="Hey Jauvex" onSave={(x) => set({ wakePhrase: x.trim() })} /></label>}
           <label><span className="lhead">Mute after each message<em>{after ? `${after} s` : 'off'}</em></span><input type="range" min={0} max={20} step={1} value={after} onChange={(e) => { const n = +e.target.value; set(n < 2 ? { autoMute: false } : { autoMute: true, autoMuteSec: n }); }} /></label>
@@ -1108,14 +1149,15 @@ function OutputPicker({ value, onChange, onTest }: { value: string; onChange: (i
   useEffect(() => { let alive = true; const load = () => void navigator.mediaDevices.enumerateDevices().then((all) => { if (alive) setDevices(all.filter((d) => d.kind === 'audiooutput').map((d) => ({ id: d.deviceId, label: d.label || `Speaker ${d.deviceId.slice(0, 6)}` }))); }).catch(() => {}); load(); navigator.mediaDevices.addEventListener('devicechange', load); return () => { alive = false; navigator.mediaDevices.removeEventListener('devicechange', load); }; }, []);
   return <label>Speaker (where the voice comes out)<span className="row-inline"><select value={devices.some((d) => d.id === value) ? value : ''} onChange={(e) => onChange(e.target.value)}><option value="">System default</option>{devices.filter((d) => d.id !== 'default').map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select>{onTest && <button type="button" className="mini-btn" onClick={onTest} title="Say a short line through the selected speaker">Test</button>}</span></label>;
 }
-type VoiceUi = { muteIn: number | null; test: () => void; on: boolean; phase: VoicePhase; status: VoiceStatus | null; cfg: VoiceSettings; level: React.RefObject<number>; micMuted: boolean; speakerOff: boolean; toggle: () => void; toggleMic: () => void; toggleSpeaker: () => void; hush: () => void; save: (c: VoiceSettings) => void };
+type VoiceUi = { ptt?: { press: () => void; release: () => void } | null; /* push to talk: the mic button is held */ muteIn: number | null; test: () => void; on: boolean; phase: VoicePhase; status: VoiceStatus | null; cfg: VoiceSettings; level: React.RefObject<number>; micMuted: boolean; speakerOff: boolean; toggle: () => void; toggleMic: () => void; toggleSpeaker: () => void; hush: () => void; save: (c: VoiceSettings) => void };
 const PHASE_LABEL: Record<VoicePhase, string> = { off: '', listening: 'Listening', hearing: 'Hearing you', transcribing: 'Transcribing', thinking: 'Thinking', wording: 'Preparing the reply', speaking: 'Speaking' };
 
 /** The controller from ChatGPT's voice mode: mic | orb | speaker in one pill. Shared by the app and the floating window. */
-export function VoicePill({ level, phase, micMuted, speakerOff, onMic, onOrb, onSpeaker, orbTitle, muteIn = null }: { level: React.RefObject<number>; phase: VoicePhase; micMuted: boolean; speakerOff: boolean; onMic: () => void; onOrb: () => void; onSpeaker: () => void; orbTitle: string; muteIn?: number | null }) {
+export function VoicePill({ level, phase, micMuted, speakerOff, onMic, onOrb, onSpeaker, orbTitle, muteIn = null, ptt = null }: { level: React.RefObject<number>; phase: VoicePhase; micMuted: boolean; speakerOff: boolean; onMic: () => void; onOrb: () => void; onSpeaker: () => void; orbTitle: string; muteIn?: number | null; ptt?: { press: () => void; release: () => void } | null }) {
   return (
     <div className="pill">
-      <button className={`${micMuted ? 'muted' : ''}${muteIn != null ? ' counting' : ''}`} title={muteIn != null ? `Muting in ${muteIn} s (click to mute now)` : micMuted ? 'Unmute microphone' : 'Mute microphone'} onClick={onMic}>{micMuted ? <MicOff size={18} /> : <Mic size={18} />}{muteIn != null && <span className="mute-count" key={muteIn}>{muteIn}</span>}</button>
+      {ptt ? <button className={`ptt${micMuted ? ' muted' : ''}`} title="Hold to talk (or hold the Option key): letting go sends what you said" onPointerDown={(e) => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* a pointer that is not down (a synthetic one) */ } ptt.press(); }} onPointerUp={ptt.release} onPointerCancel={ptt.release} onLostPointerCapture={ptt.release}>{micMuted ? <MicOff size={18} /> : <Mic size={18} />}</button>
+        : <button className={`${micMuted ? 'muted' : ''}${muteIn != null ? ' counting' : ''}`} title={muteIn != null ? `Muting in ${muteIn} s (click to mute now)` : micMuted ? 'Unmute microphone' : 'Mute microphone'} onClick={onMic}>{micMuted ? <MicOff size={18} /> : <Mic size={18} />}{muteIn != null && <span className="mute-count" key={muteIn}>{muteIn}</span>}</button>}
       <i />
       <button className="pill-orb" title={orbTitle} onClick={onOrb}><Orb size={30} level={level} phase={phase} mute={micMuted} silent={speakerOff} /></button>
       <i />
@@ -1124,7 +1166,7 @@ export function VoicePill({ level, phase, micMuted, speakerOff, onMic, onOrb, on
   );
 }
 
-function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, permissions, onPermissions, running, disabled, provider, onProvider, models, model, onModel, efforts, effort, onEffort, onSend, onStop, warning, voice }: { context?: { usage: ContextUsage | null; compacting: boolean; autoPct: number; hasSession: boolean; last: LastCompact | null; onCompact: () => void }; draftKey?: string; signedIn?: Record<Provider, boolean>; usageTick: number; usageModel: string; jev?: () => void; permissions: Permissions; onPermissions: (p: Permissions) => void; running: boolean; disabled: boolean; provider: Provider; onProvider?: (p: Provider) => void; models: ModelOption[]; model: string; onModel: (v: string) => void; efforts: string[]; effort: string; onEffort: (v: string) => void; onSend: (text: string, images?: Attachment[]) => void; onStop: () => void; warning: string; voice: VoiceUi }) {
+function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, permissions, permissionsLocked, onPermissions, running, disabled, provider, onProvider, models, model, onModel, efforts, effort, onEffort, onSend, onStop, warning, voice }: { context?: { usage: ContextUsage | null; compacting: boolean; autoPct: number; hasSession: boolean; last: LastCompact | null; onCompact: () => void }; draftKey?: string; signedIn?: Record<Provider, boolean>; usageTick: number; usageModel: string; jev?: () => void; permissions: Permissions; permissionsLocked?: boolean; onPermissions: (p: Permissions) => void; running: boolean; disabled: boolean; provider: Provider; onProvider?: (p: Provider) => void; models: ModelOption[]; model: string; onModel: (v: string) => void; efforts: string[]; effort: string; onEffort: (v: string) => void; onSend: (text: string, images?: Attachment[]) => void; onStop: () => void; warning: string; voice: VoiceUi }) {
   const dKey = draftKey ? `cvc.draft.${draftKey}` : ''; const [text, setTextState] = useState(() => (dKey ? localStorage.getItem(dKey) ?? '' : ''));
   const setText = (t: string) => { setTextState(t); if (dKey) { try { if (t) localStorage.setItem(dKey, t); else localStorage.removeItem(dKey); } catch { /* nothing */ } } }; // typed but not sent: kept across a reload
   const [settings, setSettings] = useState(false);
@@ -1149,7 +1191,7 @@ function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, per
       {voice.on && (
         <div className="voice-controls">
           <button className="round" title="End voice chat" onClick={voice.toggle}><X size={18} /></button>
-          <VoicePill muteIn={voice.muteIn} level={voice.level} phase={voice.phase} micMuted={voice.micMuted} speakerOff={voice.speakerOff} onMic={voice.toggleMic} onOrb={voice.hush} onSpeaker={voice.toggleSpeaker} orbTitle="Stop talking" />
+          <VoicePill muteIn={voice.muteIn} level={voice.level} phase={voice.phase} micMuted={voice.micMuted} speakerOff={voice.speakerOff} onMic={voice.toggleMic} onOrb={voice.hush} onSpeaker={voice.toggleSpeaker} orbTitle="Stop talking" ptt={voice.ptt} />
           <button className="round" title="Voice settings" onClick={() => setSettings((x) => !x)}><Settings2 size={17} /></button>
           {settings && (
             <div className="vsettings" onMouseLeave={() => setSettings(false)}>
@@ -1167,7 +1209,7 @@ function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, per
         {!voice.on && !(text.trim() || files.length > 0) && <button className="voice-start" title="Start voice chat" disabled={disabled} onClick={voice.toggle}><AudioLines size={16} /></button>} {/* also while a turn runs: voice can join the work in progress */}
       </div>
       <div className="composer-row"><button className="icon-btn sm" title="Attach images (or paste, or drop them here)" disabled={disabled} onClick={() => void window.desktop.pickImages().then((got) => { if (got.length) setFiles((x) => [...x, ...got.map((a) => ({ ...a, src: `data:${a.mediaType};base64,${a.data}` }))]); })}><Paperclip size={16} /></button>
-        <select className="model" value={permissions} onChange={(e) => onPermissions(e.target.value as Permissions)} title={provider === 'codex' ? "Ask: you approve what Codex's sandbox will not allow. Auto: Codex's automatic reviewer decides." : provider === 'grok' ? "Ask: you approve what Grok's own permission settings do not allow already. Auto: Grok's automatic mode decides. Set when the session is opened." : 'Ask: you approve each tool that needs permission. Auto: Claude\'s permission classifier decides.'}><option value="ask">Ask permission</option><option value="auto">Auto permissions</option></select>
+        <select className="model" value={permissions} disabled={permissionsLocked} onChange={(e) => onPermissions(e.target.value as Permissions)} title={`${provider === 'codex' ? "Ask: you approve what Codex's sandbox will not allow. Auto: Codex's automatic reviewer decides." : provider === 'grok' ? "Ask: you approve what Grok's own permission settings do not allow already. Auto: Grok's automatic mode decides. Set when the session is opened." : 'Ask: you approve each tool that needs permission. Auto: Claude\'s permission classifier decides.'} YOLO: run tools without permission prompts or the provider sandbox, with this account’s access.${permissionsLocked ? ' Set in Settings → Safety → Provider permissions.' : ''}`}><option value="ask">Ask permission</option><option value="auto">Auto permissions</option><option value="yolo">YOLO — full access</option></select>
         <span className="grow" />
         {context && <ContextMeter {...context} provider={provider} running={running} />}
         <UsageBattery provider={provider} model={usageModel} tick={usageTick} others={PROVIDERS.filter((p) => p !== provider && signedIn?.[p] !== false)} />
@@ -1204,37 +1246,76 @@ export function Mini() {
 }
 
 /** The app's own settings (the wheel in the sidebar's footer). Voice settings stay with the voice; accounts with the accounts panel. */
+/** The app's permission mode per provider (Settings › Safety): it applies to every session's next turn, over the composer's pick. */
+function useProviderPermissions() {
+  const [modes, setModes] = useState<NonNullable<UiState['providerPermissions']>>({});
+  useEffect(() => { void api.state().then((s) => setModes(s.ui?.providerPermissions ?? {}));
+    const on = (e: Event) => setModes((e as CustomEvent).detail);
+    window.addEventListener('provider-permissions', on); return () => window.removeEventListener('provider-permissions', on);
+  }, []); return modes;
+}
+function ProviderPermissionSettings() {
+  const modes = useProviderPermissions(); const [error, setError] = useState('');
+  const pick = async (provider: Provider, value: string) => {
+    try { const next = { ...(await api.state()).ui?.providerPermissions };
+      if (value === 'session') delete next[provider]; else next[provider] = value as Permissions;
+      await api.setUi({ providerPermissions: next }); window.dispatchEvent(new CustomEvent('provider-permissions', { detail: next })); setError('');
+    } catch (e) { setError(String(e)); }
+  };
+  return <section className="settings-group"><strong>Provider permissions</strong>
+    <p className="muted">Applies to every session's next turn. "Use session setting" gives the choice back to each session's composer.</p>
+    <p className="muted">YOLO runs tools without permission prompts and disables the provider sandbox. Agents can use everything this account can access. It does not grant administrator access.</p>
+    {PROVIDERS.map((p) => <label className="check" key={p}>{PROVIDER_LABEL[p]}<select className="model" aria-label={`${PROVIDER_LABEL[p]} permissions`} value={modes[p] ?? 'session'} onChange={(e) => void pick(p, e.target.value)}><option value="session">Use session setting</option><option value="ask">Ask permission</option><option value="auto">Auto permissions</option><option value="yolo">YOLO — full access</option></select></label>)}
+    {error && <p role="alert">{error}</p>}
+  </section>;
+}
+
+type SettingsTab = 'general' | 'voice' | 'context' | 'safety' | 'reset';
+const SETTINGS_TABS: [SettingsTab, string][] = [['general', 'General'], ['voice', 'Voice'], ['context', 'Context'], ['safety', 'Safety'], ['reset', 'Reset']];
 function SettingsPanel({ signedIn, welcomeNext, onWelcomeNext, onOpenWelcome, defaultProvider, onDefaultProvider, showJauvex, onShowJauvex, jauvexMove, onJauvexMove, autoCompact, onAutoCompact, onClose }: { autoCompact: number; onAutoCompact: (pct: number) => void; signedIn: Record<Provider, boolean>; welcomeNext: boolean; onWelcomeNext: (on: boolean) => void; onOpenWelcome: () => void; defaultProvider: Provider | null; onDefaultProvider: (p: Provider) => void; showJauvex: boolean; onShowJauvex: (on: boolean) => void; jauvexMove: 'unified' | 'handoff'; onJauvexMove: (m: 'unified' | 'handoff') => void; onClose: () => void }) {
+  // One tab per kind of setting, a bar across the top (the user, 2026-09-24: the settings were "a freaking mess because there are no tabs").
+  // The window keeps its size from tab to tab; a long tab scrolls under the bar.
+  const [tab, setTab] = useState<SettingsTab>('general');
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal settings" role="dialog" aria-label="Jauvex settings" onClick={(e) => e.stopPropagation()}>
         <h2>Jauvex settings</h2>
-        <p className="muted">Accounts are in the Jauvex button below the sidebar. The voice settings are here and under the orb of any session: one set for the whole app.</p>
-        <section className="settings-group">
-          <strong>Default agent</strong>
-          <label className="check">New sessions and the Jauvex agent start with<select className="model" value={defaultProvider ?? ''} onChange={(e) => onDefaultProvider(e.target.value as Provider)}><option value="" disabled>Not chosen yet</option>{PROVIDERS.map((p) => <option key={p} value={p} disabled={signedIn?.[p] === false}>{PROVIDER_LABEL[p]}{signedIn?.[p] === false ? ' (not signed in)' : ''}</option>)}</select></label>
-        </section>
-        <section className="settings-group">
-          <strong>Jauvex agent</strong>
-          <label className="check"><input type="checkbox" checked={showJauvex} onChange={(e) => onShowJauvex(e.target.checked)} />Show it at the top of the sidebar (hidden, it still exists and still answers other agents)</label>
-          <label className="check stack">When it moves to the other provider<select className="model" value={jauvexMove} onChange={(e) => onJauvexMove(e.target.value as 'unified' | 'handoff')}><option value="unified">Unified (experimental): the app replays the whole conversation</option><option value="handoff">Handover: the leaving agent writes a note, the next starts from it</option></select></label>
-        </section>
-        <section className="settings-group">
-          <strong>Context</strong>
-          <label className="check stack">Compact an agent's conversation by itself when its context is this full<select className="model" value={autoCompact} onChange={(e) => onAutoCompact(Number(e.target.value))}>{AUTO_COMPACT_CHOICES.map((p) => <option key={p} value={p}>{p} %{p === AUTO_COMPACT_DEFAULT ? ' (default)' : ''}</option>)}{![0, ...AUTO_COMPACT_CHOICES].includes(autoCompact) && <option value={autoCompact}>{autoCompact} %</option>}<option value={0}>Leave it to the provider (Claude near the limit, Codex at about 95 %)</option></select></label>
-          <p className="muted">The pile of sheets next to each composer shows how full that agent's context is: click it for the numbers and to compact now. Compacting replaces the conversation so far with a summary. It also happens at once when a message does not fit, and that message is then sent again.</p>
-        </section>
-        <VoiceChatSettings provider={defaultProvider ?? 'claude'} />
-        <section className="settings-group">
-          <strong>Welcome screen</strong>
-          <label className="check"><input type="checkbox" checked={welcomeNext} onChange={(e) => onWelcomeNext(e.target.checked)} />Show it again on the next start</label>
-          <div className="row-btns"><button onClick={onOpenWelcome}>Open it now</button></div>
-        </section>
-        <section className="settings-group danger">
-          <strong>Danger zone</strong>
-          <p>Reset the app to its initial state: the sidebar's folders and sessions (the sessions stay in Claude, Codex and Grok), the Jauvex agent's conversation and every setting. Cannot be undone; the app exits.</p>
-          <div className="row-btns"><button className="btn-danger" onClick={() => void window.desktop.appReset()}>Reset the app…</button></div>
-        </section>
+        <div className="settings-tabs" role="tablist">{SETTINGS_TABS.map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} className={`settings-tab${tab === k ? ' on' : ''}`} onClick={() => setTab(k)}>{label}</button>)}</div>
+        <div className="settings-body" role="tabpanel">
+        {tab === 'general' && <>
+          <p className="muted">Accounts are in the Jauvex button below the sidebar. The voice settings are here and under the orb of any session: one set for the whole app.</p>
+          <section className="settings-group">
+            <strong>Default agent</strong>
+            <label className="check">New sessions and the Jauvex agent start with<select className="model" value={defaultProvider ?? ''} onChange={(e) => onDefaultProvider(e.target.value as Provider)}><option value="" disabled>Not chosen yet</option>{PROVIDERS.map((p) => <option key={p} value={p} disabled={signedIn?.[p] === false}>{PROVIDER_LABEL[p]}{signedIn?.[p] === false ? ' (not signed in)' : ''}</option>)}</select></label>
+          </section>
+          <section className="settings-group">
+            <strong>Jauvex agent</strong>
+            <label className="check"><input type="checkbox" checked={showJauvex} onChange={(e) => onShowJauvex(e.target.checked)} />Show it at the top of the sidebar (hidden, it still exists and still answers other agents)</label>
+            <label className="check stack">When it moves to the other provider<select className="model" value={jauvexMove} onChange={(e) => onJauvexMove(e.target.value as 'unified' | 'handoff')}><option value="unified">Unified (experimental): the app replays the whole conversation</option><option value="handoff">Handover: the leaving agent writes a note, the next starts from it</option></select></label>
+          </section>
+          <section className="settings-group">
+            <strong>Welcome screen</strong>
+            <label className="check"><input type="checkbox" checked={welcomeNext} onChange={(e) => onWelcomeNext(e.target.checked)} />Show it again on the next start</label>
+            <div className="row-btns"><button onClick={onOpenWelcome}>Open it now</button></div>
+          </section>
+        </>}
+        {tab === 'voice' && <VoiceChatSettings provider={defaultProvider ?? 'claude'} />}
+        {tab === 'context' && <>
+          <section className="settings-group">
+            <strong>Context</strong>
+            <label className="check stack">Compact an agent's conversation by itself when its context is this full<select className="model" value={autoCompact} onChange={(e) => onAutoCompact(Number(e.target.value))}>{AUTO_COMPACT_CHOICES.map((p) => <option key={p} value={p}>{p} %{p === AUTO_COMPACT_DEFAULT ? ' (default)' : ''}</option>)}{![0, ...AUTO_COMPACT_CHOICES].includes(autoCompact) && <option value={autoCompact}>{autoCompact} %</option>}<option value={0}>Leave it to the provider (Claude near the limit, Codex at about 95 %)</option></select></label>
+            <p className="muted">The pile of sheets next to each composer shows how full that agent's context is: click it for the numbers and to compact now. Compacting replaces the conversation so far with a summary. It also happens at once when a message does not fit, and that message is then sent again.</p>
+          </section>
+        </>}
+        {tab === 'safety' && <ProviderPermissionSettings />}
+        {tab === 'reset' && <>
+          <section className="settings-group danger">
+            <strong>Danger zone</strong>
+            <p>Reset the app to its initial state: the sidebar's folders and sessions (the sessions stay in Claude, Codex and Grok), the Jauvex agent's conversation and every setting. Cannot be undone; the app exits.</p>
+            <div className="row-btns"><button className="btn-danger" onClick={() => void window.desktop.appReset()}>Reset the app…</button></div>
+          </section>
+        </>}
+        </div>
         <div className="modal-foot"><span className="app-version">Jauvex Personal {__APP_VERSION__}</span><button onClick={onClose}>Close</button></div>
       </div>
     </div>

@@ -42,6 +42,7 @@ function record(type, message) {
 const LINES = ['Nothing ran: I am the stand-in for Claude, here so the app can be checked without an account.', 'No model was asked: this is a canned reply.', 'Every message gets the same kind of answer from me.'];
 const textOf = (content) => (typeof content === 'string' ? content : Array.isArray(content) ? content.filter((b) => b?.type === 'text').map((b) => b.text).join('\n') : '');
 function replyTo(text) {
+  const own = /\[\[reply\]\]([\s\S]+)$/.exec(text); if (own) return own[1].trim(); // a check scripts the answer (a message block to another agent, say): given back as it is
   const said = text.replace(/\s+/g, ' ').trim(); const quote = said.length > 300 ? `${said.slice(0, 120)} … ${said.slice(-120)}` : said; // both ends: a prelude comes first, the words last
   return `(mock Claude on ${os.hostname()}) I got: "${quote}". ${LINES[Math.floor(Math.random() * LINES.length)]}`;
 }

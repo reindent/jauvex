@@ -10,6 +10,8 @@ import { autoCompactPct, claudeCompactEnv, claudeUsed, tooLong, type ContextUsag
 import * as codex from './codex.js';
 import * as grok from './grok.js';
 import { claudeExe } from './account.js';
+import { claudePermissionOptions } from './claude-permissions.js';
+import { effectivePermissions } from '../shared/permissions.js';
 
 type Live = { push: (text: string, images?: Attachment[]) => void; q: Query; abort: AbortController; pending: Map<string, (d: PermissionDecision) => void>; always: Set<string>; projectId: string; sessionId: string | null };
 const live = new Map<string, Live>();
@@ -26,6 +28,7 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   const { state, project } = await projectOr404(req.projectId);
   // The session's provider decides who continues it; only a new session takes the one the UI asked for.
   const provider = req.sessionId ? providerOf(project, req.sessionId) : req.provider ?? 'claude';
+  req = { ...req, permissions: effectivePermissions(provider, req.permissions, state.ui?.providerPermissions) }; // the app's setting for this provider, when there is one, wins
   if (provider === 'codex') return codex.startChat(req, send);
   if (provider === 'grok') return grok.startChat(req, send);
   const abort = new AbortController();
@@ -69,7 +72,7 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
       // voice turns get the same prompt (the big model answers for the screen) plus one note: this text was dictated
       systemPrompt: { type: 'preset', preset: 'claude_code', append: clientBriefing(!!req.voice, req.vocabulary, !!req.steward, APP_ROOT) }, // every session is told where it is running (see clientBriefing)
       includePartialMessages: true,
-      permissionMode: req.permissions === 'auto' ? 'auto' : 'default',
+      ...claudePermissionOptions(req.permissions),
       canUseTool,
       abortController: abort,
       mcpServers: { jauvex: jauvexTools(chatId) }, // message_agent and list_agents: the app's own channel between agents, as a tool

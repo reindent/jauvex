@@ -197,7 +197,7 @@ export const backend = {
   },
   setPrefs: async (id: string, sessionId: string, prefs: SessionPrefs) => {
     const { state, project } = await projectOr404(id);
-    project.prefs = { ...project.prefs, [sessionId]: { model: String(prefs.model ?? ''), effort: String(prefs.effort ?? ''), permissions: prefs.permissions === 'auto' ? 'auto' : 'ask' } };
+    project.prefs = { ...project.prefs, [sessionId]: { model: String(prefs.model ?? ''), effort: String(prefs.effort ?? ''), permissions: prefs.permissions === 'yolo' ? 'yolo' : prefs.permissions === 'auto' ? 'auto' : 'ask' } };
     await saveState(state); return true;
   },
   // ---- Jev agents: a state and typed questions, evaluated; kept here because Jev keeps nothing

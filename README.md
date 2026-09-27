@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.0, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.1, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -118,7 +118,10 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   agents, the Jauvex agent above all. `list` (folders, sessions, agents, ids), `add-folder`, `pick-folder` (the folder
   dialog for the user; what they choose is added), `new-agent` (provider, folder, name, purpose, first message; unnamed,
   the provider is the Jauvex agent's own; with no first message it starts with its own introduction, since an agent exists
-  once it has had one: on 2026-09-24 one ordered without it was an empty chat that vanished), `open` (a session, or the Jauvex agent), `send` (a message into a session),
+  once it has had one: on 2026-09-24 one ordered without it was an empty chat that vanished), `open` (a session, or the Jauvex agent, on screen; a session not in its folder's sidebar goes in it too: shown only as an open chat,
+  seven sessions an agent opened dropped out one by one as other chats took the eight open places, T-152, the user, 2026-09-26), `import` (a folder's existing sessions into its sidebar without opening them,
+  as its search button does; with no session named, the ones not listed yet: T-150, the user, 2026-09-26, after an agent asked to
+  import sessions opened them over the chat he was in), `send` (a message into a session),
   `rename`, `settings` (default agent, Jauvex row, welcome next time), `welcome`, `reload`, `restart`. It writes a
   request file in `data/commands/`, the running app does the thing and answers in a result file, the script prints the
   JSON. Nothing but files: no port, no server.
@@ -167,13 +170,20 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   Tools that need permission show an Allow once / Always / Deny card in the thread, or pick **Auto permissions** in the
   composer: Claude's permission classifier (`permissionMode: 'auto'`) or Codex's automatic reviewer
   (`approvalsReviewer: 'auto_review'`) decides, and only what it will not decide reaches you. Applies from the next message.
+  **YOLO — full access** (asked for 2026-09-26) runs tools with no permission prompt and no provider sandbox: Claude's
+  `bypassPermissions` with its required opt-in, Codex's `never` approvals with `dangerFullAccess`, Grok's `yoloMode`. Agents can
+  then use everything this account can reach; it grants no administrator access, and the operating system's own limits still apply.
+  **Provider permissions** (Jauvex settings › Safety, or `settings --permission-provider claude --permission-mode yolo` on the
+  command line) set Ask, Auto or YOLO for every session of one provider, from each session's next turn; the composer then shows that
+  mode, locked; "Use session setting" (`--permission-mode session`) gives the choice back to each composer. Leaving YOLO gives Codex
+  back the approvals and sandbox the thread had before it, a read-only one included, kept in the state across restarts.
   Codex sessions work the same way: replies stream, Stop interrupts the turn, and when Codex asks before running a
   command or writing files, the same card appears (Always = for the rest of the session). Approval policy and
-  sandbox are whatever your Codex config says, the way the Claude side keeps Claude Code's settings.
+  sandbox are whatever your Codex config says, the way the Claude side keeps Claude Code's settings, except in YOLO.
   Grok sessions work the same way too: replies stream, Stop cancels the turn, and when Grok asks before a tool its
   permission rules do not allow already, the same card appears (Always = Grok's own "don't ask again"). The rest is Grok's
-  own settings, its always-approve setting included; **Auto permissions** is Grok's automatic mode, taken when the session is
-  opened. A message handed to a working Grok is read at its next step (`x.ai/interject`); one handed over after its last step
+  own permission rules; the app says the mode every time a session is opened (Ask, **Auto permissions**, Grok's automatic mode, or
+  YOLO), so a Grok set to always approve still asks in Ask, and a new mode closes and reopens a loaded session to take it. A message handed to a working Grok is read at its next step (`x.ai/interject`); one handed over after its last step
   Grok runs as a prompt of its own, and the turn stays open until that one is answered too, so its answer is not lost.
   A picture Grok makes (its `imagine` tool) shows under the tool's row, and the answer's link to it points at the file Grok saved
   in its own session folder: Grok writes it relative to that folder (`images/1.jpg`), which read against the project's folder
@@ -248,7 +258,9 @@ Press the white round button in the message box. All local except the two Claude
   by the window's router, never asking permission), for the models that look for a tool when told "talk to X". Agents are addressed by name (title or summary) or by the short id in brackets, which never changes (6 characters,
   longer only where two ids share their start, as Codex ids often do); a fenced `list-agents` block gets the roster back
   (name, id, provider, folder, working or idle). The Jauvex agent is listed once, as "Jauvex", whatever its past sessions
-  across providers; a session with no name of its own is shown by its first message, cut at 60 characters. Every exchange shows in both
+  across providers, and always, its chat open or not (T-151, the user, 2026-09-26: an agent that wanted to report a bug to it found
+  three "Jauvex …" agents and not it, since it was listed only while its chat was open): a message to it opens its own chat in the
+  background, with its session, or starts one; with no session yet, its folder's id stands in for its id; a session with no name of its own is shown by its first message, cut at 60 characters. Every exchange shows in both
   threads, marked "From agent X", and in the voice log. The briefing tells every agent all of this.
 - **Every agent is told where it is running.** A blank session knows nothing about this app, so each one, on either
   provider, new or resumed, gets a short briefing (`clientBriefing` in `shared/types.ts`; appended to Claude's system
@@ -268,9 +280,9 @@ Press the white round button in the message box. All local except the two Claude
   left: green above 40 %, amber to 15 %, red below. It shows the tightest window that applies (Claude: 5 hours, 7 days,
   and a model's own weekly window only when that model is the one in use; Codex: its ordinary limit, and a model's own
   extra limit only when that model is in use; Grok: its plan's credits for the week or month, or its on-demand spending once
-  those are used up). A click opens the panel (T-98): every window of this chat's provider and of the others signed in, how
-  much is left and used, and when it resets (counted down, and on the clock), with the plan, Claude's extra usage, Codex's
-  credits, Grok's on-demand spending and bought credits; a model's own window (Claude's Fable week; a Codex model's extra limit, which
+  those are used up). A click opens the panel (T-98): one tab per provider signed in, this chat's provider selected, each tab
+  with what is left of it at a glance; in a tab, every window, how much is left and used, and when it resets (counted down,
+  and on the clock), with the plan, Claude's extra usage, Codex's credits, Grok's on-demand spending and bought credits; a model's own window (Claude's Fable week; a Codex model's extra limit, which
   Codex names after the model and, in its own status, counts only for that model) is greyed in a chat on another model.
   Refreshed every minute while the window is visible, after each turn, and with the panel's Refresh; a refresh keeps what
   is shown until the new answer is in. When usage is not available for the account (an
@@ -454,9 +466,11 @@ Press the white round button in the message box. All local except the two Claude
   so the first conversation is with an agent that can answer. The checks: the `say` command, Claude signed in, Codex signed in, whisper-server with a model, a TypeSafe key (optional),
   with the command to run for whatever is missing. macOS only for now. The window is muted while voice mode is off (nothing in it may make a sound then); the welcome
   unmutes it while it is open, so it is heard without starting a voice chat, and mutes it again when closed.
-- **Jauvex settings** (the wheel in the sidebar's footer): the app's own settings, apart from the voice's (in a session's
-  voice controls) and the accounts (the Jauvex button): the default agent, whether the Jauvex agent shows in the sidebar,
-  and the welcome screen (show it again on the next start, or open it now). At the bottom, in red, the danger zone: reset the app to its initial state.
+- **Jauvex settings** (the wheel in the sidebar's footer): the app's own settings, in tabs across the top, in a window that keeps
+  its size from tab to tab: **General** (the default agent, whether the Jauvex agent shows in the sidebar and how it moves between
+  providers, the welcome screen: show it again on the next start, or open it now), **Voice** (the voice chat settings, the same
+  as under a session's orb), **Context** (when to compact by itself) and **Reset** (in red, the danger zone: reset the app to its
+  initial state). The accounts are in the Jauvex button.
   It deletes only the app's own data (the sidebar's folders and sessions, which stay untouched in Claude, Codex and Grok, the
   Jauvex agent's conversation, every setting, the flight recorder), after a confirmation that says it cannot be undone;
   the app then says so and exits, and the next start is a first run.
@@ -494,6 +508,9 @@ Press the white round button in the message box. All local except the two Claude
   which does the work and then restarts the app itself (`node scripts/jauvex.ts restart`; every agent is told so).
 - **Voice settings in two places.** The same form sits under a session's orb and in the main settings (Voice chat); they are
   one set for the whole app, and a change in either place reaches every open chat. Text settings save as they are typed.
+- **Push to talk** (voice settings; T-157, asked for 2026-09-26): the microphone hears only while its button (the microphone in the
+  voice pill) or the Option key is held. A pause while holding ends nothing; letting go ends what was said at once, a finished thought
+  (no wait for more words). The wake phrase and the mute countdowns have nothing to do then.
 - **A wake phrase, and mute after each message** (voice settings; the wake phrase has its own on/off box). While the microphone is muted, the ears still listen for short
   phrases of up to 4 s and check each against the wake phrase ("Hey Jauvex" by default; empty turns it off), by sound rather
   than spelling (the small model hears "Hey Jauvex" as "Hey, Jev, X."); a match turns the microphone back on. Nothing else heard

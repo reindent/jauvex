@@ -182,9 +182,13 @@ async function liveWords(wav: ArrayBuffer, language: string, strict = false): Pr
   try { const r = await fetch(`http://127.0.0.1:${LIVE_PORT}/inference`, { method: 'POST', body: form }); const j = (await r.json()) as { text?: string }; const text = fixNames(j.text ?? '').replace(/\s+/g, ' ').trim(); return { text: NOISE.test(text) ? '' : text, ms: Date.now() - t0 }; } catch (e) { if (strict) throw e; return { text: '', ms: Date.now() - t0 }; }
 }
 // quiet: an interim transcript of someone still talking, only used to show the words as they come. It is not logged: the final one is.
+/** "cloud" is Claude only where the words around it say so: an agent, a session or a model of it, next to Codex or a Claude model, or what
+ *  something "uses"; never the cloud of computing ("the cloud", "in the cloud", "cloud server", "cloud storage"). */
+const CLOUD_IS_CLAUDE = /\bcloud(?=\s+(?:agents?|sessions?|chats?|models?|accounts?|subscriptions?|desktop|opus|sonnet|haiku|fable)\b)|\bcloud(?=,?\s+(?:and|or)\s+(?:a\s+)?codex\b)|(?<=\bcodex,?\s+(?:and|or)\s+(?:a\s+)?)cloud\b|(?<=\b(?:opus|sonnet|haiku|fable)\s+(?:on|from|in)\s+)cloud\b|(?<=\b(?:uses?|using)\s+)cloud(?=\s*(?:[.,!?;]|$|\s+(?:and|or|for|to|instead)\b))|(?<=\b(?:runs?|running|ran|one|agents?|sessions?)\s+on\s+)cloud(?=\s*(?:[.,!?;:]|$|\s+(?:and|or|for|to|instead|now|too|please|as|not)\b))/gi; // runs on, the agent on, the one on (T-126): Claude
 /** The app's name as speech-to-text writes it (Jovex, Javex, Jauvix, Claudex, Jobex, "job ex"...) becomes Jauvex, in every transcript. */
 export const fixNames = (text: string): string => text.replace(/\b(?:j[aoue]u?v[aeio]?(?:x|cs|ks)|jauvex|jovacs|javecs|jobex|job ex|jove x|jau vex|claudex|cloudex|clau?dex)\b/gi, 'Jauvex')
   .replace(/\bj-e-v\b|\bjevv?\b|\bjav(?=\s+(?:agents?|classifiers?|key)\b)|\bjeff(?=\s+(?:agents?|classifiers?|key)\b)/gi, 'Jev') // Jev, the typed classifiers: J-E-V, Jevv; "Jav" and "Jeff" only before agent, classifier or key (Jeff is also a name)
+  .replace(/\bcloud code\b/gi, 'Claude Code').replace(/\bclaud\b/gi, 'Claude').replace(CLOUD_IS_CLAUDE, 'Claude') // Claude heard as "cloud" or "Claud" (2026-09-24)
   .replace(/\b(?:grog|grock)\b/gi, 'Grok'); // Grok, xAI's agent, heard as "grog" (Groq, another company, is left alone)
 /** The audio of every pass is kept for a while (data/voice-audio, the newest 120 files, a few minutes of speech), so a case of lost words
  * can be replayed; it never leaves the computer. */

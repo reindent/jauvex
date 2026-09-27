@@ -1,5 +1,5 @@
 // The roster helpers: session titles cut short, short ids that stay unique, and the agent a message is addressed to.
-const { shortTitle, shortIds, findAgents } = await import('../shared/roster.ts');
+const { shortTitle, shortIds, findAgents, matchSession } = await import('../shared/roster.ts');
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };
 const dictated = "Hey, you're going to take care of helping me with the Jauvex development. So basically the name of this application development. So you're going to be the Jauvex development agent.";
 const t = shortTitle(dictated);
@@ -24,4 +24,8 @@ check('an unknown name finds nobody', findAgents(all, 'Nobody Here').length === 
   check('a name with a word more finds the agent it holds', findAgents(all, 'Acme Creative Agent').map((a) => a.name).join() === 'Creative Agent');
   check('the longest name held wins', findAgents(all, 'the Acme Video Agent').map((a) => a.name).join() === 'Acme Video Agent');
   check('a name holding nobody finds nobody', findAgents(all, 'Acme Legal Agent').length === 0); }
+{ // the session an order names (open, send, import), among a folder's
+  const list = [{ sessionId: '7956cf18-aaaa', summary: 'Fix the login', customTitle: 'Landing page' }, { sessionId: '01a0bd26-bbbb', summary: 'Write the post' }];
+  check('a session is named by id, the start of its id, its title or its summary', matchSession(list, '7956cf18-aaaa')?.summary === 'Fix the login' && matchSession(list, '01a0bd')?.summary === 'Write the post' && matchSession(list, 'landing page')?.sessionId === '7956cf18-aaaa' && matchSession(list, 'write the post')?.sessionId === '01a0bd26-bbbb');
+  check('a name nobody has, or none, names no session', matchSession(list, 'nothing like it') === undefined && matchSession(list, '  ') === undefined); }
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

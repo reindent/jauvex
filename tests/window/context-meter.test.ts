@@ -39,6 +39,6 @@ await until(`${V}.querySelectorAll('.chat-error').length >= ${cards + 3} && ${id
 check('a message that does not fit: compacted at once and sent again, once', (await compactions()) === before + 1, `${before} -> ${await compactions()}`);
 check('... then the failure shows, and nothing loops', (await js(`${V}.querySelectorAll('.chat-error').length`)) === cards + 3 && (await js(idle)), String(await js(`${V}.querySelectorAll('.chat-error').length`)));
 
-await js("document.querySelector('button[title=\"Jauvex settings\"]').click()"); await sleep(300);
+await js("document.querySelector('button[title=\"Jauvex settings\"]').click()"); await sleep(300); await js("[...document.querySelectorAll('.modal.settings .settings-tab')].find((t) => t.textContent === 'Context').click()"); await sleep(200);
 check('the setting is in Jauvex settings, under Context', (await js("[...document.querySelectorAll('.modal.settings .settings-group')].some((g) => g.querySelector('strong')?.textContent === 'Context' && g.querySelector('select')?.value === '90')")) === true);
 done(close);
