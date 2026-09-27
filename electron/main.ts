@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { SHELL_VARS, parseShellVars } from './shellenv.js';
 import { DATA_DIR } from './paths.js';
+import { updater, appBundleOf } from './updater.js';
 import { execFileSync } from 'node:child_process';
 import { watch as fsWatch, existsSync, unlinkSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { Attachment, ChatEvent, ChatStart, DebugEvent, PermissionDecision, Provider } from '../shared/types.js';
@@ -100,6 +101,18 @@ async function createWindow(): Promise<void> {
 
 app.setName('Jauvex');
 app.whenReady().then(async () => {
+  // Updates (T-165): the app asks jauvex.reindent.com which version is the latest, at launch and every six hours; the copy the install
+  // command made, when it runs an older one, tells the window, whose Jauvex agent asks the user; on a yes the `update` order hands the
+  // work to launchd and the app quits. A hidden copy (the checks) never asks the site: it may stand in for its answer and for the
+  // installed app; nothing else can.
+  const updates = updater({ dataDir: DATA_DIR, version: app.getVersion(), pid: process.pid, appBundle: appBundleOf(process.execPath),
+    quit: () => { app.releaseSingleInstanceLock(); app.exit(0); }, installed: HIDDEN && process.env.CVC_UPDATE_INSTALLED === '1' ? true : undefined,
+    ...(HIDDEN ? { site: process.env.CVC_UPDATE_SITE || 'http://127.0.0.1:9' } : {}) }); // a check never reaches the real site
+  const offerUpdate = () => void updates.status().then((s) => { if (s.available) win?.webContents.send('app:update', s); });
+  if (HIDDEN) { if (process.env.CVC_UPDATE_LATEST) updates.note(process.env.CVC_UPDATE_LATEST); }
+  else { const check = () => void updates.check().then((known) => { if (known) offerUpdate(); }); check(); setInterval(check, 6 * 3600_000).unref(); }
+  ipcMain.handle('app:update:status', () => updates.status());
+  ipcMain.handle('app:update:run', () => updates.run());
   adoptShellPath();
   if (HIDDEN) app.dock?.hide(); // an automated check must not put a second app icon in the user's Dock
   else app.dock?.setIcon(path.join(ROOT, 'assets', 'icon.png')); // launched as the stock Electron.app, so the Dock icon is set at runtime

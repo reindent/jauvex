@@ -21,7 +21,14 @@ curl -fsSL https://jauvex.reindent.com/install | sh
 It needs Node 22.18 or newer. It downloads this source, checks its SHA-256 and builds Jauvex on your Mac: nothing
 prebuilt is downloaded, so there is nothing for Apple to notarize. Jauvex lands in Applications (`~/Applications` when
 `/Applications` is not writable), a real app with its own name, icon and microphone permission; the source and the build
-stay in `~/.jauvex/personal/app`. Run the command again to update, with Jauvex closed. To remove it, quit it and delete
+stay in `~/.jauvex/personal/app`. Run the command again to update, with Jauvex closed, or let Jauvex do it: it asks
+jauvex.reindent.com which version is the latest (`/api/personal/version`), at launch and every six hours, and when a newer one is out
+the sidebar's footer says so ("1.2.0 is out") and the Jauvex agent asks you, once per version, whether to update now. On a yes
+(or "update the app" at any time) it runs `node scripts/jauvex.ts update`: refused while other agents work (`--now` on your word);
+otherwise the app fetches the same install command, checks that it installs the version offered, leaves it and a small runner in
+`~/.jauvex/personal/update/`, hands the runner to launchd and quits. The runner waits for the app to exit, runs the install command
+(it rebuilds the app on your Mac and opens it), opens the old app again if it does not finish, and removes it; its log is
+`update/update.log`. Only the app the install command made updates itself; a clone updates with git (T-165). To remove it, quit it and delete
 `Jauvex.app` and `~/.jauvex/personal/app`; its settings stay in `~/.jauvex/personal`. To work on the code, clone this
 repository instead: `npm start` runs it from the clone, and `npm run app` makes the same app in `tmp/mac-app/Jauvex.app`
 (`scripts/mac-app.ts`: Electron's app renamed Jauvex, with the built app, the Whisper models, Claude and Codex inside, signed

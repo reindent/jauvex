@@ -74,6 +74,7 @@ async function work() {
       out({ type: 'assistant', message, parent_tool_use_id: null, error: 'invalid_request', session_id: sessionId, uuid: record('assistant', message) });
       result(started, 'Prompt is too long', { is_error: true, terminal_reason: 'prompt_too_long', modelUsage: {} }); continue;
     }
+    const THINK = Number(process.env.MOCK_THINK_MS ?? 0); if (THINK > 0) await sleep(THINK); // the model thinking first: a turn that stays busy a while
     let said = ''; out({ type: 'stream_event', event: { type: 'message_start', message: { id: `msg_mock_${randomUUID().slice(0, 8)}`, type: 'message', role: 'assistant', model, content: [], usage: usage() } }, parent_tool_use_id: null, session_id: sessionId, uuid: randomUUID() }); // a request starts: what was handed over before it is in it
     for (const piece of replyTo(textOf(content)).match(/\S+\s*/g) ?? []) {
       if (cut) break; said += piece;
