@@ -3,6 +3,14 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.2.1: 2026-09-28
+
+- **Talk to a board.** Under each board, "Talk to this board": a chat with an agent of its own, by text or by voice. Ask it to add a
+  task, take one, move one on, finish or reopen one, or plan from the board: it edits the board's files and the board redraws after
+  each answer. It sees the board as it is on every message. Its conversation is kept for that board, in the app's own data, never
+  in your folder.
+- A Jev trainer's chat keeps its history after a window reload when its folder is reached through a symbolic link.
+
 ## 1.2.0 — 2026-09-28
 
 - **Boards.** A folder's to-do lists, plain markdown files in the folder (`PROJECT.md`, `MARKETING.md`, `BOARD.md`, `ROADMAP.md`,

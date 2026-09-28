@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.2, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.2.1, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -159,7 +159,13 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   a yes (the question names the file and its done file); both files go, and its view closes (T-179). A new board: the folder's options (New board), or
   `new-board --name "..." [--folder ...]` on the command line, which writes `boards/<name>.md` from a template and opens it. A board an
   agent writes shows up within seconds (on a refresh, when the window comes back to the front, and every 15 s); markdown with no items
-  is not a board.
+  is not a board. **Its own chat** (T-199; the user, 2026-09-28: talking to boards, "it's very important"): under the board, "Talk to
+  this board", by text or by voice, as under a Jev agent. A session of its own in the folder (the Jauvex agent's provider), told on
+  every message what the board is now (the board itself, or, past 30 KB, to read the file) and the boards format; it adds, takes,
+  moves and finishes items by editing the board's files, and the board redraws after every answer. Its session is kept in the app's
+  state for that board's file (a board's folder is often a repository: nothing of ours is written there), and it is left out of the
+  folder's list of agents. A folder reached through a symlink keeps its history too: Claude Code files a session by the real path,
+  and the app looks there as well (`tests/window/board-chat.test.ts`).
 - **Images an agent shows** (a markdown image with a local path, relative to its folder or absolute) load from the file
   and never overflow the thread (at most the thread's width and 60% of the window's height).
 - **Images in a message**: paste a screenshot from the clipboard into the composer, drop image files on it, or pick them

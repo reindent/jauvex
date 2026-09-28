@@ -7,7 +7,7 @@ import { DATA_DIR, JAUVEX_HOME } from './paths.js';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { listSessions, getSessionMessages, getSessionInfo, renameSession, type SessionMessage } from '@anthropic-ai/claude-agent-sdk';
-import { type JauvexEntry, JEV_TEMPLATE, providerOf, type SessionPrefs, type JevAgent, type JevAnswer, type JevRun, type AppState, type Block, type ChatMessage, type MessagesPage, type ModelOption, type Project, type Provider, type SessionInfo, type UiState } from '../shared/types.js';
+import { type BoardChat, type JauvexEntry, JEV_TEMPLATE, providerOf, type SessionPrefs, type JevAgent, type JevAnswer, type JevRun, type AppState, type Block, type ChatMessage, type MessagesPage, type ModelOption, type Project, type Provider, type SessionInfo, type UiState } from '../shared/types.js';
 import * as codex from './codex.js';
 import * as grok from './grok.js';
 import type { ContextUsage } from '../shared/context.js';
@@ -124,8 +124,10 @@ async function transcript(dir: string, sessionId: string): Promise<ChatMessage[]
   const info = await getSessionInfo(sessionId, { dir });
   // A session whose first message starts with a tag (a Jev trainer's chat: the app's context goes first) is one Claude Code leaves out of its
   // listing and of getSessionInfo, though its messages read as any other's (T-182: the trainer's history was lost at a reload): read them,
-  // stamped by the file's own time; "not found" only when neither knows it.
-  const stamp = info?.lastModified ?? await fs.stat(path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects', dir.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`)).then((s) => s.mtimeMs, () => 0);
+  // stamped by the file's own time; "not found" only when neither knows it. Claude Code files a session by the folder's real path: a folder
+  // reached through a symlink is looked for under both (T-199: a board's chat was "not found" after a reload, its folder a symlink).
+  const fileTime = (d: string) => fs.stat(path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects', d.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`)).then((s) => s.mtimeMs, () => 0);
+  const stamp = info?.lastModified || await fileTime(dir) || await fileTime(await fs.realpath(dir).catch(() => dir));
   if (!stamp) throw new HttpError(404, 'Session not found for this folder');
   const key = `${dir}::${sessionId}`; const hit = cache.get(key);
   if (hit && hit.stamp === stamp) return hit.messages;
@@ -211,6 +213,10 @@ export const backend = {
   boardSet: async (id: string, file: string, line: number, status: 'todo' | 'doing' | 'done', where: 'board' | 'done' = 'board', task = '') => setBoardStatus((await projectOr404(id)).project.path, file, line, status, where, task),
   newBoard: async (id: string, name: string) => newBoard((await projectOr404(id)).project.path, name),
   deleteBoard: async (id: string, file: string) => deleteBoard((await projectOr404(id)).project.path, file),
+  // a board's own chat (T-199): its session, kept for the board's file in the app's state (a board's folder is often a repository: no file of ours in it)
+  boardChat: async (id: string, file: string): Promise<BoardChat> => (await projectOr404(id)).project.boardChats?.[file] ?? {},
+  setBoardChat: async (id: string, file: string, c: BoardChat) => { const { state, project } = await projectOr404(id); if (!/^(?:[\w .-]+\.md|boards\/[^/\\]+\.md)$/.test(file) || file.includes('..')) throw new Error('not a board file');
+    project.boardChats = { ...(project.boardChats ?? {}), [file]: { ...(c.provider ? { provider: c.provider } : {}), sessionId: c.sessionId ?? null } }; await saveState(state); return true; },
   // ---- Jev agents: a state and typed questions, evaluated; kept here because Jev keeps nothing
   jevAvailable: () => jev.hasKey(),
   jevCreate: async (id: string): Promise<JevAgent> => {

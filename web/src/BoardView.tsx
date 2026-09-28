@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api } from './api';
 import { BOARD_FORMAT, doneFileOf, parseBoard, type Board, type BoardItem, type BoardSection } from '../../shared/board';
-import type { Project } from '../../shared/types';
+import { BOARDS_FORMAT_TEXT, PROVIDER_LABEL, type Project, type Provider } from '../../shared/types';
+import { Chat, type ChatEmbed } from './App';
 
 // A board (T-171), drawn from its markdown files, always the same way: one column per section, one card per task, the glyph as its status.
 // Clicking a glyph moves the task on (to do → doing → done) by rewriting the files: done, it leaves the board for the top of its done file
@@ -21,7 +22,7 @@ const VIEW_KEY = 'cvc.board.view';
 const isDone = (s: BoardSection) => /^Done/i.test(s.title);
 const shortTitle = (s: BoardSection) => s.title.replace(/\s*[—(].*$/, '');
 
-export function BoardView({ project, file, onChanged }: { project: Project; file: string; onChanged?: () => void /* the sidebar's counts */ }) {
+export function BoardView({ project, file, onChanged, chatProvider = 'claude', active = true, showMeta = false }: { project: Project; file: string; onChanged?: () => void /* the sidebar's counts */; chatProvider?: Provider; active?: boolean; showMeta?: boolean }) {
   const [files, setFiles] = useState({ md: '', done: '' }); const [loaded, setLoaded] = useState(false);
   const [showDone, setShowDone] = useState(() => localStorage.getItem(`cvc.board.done.${project.id}:${file}`) === '1');
   const [openKey, setOpenKey] = useState<string | null>(null); const [note, setNote] = useState('');
@@ -46,8 +47,23 @@ export function BoardView({ project, file, onChanged }: { project: Project; file
   const cols = view === 'kanban'
     ? [{ title: 'To do', note: '', cls: 'lane-todo', count: String(lane('todo').length), cards: lane('todo') }, { title: 'Doing', note: '', cls: 'lane-doing', count: String(lane('doing').length), cards: lane('doing') }, ...(showDone ? [doneCol] : [])]
     : [...board.sections.filter((s) => showDone || !isDone(s)).map((s) => ({ title: s.title, note: s.note, cls: prio(s), count: `${s.items.filter((i) => i.status === 'done').length}/${s.items.length}`, cards: s.items.map((item): Card => ({ item, where: 'board' })) })), ...(showDone ? [doneCol] : [])];
+  // The chat under the board (T-199): a session of its own in the folder, told on every message what the board is now; it edits the board's
+  // files and the board redraws from them. Its session is kept in the app's state for this board, never written into the folder.
+  const [chat, setChat] = useState<{ provider?: Provider; sessionId?: string | null } | null>(null);
+  useEffect(() => { let gone = false; void api.boardChat(project.id, file).then((c) => { if (!gone) setChat(c); }).catch(() => { if (!gone) setChat((cur) => cur ?? {}); }); return () => { gone = true; }; }, [project.id, file]);
+  const bridge = useRef<{ send?: (text: string) => void }>({}); const live = useRef(files); live.current = files; const changed = useRef(onChanged); changed.current = onChanged;
+  const provider: Provider = chat?.provider ?? chatProvider;
+  const redraw = () => { void load(); changed.current?.(); };
+  const embed: ChatEmbed = useMemo(() => ({ provider, bridge: bridge.current,
+    hint: `Tell ${PROVIDER_LABEL[provider]} what to change on this board, by text or by voice: it adds, takes, moves and finishes items in the board's files, and the board redraws from them. It sees the board on every message.`,
+    // the board goes along, unless it is long: then the chat is told to read the file (it has it), not sent a hundred kilobytes a message
+    context: () => { const md = live.current.md; const now = md.length <= 30_000 ? `The board now (${file}):\n\`\`\`md\n${md}\n\`\`\`` : `The board is long (${Math.round(md.length / 1000)} KB): read ${file} before you answer.`;
+      return `<board-context>\nYou are the assistant of one board of this folder (${project.path}): the file ${file}, its finished items in ${doneFileOf(file)}. The user talks to you about it, by text or by voice: to add work, take it, move it on, finish or reopen it, or plan from it. Change the board by editing its files directly: the view draws the board from them as you save. ${BOARDS_FORMAT_TEXT}\n${now}\n</board-context>\n\n`; },
+    onReply: () => redraw(),
+  }), [provider, project.path, file]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!loaded) return <div className="board-view"><p className="muted" style={{ padding: 28 }}>Opening…</p></div>;
   return (
+    <div className="board-wrap">
     <div className="board-view">
       <div className="board-head"><div><h1>{board.title}</h1><p>{total} tasks · {done} done · {file}{files.done ? ` · ${doneFileOf(file)}` : ''}</p></div><span className="sp" /><div className="bar" title={`${done} of ${total} done`}><i style={{ width: `${total ? Math.round((done / total) * 100) : 0}%` }} /></div><span className="board-seg" role="tablist">{(['sections', 'kanban'] as const).map((v) => <button key={v} role="tab" aria-selected={view === v} className={view === v ? 'on' : ''} title={v === 'sections' ? 'A column per section: P0, P1, P2...' : 'A lane per status: to do, doing, done'} onClick={() => pick(v)}>{v === 'sections' ? 'Sections' : 'Kanban'}</button>)}</span><label className="check"><input type="checkbox" checked={showDone} onChange={(e) => toggleDone(e.target.checked)} /> Show done</label></div>
       {newer && <p className="board-newer">This board uses boards format v{Math.max(board.version, doneBoard.version)}, newer than this app knows (v{BOARD_FORMAT}): it is shown as it is, and nothing here changes it. Update Jauvex to work on it here.</p>}
@@ -60,6 +76,10 @@ export function BoardView({ project, file, onChanged }: { project: Project; file
             <div className="cards">{c.cards.length === 0 && <p className="empty">{c.title === 'Done' ? 'Nothing done yet.' : 'Nothing here.'}</p>}{c.cards.map(card)}</div>
           </section>))}
       </div>
+    </div>
+    {chat && <div className="jev-chat board-chat"><header><b>Talk to this board</b><span>{PROVIDER_LABEL[provider]} · sees the board on every message: adds, moves and finishes items in its files · text or voice</span></header>
+      <Chat embed={embed} project={project} sessionId={chat.provider === provider ? chat.sessionId ?? null : null} active={active} info={null} showMeta={showMeta} onBusy={() => {}} onTurnEnd={redraw} onNew={() => {}}
+        onSession={(sid) => { const next = { provider, sessionId: sid }; setChat(next); void api.setBoardChat(project.id, file, next); }} /></div>}
     </div>
   );
 }
