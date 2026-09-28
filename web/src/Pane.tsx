@@ -9,7 +9,7 @@ import { md } from './md';
 export type PaneTarget = { kind: 'file'; path: string } | { kind: 'url'; url: string };
 const dirOf = (p: string) => p.replace(/\/[^/]*$/, '');
 
-export function Pane({ target, onClose }: { target: PaneTarget; onClose: () => void }) {
+export function Pane({ target, onClose, onClickCapture }: { target: PaneTarget; onClose: () => void; onClickCapture?: (e: React.MouseEvent) => void }) {
   const [view, setView] = useState<FileView | null>(null);
   useEffect(() => { if (target.kind !== 'file') { setView(null); return; } let alive = true; setView(null); window.desktop.readFile(target.path).then((v) => { if (alive) setView(v); }).catch((e: Error) => { if (alive) setView({ ok: false, error: e.message, path: target.path }); }); return () => { alive = false; }; }, [target]);
   const title = target.kind === 'url' ? target.url.replace(/^https?:\/\//, '') : target.path.split('/').pop() ?? target.path;
@@ -26,7 +26,7 @@ export function Pane({ target, onClose }: { target: PaneTarget; onClose: () => v
   else if (view.kind === 'frame') { frame = true; body = createElement('webview', { src: `file://${encodeURI(view.path)}`, className: 'pane-web', title: view.name }); }
   else body = <pre className="pane-text">{view.text ?? ''}</pre>;
   return (
-    <aside className="pane">
+    <aside className="pane" onClickCapture={onClickCapture}>
       <div ref={grip} className="pane-grip" onPointerDown={onGrip} title="Drag to resize" />
       <div className="pane-head"><span className="pane-title" title={target.kind === 'url' ? target.url : target.path}>{title}</span>
         <button className="icon-btn sm" title={target.kind === 'url' ? 'Open in the browser' : 'Open with the Mac'} onClick={outside}><ExternalLink size={14} /></button>

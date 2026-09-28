@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { grokPermissionOptions } from '../shared/permissions.js';
+import { folderFiles } from './workfiles.js';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -214,7 +215,7 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   if (!sessionId) {
     // Grok takes the briefing once, when the session is made (`_meta.rules`, folded into its system prompt). The note on dictation goes in
     // whatever the first message was: a session started by typing may be talked to later, and a typed message never carries the tag.
-    const rules = clientBriefing(true, req.vocabulary, !!req.steward, APP_ROOT);
+    const rules = clientBriefing(true, req.vocabulary, !!req.steward, APP_ROOT, await folderFiles(project.path));
     const r = await call<{ sessionId: string; models?: ModelState }>('session/new', { cwd: project.path, mcpServers: [], _meta: { rules, ...(req.model ? { modelId: req.model } : {}), ...(req.effort ? { reasoningEffort: req.effort } : {}), ...grokPermissionOptions(permissions) } });
     sessionId = r.sessionId; model = r.models?.currentModelId ?? model; loaded.add(sessionId); chosen.set(sessionId, { model: model ?? '', effort: req.effort ?? '', permissions });
   } else if (!loaded.has(sessionId)) {

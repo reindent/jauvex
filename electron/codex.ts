@@ -1,4 +1,5 @@
 import { APP_ROOT } from './backend.js';
+import { folderFiles } from './workfiles.js';
 import type { CodexPermissionBaseline } from '../shared/types.js';
 import { codexPermissionOptions } from '../shared/permissions.js';
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
@@ -173,7 +174,7 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   const rememberPermissions = (id: string, r: { approvalPolicy?: unknown; sandbox?: unknown }) => { if (r.approvalPolicy !== undefined && r.sandbox !== undefined) permissionBaselines.set(id, { approvalPolicy: r.approvalPolicy, sandboxPolicy: r.sandbox }); };
   let threadId = req.sessionId; let model = req.model;
   const s = (server ??= boot());
-  const spoken = { developerInstructions: clientBriefing(!!req.voice, req.vocabulary, !!req.steward, APP_ROOT) }; // every session is told where it is running; dictated text is read for intent
+  const spoken = { developerInstructions: clientBriefing(!!req.voice, req.vocabulary, !!req.steward, APP_ROOT, await folderFiles(project.path)) }; // every session is told where it is running; dictated text is read for intent
   if (!threadId) { const r = await call<{ thread: Thread; model: string; approvalPolicy?: unknown; sandbox?: unknown }>('thread/start', { cwd: project.path, ...(req.model ? { model: req.model } : {}), ...spoken }); threadId = r.thread.id; model = r.model; rememberPermissions(threadId, r); loaded.add(threadId); }
   else if (!loaded.has(threadId)) { const r = await call<{ model: string; approvalPolicy?: unknown; sandbox?: unknown }>('thread/resume', { threadId, excludeTurns: true, ...spoken }); model ??= r.model; rememberPermissions(threadId, r); loaded.add(threadId); }
   if (turns.has(threadId)) throw new Error('This session is already running a turn.');

@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.1, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.2, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -9,6 +9,8 @@ sessions or start new ones with either provider, and talk to them: a voice chann
 word, what it understood, a summary of the agent's answer), steers a working agent without interrupting it, names and
 starts agents by voice, and lets agents talk to each other inside the app. No server: the window talks to the main
 process over IPC, and your sessions stay where Claude Code and Codex keep them.
+
+What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 
 ## Installing
 
@@ -140,7 +142,24 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   in a `<webview>` of their own that starts muted and stays muted and opens no windows. The pane has an "open outside"
   button (the Mac for files, the browser for pages), a close button, and a draggable width that is remembered. A navigation
   the app did not catch (a link in a place it does not watch) is stopped in the main process and sent to the pane too.
-  Later the same pane takes terminals and browsers. Relative paths resolve against the session's folder.
+  Later the same pane takes terminals and browsers. Relative paths resolve against the session's folder; a link inside a file the
+  pane shows resolves against that file's folder, and opens in the pane too (T-183).
+- **Boards** (T-171): a folder's to-do lists, plain markdown in the folder (`PROJECT.md`, `MARKETING.md`, `BOARD.md`, `ROADMAP.md`,
+  `boards/*.md`): `## Section` headings (P0, P1, P2), items as `- [ ] **T-01 · Title** — body` with `[ ]` to do, `[~]` doing. A done
+  task leaves the board, in the same edit, for the top of its done file beside it (`PROJECT-DONE.md`, `boards/x-DONE.md`), ending
+  "— shipped YYYY-MM-DD (commit)"; a reopened one goes back to the top of the board's first section as to do; ids are unique across both
+  files (T-174). A board written before brings its `[x]` tasks and its Done section there on its first write. The format has a version (T-173): a board's first line is `<!-- boards: v1 -->` (hidden when the markdown is shown); a board
+  without it is v1 and gets it when the app writes it, and a board whose line names a newer version is shown as it is, never
+  rewritten, with a note to update Jauvex. The file is the only truth and git its history; the agents keep them (every agent is told its folder's boards and how to
+  keep them). They are listed under the folder's sessions, with how many items are done, and open as columns of cards, one per section,
+  coloured by priority; a click on a card's circle moves it on (to do, doing, done: off to the done file); a click on the card shows its
+  text; "Show done" adds the done file's tasks as a last column, where a circle reopens a task. Two views, switched in the board's header and remembered (T-180):
+  Sections, a column per section, and Kanban, a lane per status (to do, doing, and done with Show done), each card tagged with its
+  section; a circle moves a card to the next lane, in the file. A board's row, secondary click: Delete board, after
+  a yes (the question names the file and its done file); both files go, and its view closes (T-179). A new board: the folder's options (New board), or
+  `new-board --name "..." [--folder ...]` on the command line, which writes `boards/<name>.md` from a template and opens it. A board an
+  agent writes shows up within seconds (on a refresh, when the window comes back to the front, and every 15 s); markdown with no items
+  is not a board.
 - **Images an agent shows** (a markdown image with a local path, relative to its folder or absolute) load from the file
   and never overflow the thread (at most the thread's width and 60% of the window's height).
 - **Images in a message**: paste a screenshot from the clipboard into the composer, drop image files on it, or pick them
@@ -493,7 +512,8 @@ Press the white round button in the message box. All local except the two Claude
 - **Voice can start while a turn runs**: the Stop button and the voice button sit side by side; voice joins the work in
   progress, and what you say steers the running turn.
 - **Controls**: end, mic mute, orb, speaker mute, settings (voice, speed, pause length, language, voice model). When the
-  app loses focus a small floating controller stays on top.
+  app loses focus a small floating controller stays on top; its microphone counts down with the app's before the auto-mute
+  (T-178).
 
 ## How it is built
 - TypeScript everywhere. No server: the React UI (`web/`) calls the Electron main process over one

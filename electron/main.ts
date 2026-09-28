@@ -15,6 +15,7 @@ const ROOT = path.resolve(here, '..');
 process.env.CVC_ROOT = ROOT;
 const DEV_URL = process.env.CVC_DEV_URL;        // set by `npm run dev` (Vite)
 const HIDDEN = process.env.CVC_HIDDEN === '1';   // UI checks without taking focus
+const MINI_CHECK = HIDDEN && process.env.CVC_MINI_CHECK === '1'; // a check reads the floating bar: it is made, never shown (tests/window/mini-countdown.test.ts)
 
 // Everything this app stores is in its data folder, ~/.jauvex/personal for every copy (electron/paths.ts), run from source or compiled:
 // the state, and the Chromium profile in its profile/. CVC_DATA_DIR points automated checks at a throwaway folder so they can never
@@ -39,7 +40,7 @@ const applyMute = () => win?.webContents.setAudioMuted(HIDDEN || !audible());   
 let voiceActive = false;
 
 function showMini(): void {
-  if (HIDDEN || !voiceActive || !win) return;
+  if ((HIDDEN && !MINI_CHECK) || !voiceActive || !win) return;
   if (!mini) {
     mini = new BrowserWindow({ width: 268, height: 72, show: false, frame: false, transparent: true, resizable: false, hasShadow: false, alwaysOnTop: true, skipTaskbar: true,
       fullscreenable: false, minimizable: false, maximizable: false, type: 'panel', webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
@@ -64,7 +65,7 @@ function showMini(): void {
       drag = { sx: c.x, sy: c.y, wx, wy, timer: setInterval(() => { if (!mini || !drag) return; const n = screen.getCursorScreenPoint(); mini.setPosition(Math.round(drag.wx + n.x - drag.sx), Math.round(drag.wy + n.y - drag.sy)); }, 16) };
     });
   }
-  mini.showInactive(); // never takes the keyboard away from whatever the user switched to
+  if (!MINI_CHECK) mini.showInactive(); // never takes the keyboard away from whatever the user switched to
 }
 
 // Launched through LaunchServices the app gets a bare environment: PATH (Claude's hooks and MCP servers expect the shell's), and the
@@ -226,7 +227,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('voice:summarize', (_e, asked: string, answer: string, provider: Provider, model: string, main: string) => voice.summarize(asked, answer, provider, model, main));
   ipcMain.handle('voice:speak', (_e, text: string, v: string, rate: number) => voice.speak(text, v, rate));
   ipcMain.handle('voice:cancel', () => { voice.cancelSpeech(); return true; });
-  ipcMain.on('voice:state', (_e, st: { on: boolean }) => { voiceActive = Boolean(st.on); if (!voiceActive) mini?.hide(); mini?.webContents.send('voice:state', st); });
+  ipcMain.on('voice:state', (_e, st: { on: boolean }) => { voiceActive = Boolean(st.on); if (!voiceActive) mini?.hide(); else if (MINI_CHECK && !mini) showMini(); mini?.webContents.send('voice:state', st); });
   ipcMain.on('voice:type', (_e, text: string) => { win?.webContents.send('voice:type', String(text)); }); // typed in the tiny bar: to the listening chat, without bringing the app forward
   ipcMain.on('mini:size', (_e, w: number) => { if (!mini) return; const [, h] = mini.getSize(); mini.setSize(Math.max(200, Math.round(w)), h ?? 72, true); }); // the bar grows for its typing box (animated on macOS)
   ipcMain.on('voice:cmd', (_e, cmd: string) => { if ((cmd === 'focus' || cmd === 'new') && !HIDDEN) { win?.show(); win?.focus(); } /* an automated check never comes to the front */ win?.webContents.send('voice:cmd', cmd); });

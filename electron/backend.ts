@@ -12,6 +12,7 @@ import * as codex from './codex.js';
 import * as grok from './grok.js';
 import type { ContextUsage } from '../shared/context.js';
 import * as jev from './jev.js';
+import { listBoards, readBoardFiles, setBoardStatus, newBoard, deleteBoard } from './workfiles.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // CVC_ROOT is set by the Electron main process (its bundle lives in dist-electron/).
@@ -121,12 +122,16 @@ export function normalize(m: Pick<SessionMessage, 'type' | 'uuid' | 'message'> &
 const cache = new Map<string, { stamp: number; messages: ChatMessage[] }>();
 async function transcript(dir: string, sessionId: string): Promise<ChatMessage[]> {
   const info = await getSessionInfo(sessionId, { dir });
-  if (!info) throw new HttpError(404, 'Session not found for this folder');
+  // A session whose first message starts with a tag (a Jev trainer's chat: the app's context goes first) is one Claude Code leaves out of its
+  // listing and of getSessionInfo, though its messages read as any other's (T-182: the trainer's history was lost at a reload): read them,
+  // stamped by the file's own time; "not found" only when neither knows it.
+  const stamp = info?.lastModified ?? await fs.stat(path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects', dir.replace(/[^a-zA-Z0-9]/g, '-'), `${sessionId}.jsonl`)).then((s) => s.mtimeMs, () => 0);
+  if (!stamp) throw new HttpError(404, 'Session not found for this folder');
   const key = `${dir}::${sessionId}`; const hit = cache.get(key);
-  if (hit && hit.stamp === info.lastModified) return hit.messages;
-  const raw = await getSessionMessages(sessionId, { dir });
+  if (hit && hit.stamp === stamp) return hit.messages;
+  const raw = await getSessionMessages(sessionId, { dir }); if (!info && !raw.length) throw new HttpError(404, 'Session not found for this folder');
   const messages = raw.map(normalize).filter((x): x is ChatMessage => x !== null);
-  cache.set(key, { stamp: info.lastModified, messages });
+  cache.set(key, { stamp, messages });
   if (cache.size > 8) cache.delete(cache.keys().next().value as string);
   return messages;
 }
@@ -200,6 +205,12 @@ export const backend = {
     project.prefs = { ...project.prefs, [sessionId]: { model: String(prefs.model ?? ''), effort: String(prefs.effort ?? ''), permissions: prefs.permissions === 'yolo' ? 'yolo' : prefs.permissions === 'auto' ? 'auto' : 'ask' } };
     await saveState(state); return true;
   },
+  // ---- boards: markdown to-do lists in the project folder (electron/workfiles.ts, T-171)
+  boards: async (id: string) => listBoards((await projectOr404(id)).project.path),
+  board: async (id: string, file: string) => readBoardFiles((await projectOr404(id)).project.path, file),
+  boardSet: async (id: string, file: string, line: number, status: 'todo' | 'doing' | 'done', where: 'board' | 'done' = 'board', task = '') => setBoardStatus((await projectOr404(id)).project.path, file, line, status, where, task),
+  newBoard: async (id: string, name: string) => newBoard((await projectOr404(id)).project.path, name),
+  deleteBoard: async (id: string, file: string) => deleteBoard((await projectOr404(id)).project.path, file),
   // ---- Jev agents: a state and typed questions, evaluated; kept here because Jev keeps nothing
   jevAvailable: () => jev.hasKey(),
   jevCreate: async (id: string): Promise<JevAgent> => {
