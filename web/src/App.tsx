@@ -18,13 +18,15 @@ import { ago, api, pickFolder, size } from './api';
 import { VoiceEngine, clean, type VoicePhase } from './voice';
 import { Orb } from './Orb';
 import { JevPad } from './JevPad';
+import { BoardView } from './BoardView';
+import { doneFileOf, type BoardInfo } from '../../shared/board';
 
 
 // One mounted chat, as the app's agent router sees it: it can be handed a message (steered into a running turn, or sent as a new one).
 type ChatBridge = { deliver: (text: string, replyTo?: Sel) => Promise<void> }; // replyTo: the reply to this message goes back to that agent by itself
 type SideVoice = { muteIn?: number | null; phase: VoicePhase; level: React.RefObject<number>; micMuted: boolean; speakerOff: boolean; hush: () => void; toggleMic: () => void; toggleSpeaker: () => void; end: () => void };
 type QueueItem = { text: string; images: Attachment[]; spoken?: boolean; shown?: boolean }; // shown: already in the thread (a stop's words, a message handed to a turn that never read it): sent without a second bubble // one queued message: its text, the images pasted with it, and whether it was dictated (it goes out tagged)
-type Sel = { projectId: string; sessionId: string | null; key: string; kind?: 'jev'; voice?: boolean; name?: string; kickoff?: string; purpose?: string; detailsId?: string; adopt?: string }; // adopt: a turn already running in the main process (the window was reloaded); its chat id // detailsId: the model is still reading the order; name and kickoff may still change // kickoff: the first message of an agent opened by an order to the app, sent by itself // name: given by a spoken command ("... named X"), applied once the session exists // voice: opened by a spoken command, so voice mode carries on there // kind jev: sessionId is a Jev agent's id, and the view is its pad, not a chat
+type Sel = { projectId: string; sessionId: string | null; key: string; kind?: 'jev' | 'board'; file?: string /* a board's file, relative to the folder */; voice?: boolean; name?: string; kickoff?: string; purpose?: string; detailsId?: string; adopt?: string }; // adopt: a turn already running in the main process (the window was reloaded); its chat id // detailsId: the model is still reading the order; name and kickoff may still change // kickoff: the first message of an agent opened by an order to the app, sent by itself // name: given by a spoken command ("... named X"), applied once the session exists // voice: opened by a spoken command, so voice mode carries on there // kind jev: sessionId is a Jev agent's id, and the view is its pad, not a chat
 type Spoken = { text: string; audio: ArrayBuffer | null };
 // "Stop" must stop at once: a short utterance with a stop word is acted on from the transcript itself, without asking any model.
 // Spanish "para" and "alto" are also everyday words ("for", "high"), so they only count when they are the whole utterance, give or take "ya" or "eso".
@@ -66,6 +68,10 @@ export default function App() {
   const [cursor, setCursor] = useState(-1);
   const [sidebar, setSidebar] = useState(true);
   const [picker, setPicker] = useState<Project | null>(null);
+  // Each folder's boards (T-171): its markdown to-do lists, read again on every refresh, on focus and every 15 s (agents write them).
+  const [boards, setBoards] = useState<Record<string, BoardInfo[]>>({});
+  const [nameBox, setNameBox] = useState<{ title: string; hint?: string; placeholder?: string; then: (name: string | null) => void } | null>(null);
+  const askName = (title: string, hint?: string, placeholder?: string) => new Promise<string | null>((then) => setNameBox({ title, hint, placeholder, then }));
   const [showMeta, setShowMeta] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [renameAt, setRenameAt] = useState<'title' | 'row'>('row'); // one input at a time: in the title bar or in the sidebar row
@@ -118,6 +124,9 @@ export default function App() {
           if (!found.length) return { ok: false, error: `no session of ${folder.name} is ${missing.map((m) => `"${m}"`).join(' or ')} (import --folder "${folder.name}" with no session lists the ones there are)` };
           await api.setSessions(folder.id, [...listed, ...found.map((x) => x.sessionId)], Object.fromEntries(found.map((x) => [x.sessionId, x.provider]))); await refresh();
           return { ok: true, folder: folder.name, imported: found.map((x) => ({ id: x.sessionId, title: title(x), provider: x.provider })), ...(missing.length ? { notFound: missing } : {}) }; }
+        case 'new-board': { const folder = findFolder(c.folder); if (!folder) return { ok: false, error: c.folder ? `no folder "${c.folder}"` : 'no folder yet: add-folder first' }; if (!c.name?.trim()) return { ok: false, error: 'name the board: --name "..."' };
+          const file = await api.newBoard(folder.id, c.name.trim()); await loadBoards(folder); const title = (await api.boards(folder.id)).find((b) => b.file === file)?.title ?? c.name.trim();
+          open({ projectId: folder.id, sessionId: null, key: `${folder.id}:board:${file}`, kind: 'board', file, name: title }); return { ok: true, folder: folder.name, board: file }; }
         case 'open': { if (!c.session) { if (!jauvex) return { ok: false, error: 'no Jauvex agent' }; const key = `${jauvex.id}:jauvex`; open({ projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' }); return { ok: true, opened: 'Jauvex' }; }
           const hit = findSession(c.folder ? findFolder(c.folder) : null, c.session) /* no folder named: every folder */; if (!hit) return { ok: false, error: `no session "${c.session}"` };
           // an opened session goes in its folder's list too: shown only as an open chat, it dropped out when other chats took the eight places (the user, 2026-09-26: seven sessions an agent opened, gone a few at a time)
@@ -173,7 +182,9 @@ export default function App() {
     const stop = () => { el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', stop); el.removeEventListener('pointercancel', stop); el.removeEventListener('lostpointercapture', stop); };
     const move = (ev: PointerEvent) => { if (!(ev.buttons & 1)) return stop(); const side = el.parentElement; if (!side) return stop(); const w = Math.round(Math.max(220, Math.min(560, ev.clientX - side.getBoundingClientRect().left))); document.documentElement.style.setProperty('--side-w', `${w}px`); localStorage.setItem('cvc.side.w', String(w)); };
     el.addEventListener('pointermove', move); el.addEventListener('pointerup', stop); el.addEventListener('pointercancel', stop); el.addEventListener('lostpointercapture', stop); };
-  const catchLinks = (e: React.MouseEvent) => { const a = (e.target as HTMLElement).closest?.('a[href]'); if (!a) return; const href = a.getAttribute('href') ?? ''; if (!href || href.startsWith('#')) return; e.preventDefault(); e.stopPropagation(); const host = a.closest('.chat-host') as HTMLElement | null; openLink(href, host?.dataset.base ?? ''); };
+  const catchLinks = (e: React.MouseEvent) => { const a = (e.target as HTMLElement).closest?.('a[href]'); if (!a) return; const href = a.getAttribute('href') ?? ''; if (!href || href.startsWith('#')) return; e.preventDefault(); e.stopPropagation(); const host = a.closest('.chat-host') as HTMLElement | null;
+    if (a.closest('.pane') && pane?.kind === 'file') { openLink(href, pane.path.replace(/\/[^/]*$/, '')); return; } // a link in the pane's own file: beside that file (T-183)
+    openLink(href, host?.dataset.base ?? ''); };
   const [welcomeOpen, setWelcomeOpen] = useState(false); // the first-run screen: opens by itself the first time the app runs (over the main window), and from the sidebar's footer after
   // The session's model read the order: the name it settled on and the first message it wrote reach the agent that already opened.
   useEffect(() => window.desktop.onCommandDetails((d: CommandDetails) => {
@@ -183,12 +194,15 @@ export default function App() {
   }), [projects]);
   const [debugOpen, setDebugOpen] = useState(() => localStorage.getItem('cvc.debug') === '1');
 
+  const loadBoards = useCallback(async (p: Project) => { if (p.builtin) return; try { const b = await api.boards(p.id); setBoards((x) => (JSON.stringify(x[p.id] ?? []) === JSON.stringify(b) ? x : { ...x, [p.id]: b })); } catch { /* the folder is gone */ } }, []);
   const loadInfos = useCallback(async (p: Project) => {
     try { const sessions = await api.sessions(p.id); setInfos((m) => ({ ...m, [p.id]: sessions })); } catch (e) { setError((e as Error).message); }
   }, []);
   const refresh = useCallback(async () => {
-    try { const s = await api.state(); setProjects(s.projects); s.projects.forEach((p) => void loadInfos(p)); } catch (e) { setError((e as Error).message); }
-  }, [loadInfos]);
+    try { const s = await api.state(); setProjects(s.projects); s.projects.forEach((p) => { void loadInfos(p); void loadBoards(p); }); } catch (e) { setError((e as Error).message); }
+  }, [loadInfos, loadBoards]);
+  const projectsRef = useRef<Project[]>([]); projectsRef.current = projects;
+  useEffect(() => { const again = () => projectsRef.current.forEach((p) => void loadBoards(p)); const t = setInterval(again, 15_000); window.addEventListener('focus', again); return () => { clearInterval(t); window.removeEventListener('focus', again); }; }, [loadBoards]);
   // First load: restore the folders, the picked sessions, and the session that was open last time.
   const restored = useRef(false);
   useEffect(() => { void (async () => {
@@ -319,6 +333,11 @@ export default function App() {
     const dir = await pickFolder(); if (!dir) return;
     try { const project = await api.addProject(dir); await refresh(); setPicker(project); } catch (e) { setError((e as Error).message); }
   };
+  // Deleting a board (asked for 2026-09-27, "with confirmation"): from its row's secondary click, after a yes; its done file goes with it,
+  // and its view closes.
+  const deleteBoardFile = async (p: Project, b: BoardInfo) => {
+    if (!window.confirm(`Delete the board "${b.title}"?\n\n${b.file} is deleted from ${p.name}, with its done file (${doneFileOf(b.file)}) when it has one. The app cannot undo this.`)) return;
+    try { await api.deleteBoard(p.id, b.file); const key = `${p.id}:board:${b.file}`; setOpened((o) => o.filter((x) => x.key !== key)); setSel((cur) => (cur?.key === key ? null : cur)); await loadBoards(p); } catch (e) { setError((e as Error).message); } };
   const removeProject = async (p: Project) => {
     if (!window.confirm(`Remove "${p.name}" from the sidebar? Nothing is deleted on disk.`)) return;
     await api.removeProject(p.id); if (sel?.projectId === p.id) setSel(null); setOpened((o) => o.filter((x) => x.projectId !== p.id)); await refresh();
@@ -362,7 +381,9 @@ export default function App() {
                 <Mark /><span className="row-title">Jauvex</span><small>agent</small></button>); })()}
             {projects.filter((p) => !p.builtin).length === 0 && <p className="side-empty">Add a folder to see the Claude, Codex and Grok sessions that exist for it.</p>}
             {projects.filter((p) => !p.builtin).map((p) => (
-              <ProjectGroup key={p.id} project={p} infos={infos[p.id]} sel={sel} renaming={renameAt === 'row' && renaming?.startsWith(`${p.id}:`) ? renaming.slice(p.id.length + 1) : null} onRenaming={(sid) => { setRenameAt('row'); setRenaming(sid ? `${p.id}:${sid}` : null); }} onRename={(sid, t) => void rename(p.id, sid, t)} onHide={(sid) => void hideSession(p, sid)} onOpenJev={(aid) => openJev(p.id, aid)} onDeleteJev={(aid) => void deleteJev(p.id, aid)} working={new Set(opened.filter((o) => o.projectId === p.id && busy[o.key] && o.sessionId).map((o) => o.sessionId!))} listening={opened.find((o) => o.key === listening && o.projectId === p.id)?.sessionId ?? null} onOpen={(sid) => open({ projectId: p.id, sessionId: sid, key: `${p.id}:${sid}` })} onNew={() => open({ projectId: p.id, sessionId: null, key: `${p.id}:new:${Date.now()}` })} onAdd={() => setPicker(p)} onRemove={() => void removeProject(p)} />
+              <ProjectGroup key={p.id} project={p} infos={infos[p.id]} sel={sel} renaming={renameAt === 'row' && renaming?.startsWith(`${p.id}:`) ? renaming.slice(p.id.length + 1) : null} onRenaming={(sid) => { setRenameAt('row'); setRenaming(sid ? `${p.id}:${sid}` : null); }} onRename={(sid, t) => void rename(p.id, sid, t)} onHide={(sid) => void hideSession(p, sid)} onOpenJev={(aid) => openJev(p.id, aid)} onDeleteJev={(aid) => void deleteJev(p.id, aid)} working={new Set(opened.filter((o) => o.projectId === p.id && busy[o.key] && o.sessionId).map((o) => o.sessionId!))} listening={opened.find((o) => o.key === listening && o.projectId === p.id)?.sessionId ?? null} onOpen={(sid) => open({ projectId: p.id, sessionId: sid, key: `${p.id}:${sid}` })} onNew={() => open({ projectId: p.id, sessionId: null, key: `${p.id}:new:${Date.now()}` })} onAdd={() => setPicker(p)} onRemove={() => void removeProject(p)}
+                boards={boards[p.id] ?? []} onDeleteBoard={(b) => void deleteBoardFile(p, b)} onOpenBoard={(file, title) => open({ projectId: p.id, sessionId: null, key: `${p.id}:board:${file}`, kind: 'board', file, name: title })}
+                onNewBoard={() => void askName('New board', `A to-do board in ${p.name}: boards/<name>.md, a markdown file its agents keep. It opens here.`, 'Launch').then(async (name) => { if (!name) return; try { const file = await api.newBoard(p.id, name); await loadBoards(p); open({ projectId: p.id, sessionId: null, key: `${p.id}:board:${file}`, kind: 'board', file, name }); } catch (e) { setError((e as Error).message); } })} />
             ))}
           </div>
           {voiceUi && listening && sel?.key !== listening && (() => { const o = opened.find((x) => x.key === listening); const name = o?.sessionId ? infos[o.projectId]?.find((i) => i.sessionId === o.sessionId)?.customTitle || infos[o.projectId]?.find((i) => i.sessionId === o.sessionId)?.summary || 'Session' : o?.name || 'New session'; return (
@@ -382,6 +403,7 @@ export default function App() {
       <main className="main" onClickCapture={catchLinks}>
         {error && <div className="toast" onClick={() => setError(null)}>{error}<X size={14} /></div>}
         {opened.map((o) => { const proj = projects.find((x) => x.id === o.projectId); if (!proj) return null; const active = o.key === sel?.key;
+          if (o.kind === 'board' && o.file) return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}><BoardView project={proj} file={o.file} onChanged={() => void loadBoards(proj)} /></div>;
           if (o.kind === 'jev') { const agent = proj.jev?.find((a) => a.id === o.sessionId); return agent ? <div key={o.key} className="chat-host" style={{ display: active ? 'contents' : 'none' }}><JevPad project={proj} agent={agent} active={active} showMeta={showMeta} onChanged={() => void refresh()} /></div> : null; }
           return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}>
             <Chat storeKey={o.key} signedIn={signedIn} jev={jevKey && !o.sessionId ? () => void newJev(proj.id, o.key) : undefined} startVoice={o.voice} kickoff={o.kickoff} nameOnStart={o.name} adopt={o.adopt} onNamed={() => void refresh()} folders={projects.map((x) => ({ id: x.id, name: x.name, path: x.path }))} onCommand={(cmd, fallback) => runCommand(cmd, proj.id, fallback)} project={proj} sessionId={o.sessionId} active={active} info={infos[o.projectId]?.find((x) => x.sessionId === o.sessionId) ?? null} showMeta={showMeta}
@@ -393,7 +415,8 @@ export default function App() {
         {sel && project ? null
           : <div className="empty"><Mark /><h2>Pick a session</h2><p>Add a folder, choose which of its Claude, Codex and Grok sessions to keep in the sidebar, then open one and keep talking, or start a new one with either.</p></div>}
       </main>
-      {pane && <Pane target={pane} onClose={() => setPane(null)} />}
+      {pane && <Pane target={pane} onClose={() => setPane(null)} onClickCapture={catchLinks} /* the pane sits outside <main>: its links are caught here too */ />}
+      {nameBox && <NameBox title={nameBox.title} hint={nameBox.hint} placeholder={nameBox.placeholder} onDone={(name) => { const then = nameBox.then; setNameBox(null); then(name); }} />}
 
       {debugOpen && <DebugPanel onClose={() => { localStorage.setItem('cvc.debug', '0'); setDebugOpen(false); }} />}
       {picker && <SessionPicker project={picker} all={infos[picker.id]} onClose={() => setPicker(null)} onSave={async (ids) => { const byId = new Map((infos[picker.id] ?? []).map((s) => [s.sessionId, s.provider])); await api.setSessions(picker.id, ids, Object.fromEntries(ids.filter((id) => byId.has(id)).map((id) => [id, byId.get(id)!]))); setPicker(null); await refresh(); }} />}
@@ -431,14 +454,14 @@ function RenameInput({ initial, onDone, onCancel }: { initial: string; onDone: (
     onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); }} />;
 }
 
-function ProjectGroup({ project, infos, sel, working, listening, renaming, onRenaming, onRename, onHide, onOpenJev, onDeleteJev, onOpen, onNew, onAdd, onRemove }: { project: Project; infos?: SessionInfo[]; sel: Sel | null; working: Set<string>; listening: string | null; renaming: string | null; onRenaming: (sid: string | null) => void; onRename: (sid: string, title: string) => void; onHide: (sid: string) => void; onOpenJev: (agentId: string) => void; onDeleteJev: (agentId: string) => void; onOpen: (sid: string) => void; onNew: () => void; onAdd: () => void; onRemove: () => void }) {
+function ProjectGroup({ project, infos, sel, working, listening, renaming, onRenaming, onRename, onHide, onOpenJev, onDeleteJev, onOpen, onNew, onAdd, onRemove, boards, onOpenBoard, onNewBoard, onDeleteBoard }: { boards: BoardInfo[]; onOpenBoard: (file: string, title: string) => void; onNewBoard: () => void; onDeleteBoard: (b: BoardInfo) => void; project: Project; infos?: SessionInfo[]; sel: Sel | null; working: Set<string>; listening: string | null; renaming: string | null; onRenaming: (sid: string | null) => void; onRename: (sid: string, title: string) => void; onHide: (sid: string) => void; onOpenJev: (agentId: string) => void; onDeleteJev: (agentId: string) => void; onOpen: (sid: string) => void; onNew: () => void; onAdd: () => void; onRemove: () => void }) {
   const [filter, setFilter] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   // A folder folds from its name, and stays folded across reloads.
   const [folded, setFolded] = useState(() => localStorage.getItem(`cvc.folder.${project.id}`) === '0');
   const fold = () => setFolded((v) => { localStorage.setItem(`cvc.folder.${project.id}`, v ? '1' : '0'); return !v; });
   // Secondary click on a session: what can be done with it.
-  const [ctx, setCtx] = useState<{ sid: string; x: number; y: number; jev?: boolean } | null>(null);
+  const [ctx, setCtx] = useState<{ sid: string; x: number; y: number; jev?: boolean; board?: BoardInfo } | null>(null);
   useEffect(() => { if (!ctx) return; const close = () => setCtx(null); const key = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
     window.addEventListener('click', close); window.addEventListener('contextmenu', close); window.addEventListener('blur', close); window.addEventListener('keydown', key);
     return () => { window.removeEventListener('click', close); window.removeEventListener('contextmenu', close); window.removeEventListener('blur', close); window.removeEventListener('keydown', key); }; }, [ctx]);
@@ -457,7 +480,7 @@ function ProjectGroup({ project, infos, sel, working, listening, renaming, onRen
         <button className="icon-btn sm" title="Add sessions" onClick={onAdd}><Plus size={16} /></button>
         <button className="icon-btn sm" title="Filter" onClick={() => setFilter((f) => (f === null ? '' : null))}><Search size={15} /></button>
         <button className="icon-btn sm" title="Folder options" onClick={() => setMenu((v) => !v)}><SlidersHorizontal size={15} /></button>
-        {menu && <div className="menu" onMouseLeave={() => setMenu(false)}><div className="menu-path">{project.path}</div><button onClick={() => { setMenu(false); onRemove(); }}><Trash2 size={14} />Remove folder</button></div>}
+        {menu && <div className="menu" onMouseLeave={() => setMenu(false)}><div className="menu-path">{project.path}</div><button onClick={() => { setMenu(false); onNewBoard(); }}><Plus size={14} />New board</button><button onClick={() => { setMenu(false); onRemove(); }}><Trash2 size={14} />Remove folder</button></div>}
       </div>
       {!folded && <>
       {filter !== null && <input className="group-filter" autoFocus placeholder="Filter sessions" value={filter} onChange={(e) => setFilter(e.target.value)} />}
@@ -473,12 +496,20 @@ function ProjectGroup({ project, infos, sel, working, listening, renaming, onRen
           <img className="provider-icon jev" src={typesafeMark} alt="" aria-label="Jev (TypeSafe)" width={12} height={12} />{renaming === a.id ? <RenameInput initial={a.name} onDone={(t) => onRename(a.id, t)} onCancel={() => onRenaming(null)} /> : <span className="row-title">{a.name}</span>}<span className="row-time">{ago(a.updatedAt)}</span>
         </button>
       ))}
+      {boards.length > 0 && <div className="group-sub">Boards</div>}
+      {boards.map((b) => (
+        <button key={b.file} className={`row${sel?.projectId === project.id && sel.kind === 'board' && sel.file === b.file ? ' on' : ''}`} onClick={() => onOpenBoard(b.file, b.title)} title={`${b.file} · ${b.done} of ${b.total} done · right-click to delete`}
+          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: '', board: b, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }}>
+          <span className="board-dot" /><span className="row-title">{b.title}</span><span className="row-time">{b.done}/{b.total}</span>
+        </button>
+      ))}
       </>}
       {ctx && <div className="menu ctx" style={{ left: ctx.x, top: ctx.y }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
+        {ctx.board ? <button className="danger" onClick={() => { const b = ctx.board!; setCtx(null); onDeleteBoard(b); }}><Trash2 size={14} />Delete board</button> : <>
         <button onClick={() => { const sid = ctx.sid; setCtx(null); onRenaming(sid); }}><Pencil size={14} />Rename</button>
         {!ctx.jev && <button onClick={() => { void navigator.clipboard.writeText(ctx.sid); setCtx(null); }}><Copy size={14} />Copy session ID</button>}
         {!ctx.jev && <button className="danger" onClick={() => { const sid = ctx.sid; setCtx(null); onHide(sid); }}><HideIcon size={14} />Remove from sidebar</button>}
-        {ctx.jev && <button className="danger" onClick={() => { const sid = ctx.sid; setCtx(null); onDeleteJev(sid); }}><Trash2 size={14} />Delete agent</button>}
+        {ctx.jev && <button className="danger" onClick={() => { const sid = ctx.sid; setCtx(null); onDeleteJev(sid); }}><Trash2 size={14} />Delete agent</button>}</>}
       </div>}
     </section>
   );
@@ -917,7 +948,7 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
       const poll = setInterval(() => { void window.desktop.voiceStatus().then((st) => { setVstatus(st); if (st.whisper !== 'starting' || !v.current.engine) clearInterval(poll); }); }, 700);
     } catch (e) { setVoiceOn(false); setPhase('off'); setNote(`Voice could not start: ${(e as Error).message}`); void window.desktop.voiceOn(false, ears.current); }
   };
-  useEffect(() => () => { v.current.engine?.stop(); v.current.engine = null; void window.desktop.voiceOn(false, ears.current); window.desktop.voiceState({ on: false, phase: 'off', level: 0, micMuted: false, speakerOff: false }); }, []);
+  useEffect(() => () => { v.current.engine?.stop(); v.current.engine = null; void window.desktop.voiceOn(false, ears.current); window.desktop.voiceState({ on: false, phase: 'off', level: 0, micMuted: false, speakerOff: false, muteIn: null }); }, []);
   // Auto-mute (a setting): after each spoken message, a countdown on the microphone, then muted; talking again cancels it. With the
   // wake phrase, the user mutes by staying quiet and comes back by saying it.
   const [muteIn, setMuteIn] = useState<number | null>(null); const muteTimer = useRef<ReturnType<typeof setInterval> | null>(null); const wakeBusy = useRef(false);
@@ -936,9 +967,10 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
   const toggleMic = () => setMicMuted((m) => { const next = !m; cancelAutoMute(); muteCut.current = false; if (v.current.engine) v.current.engine.muted = next; if (next && thought.current.text) { window.desktop.debugPush('thought', 'mic muted with words held: sending them now'); void flushHeldRef.current(); } return next; });
   const toggleSpeaker = () => setSpeakerOff((o) => { const next = !o; v.current.speakerOff = next; if (next) { v.current.engine?.silence(); void window.desktop.cancelSpeech(); v.current.chain = Promise.resolve(); } return next; });
   // The orb's level, and the mirror the floating controller draws from (10 times a second while voice is on).
-  const mirror = useRef({ phase, micMuted, speakerOff }); mirror.current = { phase, micMuted, speakerOff };
+  // the auto-mute countdown with it, so the floating bar's microphone counts down with the app's
+  const mirror = useRef({ phase, micMuted, speakerOff, muteIn }); mirror.current = { phase, micMuted, speakerOff, muteIn };
   useEffect(() => {
-    if (!voiceOn) { window.desktop.voiceState({ on: false, phase: 'off', level: 0, micMuted: false, speakerOff: false }); return; }
+    if (!voiceOn) { window.desktop.voiceState({ on: false, phase: 'off', level: 0, micMuted: false, speakerOff: false, muteIn: null }); return; }
     let n = 0; const t = setInterval(() => { const e = v.current.engine; const out = e?.outputLevel() ?? 0; level.current = out > 0.004 ? out * 1.6 : micLevel.current;
       if (++n % 3 === 0) window.desktop.voiceState({ on: true, level: level.current, ...mirror.current }); }, 33);
     return () => clearInterval(t);
@@ -1238,7 +1270,7 @@ function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, per
 
 /** The floating controller: shown by the main process while voice is on and the app is in the background. */
 export function Mini() {
-  const [st, setSt] = useState({ on: false, phase: 'off' as VoicePhase, micMuted: false, speakerOff: false });
+  const [st, setSt] = useState({ on: false, phase: 'off' as VoicePhase, micMuted: false, speakerOff: false, muteIn: null as number | null });
   const level = useRef(0);
   // The typing box: the keyboard button slides an input open (the bar grows with it); Enter sends the text to the listening session
   // the way its composer would, without talking and without bringing the app forward; Escape or leaving the box closes it.
@@ -1247,14 +1279,15 @@ export function Mini() {
   const openBox = () => { window.desktop.miniSize(BAR + BOX); setTyping(true); setTimeout(() => box.current?.focus(), 60); };
   const closeBox = () => { setTyping(false); setText(''); window.desktop.miniSize(BAR); };
   const submit = () => { const t = text.trim(); if (t) window.desktop.voiceType(t); closeBox(); };
-  useEffect(() => window.desktop.onVoiceState((m) => { level.current = m.level; setSt((cur) => (cur.on === m.on && cur.phase === m.phase && cur.micMuted === m.micMuted && cur.speakerOff === m.speakerOff ? cur : { on: m.on, phase: m.phase as VoicePhase, micMuted: m.micMuted, speakerOff: m.speakerOff })); }), []);
+  useEffect(() => window.desktop.onVoiceState((m) => { level.current = m.level; const muteIn = typeof m.muteIn === 'number' ? m.muteIn : null;
+    setSt((cur) => (cur.on === m.on && cur.phase === m.phase && cur.micMuted === m.micMuted && cur.speakerOff === m.speakerOff && cur.muteIn === muteIn ? cur : { on: m.on, phase: m.phase as VoicePhase, micMuted: m.micMuted, speakerOff: m.speakerOff, muteIn })); }), []);
   return (
     <div className="mini">
       {/* The move handle: it appears when the bar is hovered (the bar never takes focus), and dragging it moves the bar; nothing else drags. */}
       <span className="mini-move" title="Drag to move" onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); window.desktop.miniDrag(true); }} onPointerUp={() => window.desktop.miniDrag(false)} onPointerCancel={() => window.desktop.miniDrag(false)} onLostPointerCapture={() => window.desktop.miniDrag(false)}><Move size={14} /></span>
       <button className={`round${typing ? ' on' : ''}`} title={typing ? 'Close the typing box' : 'Type to this session instead of talking'} onClick={() => (typing ? closeBox() : openBox())}><Keyboard size={17} /></button>
       <span className={`mini-type${typing ? ' open' : ''}`}><input ref={box} value={text} placeholder="Type to the session…" onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } else if (e.key === 'Escape') closeBox(); }} onBlur={() => setTimeout(() => { if (document.activeElement !== box.current) closeBox(); }, 120)} /></span>
-      <VoicePill level={level} phase={st.phase} micMuted={st.micMuted} speakerOff={st.speakerOff} onMic={() => window.desktop.voiceCmd('mic')} onOrb={() => window.desktop.voiceCmd('focus')} onSpeaker={() => window.desktop.voiceCmd('speaker')} orbTitle="Back to the app" />
+      <VoicePill level={level} phase={st.phase} micMuted={st.micMuted} speakerOff={st.speakerOff} muteIn={st.muteIn} onMic={() => window.desktop.voiceCmd('mic')} onOrb={() => window.desktop.voiceCmd('focus')} onSpeaker={() => window.desktop.voiceCmd('speaker')} orbTitle="Back to the app" />
     </div>
   );
 }
@@ -1345,4 +1378,19 @@ function VoiceModelPick({ provider, value, options, onChange }: { provider: Prov
   const shown = list.find((o) => o.id === value)?.id ?? list.find((o) => o.resolved === value)?.id ?? ''; const known = !!shown; /* a saved wire id (claude-sonnet-5) shows as the alias that stands for it (sonnet), so the selector never claims automatic while Sonnet is in use */
   return <label>Voice model for {PROVIDER_LABEL[provider]} sessions (acknowledges, then says what happened)<em>in use: {inUse ? (list.find((o) => o.id === inUse) ?? list.find((o) => o.resolved === inUse))?.label ?? inUse : '…'}</em>
     <select value={shown} onChange={(e) => onChange(e.target.value)}><option value="">Automatic (the smallest{list.length ? '' : ', list loading'})</option>{list.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}{value && !known && list.length > 0 && <option value={value} disabled>{value} (not offered any more: automatic is used)</option>}</select></label>;
+}
+
+/** The in-app name question (Electron has no prompt()): a new board's name. */
+function NameBox({ title, hint, placeholder, onDone }: { title: string; hint?: string; placeholder?: string; onDone: (name: string | null) => void }) {
+  const [v, setV] = useState('');
+  return (
+    <div className="overlay" onClick={() => onDone(null)}>
+      <form className="modal namebox" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); if (v.trim()) onDone(v.trim()); }}>
+        <h2>{title}</h2>
+        {hint && <p className="muted">{hint}</p>}
+        <input autoFocus value={v} placeholder={placeholder} spellCheck={false} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') onDone(null); }} />
+        <div className="namebox-btns"><button type="button" onClick={() => onDone(null)}>Cancel</button><button type="submit" className="go" disabled={!v.trim()}>Create</button></div>
+      </form>
+    </div>
+  );
 }

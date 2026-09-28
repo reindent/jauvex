@@ -10,6 +10,7 @@ import { autoCompactPct, claudeCompactEnv, claudeUsed, tooLong, type ContextUsag
 import * as codex from './codex.js';
 import * as grok from './grok.js';
 import { claudeExe } from './account.js';
+import { folderFiles } from './workfiles.js';
 import { claudePermissionOptions } from './claude-permissions.js';
 import { effectivePermissions } from '../shared/permissions.js';
 
@@ -70,7 +71,7 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
       ...(req.model ? { model: req.model } : {}),
       ...(req.effort ? { effort: req.effort as EffortLevel } : {}),
       // voice turns get the same prompt (the big model answers for the screen) plus one note: this text was dictated
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: clientBriefing(!!req.voice, req.vocabulary, !!req.steward, APP_ROOT) }, // every session is told where it is running (see clientBriefing)
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: clientBriefing(!!req.voice, req.vocabulary, !!req.steward, APP_ROOT, await folderFiles(project.path)) }, /* the folder's boards are part of the briefing */ // every session is told where it is running (see clientBriefing)
       includePartialMessages: true,
       ...claudePermissionOptions(req.permissions),
       canUseTool,

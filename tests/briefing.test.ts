@@ -28,4 +28,7 @@ check('a restart is the agent\'s own, as the restart paragraph says: the two agr
 { const t = clientBriefing(false); check('a request that waits on the user is not filled with other work', /keep doing every part of it that does not need the answer; never fill the wait with other or older work/.test(t)); }
 // Grok is one of the app's own words (2026-09-24): Whisper gets it in its vocabulary, so "Grok" is heard as Grok, not "grog".
 { const { APP_WORDS, withAppWords } = await import('../shared/types.ts'); check('Grok is one of the words Whisper is told to know', APP_WORDS.includes('Grok') && /\bGrok\b/.test(withAppWords('Reindent'))); }
+// Boards (T-171): an agent is told the boards of the folder it runs in, and how to keep them; a folder with none says nothing about them.
+{ const withBoards = clientBriefing(false, '', false, '/app', { boards: [{ file: 'PROJECT.md', title: 'Launch' }] }); const without = clientBriefing(false, '', false, '/app', { boards: [] });
+  check('an agent is told its folder\'s boards and how to keep them', /Boards in this folder: PROJECT\.md \("Launch"\)/.test(withBoards) && /turning its glyph to \[~\]/.test(withBoards) && !/Boards in this folder/.test(without)); }
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);
