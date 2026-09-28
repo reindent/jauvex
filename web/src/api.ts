@@ -31,6 +31,8 @@ export const api = {
   boardSet: (id: string, file: string, line: number, status: 'todo' | 'doing' | 'done', where: 'board' | 'done' = 'board', task = '') => call<{ md: string; done: string }>('boardSet', id, file, line, status, where, task),
   newBoard: (id: string, name: string) => call<string>('newBoard', id, name),
   deleteBoard: (id: string, file: string) => call<void>('deleteBoard', id, file),
+  boardChat: (id: string, file: string) => call<{ provider?: Provider; sessionId?: string | null }>('boardChat', id, file), // a board's own chat (T-199)
+  setBoardChat: (id: string, file: string, c: { provider?: Provider; sessionId?: string | null }) => call<boolean>('setBoardChat', id, file, c),
   jevAvailable: () => call<boolean>('jevAvailable'),
   jevCreate: (id: string) => call<JevAgent>('jevCreate', id),
   jevSave: (id: string, agentId: string, patch: Partial<Pick<JevAgent, 'name' | 'state' | 'questions' | 'llm' | 'sessionId'>>) => call<JevAgent>('jevSave', id, agentId, patch),
