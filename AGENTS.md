@@ -172,8 +172,11 @@ debug panel.
   (the same `pendingReplyTo` path agent messages use) and goes to the Runner, not to `returnReply`. A window reload or an app restart
   leaves a live run with nobody driving it: the window takes it over as it stands at load (`attachRun`), nothing re-sent.
 - Window checks share `tmp/scratch`: `run.sh` removes its `workflows/` and `boards/` before every window check (a live run left there is
-  taken over by the next window at load). They run on ports of their own (9351 for the window, 4351 and 4352 for Whisper), apart from
-  any other copy's checks on this Mac: two checks on one port drive each other's window. The fixture's sessions are found by the scratch
+  taken over by the next window at load). They run on ports of their own (9451 for the window, 4451 and 4452 for Whisper), apart from
+  any other copy's checks on this Mac: two checks on one port drive each other's window. **Every fixed port in this edition's checks is in
+  the 4400s or the 9400s** (the window 9451, Whisper 4451 and 4452, the voice checks 4471 and 4472); the other edition's checks keep to
+  4331 to 4373 and 9333 to 9382, and run on the same Mac: on 2026-09-30 both used 4351 and 4352 and broke each other's runs. A new check
+  takes its ports in this range. The fixture's sessions are found by the scratch
   folder's real path: a new, empty scratch folder in its place failed eight checks that open one. A run record's own result is the
   `result:` line of its header; `/^result: done/m` also matches a step's line.
 - The app's own agent lives in `~/.jauvex` (`JAUVEX_HOME`, `CVC_JAUVEX_HOME` in the checks: `run.sh` gives each check its own

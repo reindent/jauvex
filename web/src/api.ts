@@ -26,6 +26,7 @@ export const api = {
   setSessions: (id: string, sessionIds: string[], providers: Record<string, Provider>) => call<Project>('setSessions', id, sessionIds, providers),
   messages: (id: string, sid: string, before?: number) => call<MessagesPage>('messages', id, sid, before),
   setPrefs: (id: string, sid: string, prefs: SessionPrefs) => call<boolean>('setPrefs', id, sid, prefs),
+  changelog: () => call<string>('changelog'), // the app's own CHANGELOG.md (T-218)
   // workflows: a file per workflow and a folder beside it (its steps' instructions, runs, versions, chat)
   workflows: (id: string) => call<WorkflowInfo[]>('workflows', id),
   workflow: (id: string, file: string) => call<{ md: string; runs: Run[]; prompts?: Record<string, string> }>('workflow', id, file), // prompts: the steps' files

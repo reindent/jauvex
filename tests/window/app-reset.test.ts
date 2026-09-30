@@ -9,6 +9,6 @@ await js("document.querySelector('button[title=\"Jauvex settings\"]').click()");
 check('the danger zone is there, in the settings, under Reset', await js("!!document.querySelector('.settings-group.danger .btn-danger')"));
 await js("document.querySelector('.settings-group.danger .btn-danger').click()"); await sleep(1000);
 check('the app data is deleted', !existsSync(path.join(data, 'state.json')) && !existsSync(path.join(data, 'jauvex-transcript.json')));
-await sleep(1500); let alive = true; try { await fetch('http://127.0.0.1:9351/json/version'); } catch { alive = false; }
+await sleep(1500); let alive = true; try { await fetch('http://127.0.0.1:9451/json/version'); } catch { alive = false; }
 check('the app exited', !alive);
 done();
