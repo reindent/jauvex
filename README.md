@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.3.1, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.3.2, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -241,6 +241,9 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   idle ones make room, a working one never does). Opening another session or agent does not stop or lose the running
   turn, its row in the sidebar shows the moving mark while it works, and the answer is there when you come back. The
   microphone stays with the session it was started in (its orb waits at the bottom of the sidebar, see Voice).
+- **New replies, counted per agent** (T-226): a reply of an agent that is not on screen counts on its row in the sidebar, the
+  Jauvex agent's too (a small badge, up to 99, then 99+). A moment on screen clears that agent's count, and only its own; a reply
+  of the agent on screen counts nothing. The counts are kept in the window's storage on this Mac, so a reload or a restart keeps them.
 - **Jev agents** (when a TypeSafe key is on this Mac): pick "Jev agent" in a new session's provider menu. It is not a
   chat, it follows Jev's own shape. Left, split in two: the **state** on top (text or JSON) and the **questions** below
   (JSON: `noul` yes/no, `choice`, `score`). Right: the **output**, each answer with its probabilities as bars, the
