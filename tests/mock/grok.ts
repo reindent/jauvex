@@ -4,7 +4,9 @@
 // initialize with the models in _meta.modelState, sessions (new, resume, load with the history replayed, list, close, config options),
 // prompts streamed as session/update chunks with Grok's own x.ai notifications (response_completed, queue/changed, prompt_complete),
 // cancel, and the x.ai extensions the app uses (auth info and logout, interject, rename, delete). Every message gets one short canned reply
-// that quotes what it got, signed with this machine's name. Sessions are kept in <GROK_HOME>/mock-sessions/<id>.json. No network.
+// that quotes what it got, signed with this machine's name. Sessions are filed as Grok files them, by working folder: <GROK_HOME>/sessions/
+// <the folder, URL-encoded>/<id>/ (Grok's guide, 17-sessions.md), the stand-in's own record in session.json there; a session's folder is
+// read from where it lies, so one moved to another folder's place is that folder's (T-217). No network.
 // In a message: [[tool]] runs a shell command that asks permission first; [[image]] makes a picture the way Grok's imagine does (saved in
 // the session's own folder, the answer linking it as images/1.png); [[too long]] does not fit; [[slow end]] lingers after its last
 // step (a message handed over then gets a prompt of its own, as Grok does); /compact compacts.
@@ -20,16 +22,21 @@ const out = (m) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...m
 const note = (method, params) => out({ method, params });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const DELAY = Number(process.env.MOCK_DELAY_MS ?? 40); // between two streamed pieces
-const dir = path.join(process.env.GROK_HOME || path.join(os.homedir(), '.grok'), 'mock-sessions');
+const root = path.join(process.env.GROK_HOME || path.join(os.homedir(), '.grok'), 'sessions');
+const enc = (cwd) => [...Buffer.from(cwd, 'utf8')].map((b) => { const c = String.fromCharCode(b); return /[A-Za-z0-9\-_.~]/.test(c) ? c : `%${b.toString(16).toUpperCase().padStart(2, '0')}`; }).join('');
 const CTX = Number(process.env.MOCK_CONTEXT_TOKENS ?? 0); const WINDOW = Number(process.env.MOCK_CONTEXT_WINDOW ?? 500000);
 const efforts = [{ id: 'low', value: 'low', label: 'Low', default: false }, { id: 'high', value: 'high', label: 'High', default: true }];
 const MODELS = { currentModelId: 'mock', availableModels: [{ modelId: 'mock', name: 'Mock', description: 'The stand-in: canned replies, no model', _meta: { totalContextTokens: WINDOW, reasoningEfforts: efforts } }, { modelId: 'mock-fast', name: 'Mock Fast', description: 'Fast variant of the stand-in', _meta: { totalContextTokens: WINDOW, reasoningEfforts: efforts } }] };
 
 // sessions: { id, cwd, title, updatedAt, model, effort, rules, prompt (systemPromptOverride), history: [{ update, meta }] }
-const sessions = new Map();
-if (existsSync(dir)) for (const f of readdirSync(dir)) if (f.endsWith('.json')) { try { const s = JSON.parse(readFileSync(path.join(dir, f), 'utf8')); sessions.set(s.id, s); } catch { /* a broken file */ } }
-const save = (s) => { mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, `${s.id}.json`), JSON.stringify(s)); };
-const get = (id) => { const s = sessions.get(id); if (!s) throw Object.assign(new Error('Resource not found'), { code: -32002, data: `session not found: ${id}` }); return s; };
+const sessions = new Map(); // a cache: the files are what counts, where they lie
+const groups = () => (existsSync(root) ? readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name) : []);
+const folderOf = (g) => { try { return decodeURIComponent(g); } catch { return ''; } };
+const where = (id) => { for (const g of groups()) { const d = path.join(root, g, id); if (existsSync(path.join(d, 'session.json'))) return { dir: d, cwd: folderOf(g) }; } return null; };
+const read = (id, at) => { const s = sessions.get(id) ?? JSON.parse(readFileSync(path.join(at.dir, 'session.json'), 'utf8')); s.cwd = at.cwd; sessions.set(id, s); return s; };
+const all = () => groups().flatMap((g) => readdirSync(path.join(root, g)).flatMap((id) => { const d = path.join(root, g, id); if (!existsSync(path.join(d, 'session.json'))) return []; try { return [read(id, { dir: d, cwd: folderOf(g) })]; } catch { return []; } }));
+const save = (s) => { const at = where(s.id); if (at) s.cwd = at.cwd; const d = at?.dir ?? path.join(root, enc(s.cwd), s.id); mkdirSync(d, { recursive: true }); writeFileSync(path.join(d, 'session.json'), JSON.stringify(s)); };
+const get = (id) => { const at = where(id); if (!at) throw Object.assign(new Error('Resource not found'), { code: -32002, data: `session not found: ${id}` }); return read(id, at); };
 const models = (s) => ({ ...MODELS, currentModelId: s?.model || MODELS.currentModelId });
 
 const LINES = ['Nothing ran: I am the stand-in for Grok, here so the app can be checked without an account.', 'No model was asked: this is a canned reply.', 'Every message gets the same kind of answer from me.'];
@@ -63,7 +70,7 @@ async function modelCall(s, live, text, promptId) {
   }
   let picture = '';
   if (text.includes('[[image]]')) { // Grok's imagine: the picture is saved in the session's folder, the tool's output names it, the answer links it relative to that folder
-    const toolCallId = `call-${randomUUID()}-0`; const folder = path.join(dir, s.id, 'images'); mkdirSync(folder, { recursive: true }); const file = path.join(folder, '1.png');
+    const toolCallId = `call-${randomUUID()}-0`; const folder = path.join(where(s.id)?.dir ?? path.join(root, enc(s.cwd), s.id), 'images'); mkdirSync(folder, { recursive: true }); const file = path.join(folder, '1.png');
     writeFileSync(file, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
     const tool = { version: 1, name: 'imagine', kind: 'other', namespace: 'grok_build', label: 'Imagine', read_only: false };
     update(s, { sessionUpdate: 'tool_call', toolCallId, title: 'imagine', rawInput: { prompt: 'a small red dot' }, _meta: { 'x.ai/tool': tool } }, { promptId });
@@ -108,7 +115,7 @@ const methods = {
   'session/resume': (p) => { const s = get(p.sessionId); if (typeof p._meta?.yoloMode === 'boolean') s.yoloMode = p._meta.yoloMode; if (typeof p._meta?.autoMode === 'boolean') s.autoMode = p._meta.autoMode; save(s); if (p._meta?.reasoningEffort) s.effort = p._meta.reasoningEffort; return { models: models(s), configOptions: [] }; },
   'session/load': (p) => { const s = get(p.sessionId); for (const h of s.history) note(h.method, { sessionId: s.id, update: h.update, _meta: { isReplay: true } }); return { models: models(s), configOptions: [] }; },
   'session/close': () => ({}),
-  'session/list': (p) => ({ sessions: [...sessions.values()].filter((s) => s.history.length && (!p.cwd || s.cwd === p.cwd)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((s) => ({ sessionId: s.id, cwd: s.cwd, title: s.title, updatedAt: s.updatedAt, _meta: { 'x.ai/session': { kind: 'build', facets: { cwd: s.cwd } } } })) }),
+  'session/list': (p) => ({ sessions: all().filter((s) => s.history.length && (!p.cwd || s.cwd === p.cwd)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((s) => ({ sessionId: s.id, cwd: s.cwd, title: s.title, updatedAt: s.updatedAt, _meta: { 'x.ai/session': { kind: 'build', facets: { cwd: s.cwd } } } })) }),
   'session/set_config_option': (p) => { const s = get(p.sessionId); if (p.configId === 'model') { if (!MODELS.availableModels.some((m) => m.modelId === p.value)) throw Object.assign(new Error('Invalid params'), { code: -32602, data: `unknown model ${p.value}` }); s.model = p.value; } else if (p.configId === 'reasoning_effort') s.effort = p.value; else throw Object.assign(new Error('Invalid params'), { code: -32602, data: `unknown config option: ${p.configId}` }); save(s); return { configOptions: [] }; },
   'session/prompt': (p, respond) => {
     const s = get(p.sessionId); if (running.has(s.id)) throw new Error('a prompt is already running in this session');
@@ -124,7 +131,7 @@ const methods = {
     if (live && !live.last) live.inbox.push(text); else if (live) (live.late ??= []).push(text); else void runPrompt(s, `interject-fallback-${randomUUID()}`, text);
     note('_x.ai/session/interjection', { sessionId: s.id, text }); return { result: { status: 'queued' } }; },
   '_x.ai/session/rename': (p) => { const s = get(p.sessionId); s.title = p.title; save(s); return { result: { ok: true } }; },
-  '_x.ai/session/delete': (p) => { sessions.delete(p.sessionId); rmSync(path.join(dir, `${p.sessionId}.json`), { force: true }); return { result: { ok: true } }; },
+  '_x.ai/session/delete': (p) => { sessions.delete(p.sessionId); const at = where(p.sessionId); if (at) rmSync(at.dir, { recursive: true, force: true }); return { result: { ok: true } }; },
 };
 
 readline.createInterface({ input: process.stdin }).on('line', (line) => {

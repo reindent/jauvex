@@ -2,8 +2,10 @@
 // The app's command line, for agents (the Jauvex agent above all): every action in the app, as a request file in
 // data/commands that the running app answers. Usage: node scripts/jauvex.ts <command> [--flag value ...]
 // Commands: list | add-folder <path> | pick-folder | new-agent [--provider claude|codex|grok|jev] [--folder name|path|id] [--name ..] [--purpose ..] [--kickoff ".."] (always started: --no-kickoff gives it its own introduction)
-//           open [--folder ..] [--session id|title] | import --folder .. [<session id|title> ...] [--last N] | new-board --name .. [--folder ..] | send --session id|title [--folder ..] --text ".." | rename --session .. --title ".."
-//           settings [--default-provider claude|codex|grok] [--show-jauvex yes|no] [--welcome-next yes|no] [--jauvex-move unified|handoff] [--auto-compact <percent>|provider] [--permission-provider claude|codex|grok --permission-mode ask|auto|yolo|session] | welcome | reload | restart
+//           open [--folder ..] [--session id|title] | import --folder .. [<session id|title> ...] [--last N] | new-board --name .. [--folder ..] | new-workflow --name .. [--folder ..] | send --session id|title [--folder ..] --text ".." | rename --session .. --title ".."
+//           settings [--default-provider claude|codex|grok] [--show-jauvex yes|no] [--welcome-next yes|no] [--jauvex-move unified|handoff] [--auto-compact <percent>|provider] [--workflow-missed run|alert|nothing] [--permission-provider claude|codex|grok --permission-mode ask|auto|yolo|session] | welcome | reload | restart
+//           run --workflow file|name [--folder ..] | runs --workflow .. | decide --workflow .. --outcome ".." [--note ".."] (the user's decision at a gate, on their word) | stop-run --workflow .. | resend-run --workflow ..
+//           move-workflow --workflow file|name --to <folder> [--folder ..] (with its chat's session) | move-session --session id|title --to <folder> [--folder ..]
 //           update [--check] [--now] (the app the install command made, to the latest version: it closes, rebuilds and opens again)
 // Prints the JSON result; exits 1 when the app said no or did not answer (is it running? same data folder?).
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -23,9 +25,17 @@ const shapes = {
   open: () => ({ type: 'open', folder: flags.folder, session: flags.session ?? bare[0] }),
   import: () => ({ type: 'import', folder: flags.folder, sessions: [...(typeof flags.session === 'string' ? [flags.session] : []), ...bare], last: flags.last === undefined ? undefined : Number(flags.last) }),
   'new-board': () => ({ type: 'new-board', folder: flags.folder, name: flags.name ?? bare.join(' ') }),
+  'new-workflow': () => ({ type: 'new-workflow', folder: flags.folder, name: flags.name ?? bare.join(' ') }),
+  run: () => ({ type: 'run', folder: flags.folder, workflow: flags.workflow ?? bare[0] }), // a workflow of the folder, by file or name: one message per step to its agent
+  runs: () => ({ type: 'runs', folder: flags.folder, workflow: flags.workflow ?? bare[0] }),
+  decide: () => ({ type: 'decide', folder: flags.folder, workflow: flags.workflow ?? bare[0], outcome: flags.outcome, note: flags.note }), // only on the user's explicit word
+  'stop-run': () => ({ type: 'stop-run', folder: flags.folder, workflow: flags.workflow ?? bare[0] }),
+  'resend-run': () => ({ type: 'resend-run', folder: flags.folder, workflow: flags.workflow ?? bare[0] }),
+  'move-workflow': () => ({ type: 'move-workflow', folder: flags.folder, workflow: flags.workflow ?? bare[0], to: flags.to }), // with its chat's session, whatever the provider
+  'move-session': () => ({ type: 'move-session', folder: flags.folder, session: flags.session ?? bare[0], to: flags.to }),
   send: () => ({ type: 'send', folder: flags.folder, session: flags.session, text: flags.text ?? bare.join(' ') }),
   rename: () => ({ type: 'rename', folder: flags.folder, session: flags.session, title: flags.title ?? bare.join(' ') }),
-  settings: () => ({ type: 'settings', permissionProvider: flags['permission-provider'], permissionMode: flags['permission-mode'], defaultProvider: flags['default-provider'], showJauvex: bool('show-jauvex'), welcomeNext: bool('welcome-next'), jauvexMove: flags['jauvex-move'], autoCompact: flags['auto-compact'] === undefined ? undefined : /^provider$/i.test(String(flags['auto-compact'])) ? 0 : Number(String(flags['auto-compact']).replace('%', '')) }), // provider: the provider decides
+  settings: () => ({ type: 'settings', permissionProvider: flags['permission-provider'], permissionMode: flags['permission-mode'], defaultProvider: flags['default-provider'], showJauvex: bool('show-jauvex'), welcomeNext: bool('welcome-next'), jauvexMove: flags['jauvex-move'], autoCompact: flags['auto-compact'] === undefined ? undefined : /^provider$/i.test(String(flags['auto-compact'])) ? 0 : Number(String(flags['auto-compact']).replace('%', '')), workflowMissed: flags['workflow-missed'] }), // provider: the provider decides
   update: () => ({ type: 'update', check: flags.check ? true : undefined, now: flags.now ? true : undefined }), // the installed app, to the latest version
   welcome: () => ({ type: 'welcome' }), reload: () => ({ type: 'reload-ui' }), restart: () => ({ type: 'restart-app' }),
 };

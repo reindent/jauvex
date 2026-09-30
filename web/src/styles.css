@@ -1,7 +1,7 @@
 :root {
   --bg: #141413; --side: #0f0f0e; --line: #232321; --row: #2a2a28; --row-hover: #1d1d1b; --bubble: #232322;
   --fg: #eceae3; --fg-2: #c9c7bf; --muted: #8a8882; --faint: #5f5e59; --accent: #979dff; --code-bg: #262624; --code-fg: #c3c6ff; --claude: #d97757; --codex: #4cc9a4; --err: #e5695e;
-  --tb: 46px; --side-w: 330px; --pane-w: 520px;
+  --tb: 46px; --side-w: 330px; --pane-w: 520px; --ok: #7dcf8a; --warn: #e8c46a;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -70,7 +70,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .provider-icon { flex: none; opacity: .75; } .provider-icon.claude { color: var(--claude); } .provider-icon.codex, .provider-icon.grok { color: var(--fg-2); } .provider-icon.jev { width: 12px; height: 12px; max-width: 12px; border-radius: 50%; object-fit: cover; } .row.on .provider-icon, .row:hover .provider-icon { opacity: 1; } /* whose session it is */
 .row-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-listening { flex: none; display: inline-flex; color: var(--accent); margin-right: 2px; }
-.row-working { flex: none; display: inline-flex; } .row-working .mark { width: 17px; height: 17px; }
+.row-working { flex: none; display: inline-flex; align-items: center; gap: 6px; } .wf-waits { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 3px rgba(232, 196, 106, .18); flex: none; } /* a workflow waiting for a person */ .row-working .mark { width: 17px; height: 17px; }
 .row-time { flex: none; font-size: 12px; color: var(--faint); }
 .menu { position: absolute; right: 8px; top: 30px; z-index: 5; background: #1e1e1c; border: 1px solid #30302d; border-radius: 10px; padding: 6px; min-width: 240px; box-shadow: 0 12px 32px rgba(0,0,0,.5); }
 .menu-path { font-size: 11.5px; color: var(--muted); padding: 4px 8px 8px; word-break: break-all; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
@@ -362,3 +362,63 @@ html.is-mini, html.is-mini body, html.is-mini #root { background: transparent; }
 .board-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; } .board-wrap > .board-view { flex: 1 1 auto; }
 .board-chat { flex: 0 0 38%; min-height: 220px; } .board-chat > header { padding: 10px 16px 0; min-width: 0; } .board-chat > header b { white-space: nowrap; }
 .board-chat > header span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .board-chat .thread, .board-chat .composer-wrap { margin: 0; padding-left: 32px; padding-right: 32px; }
+
+/* ---------- workflows (T-210): the flow, its steps' pane, the runs, the versions, its chat */
+.wf-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--accent); flex: none; opacity: .8; } .wf-dot.live { box-shadow: 0 0 0 3px rgba(151,157,255,.18); animation: wfpulse 1.6s infinite; } @keyframes wfpulse { 50% { box-shadow: 0 0 0 5px rgba(151,157,255,.04); } }
+/* ---------- a workflow: one line */
+.wf, .board-view { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+/* A workflow's view takes all the room its column has (the user, 2026-09-27: "it uses like 50% of the screen only", then "use all the space
+   actually"; it stopped at 660 px, then at 1040), fluid down to a phone-wide window. */
+.wf { --wf-max: none; }
+.wf-head { display: flex; align-items: center; gap: 16px; padding: 26px 32px 4px; max-width: var(--wf-max, 1040px); } /* its Run button lines up with the flow's right edge */ .wf-head h1 { font-size: 19px; margin: 0 0 4px; font-weight: 600; } .wf-head p { margin: 0; color: var(--muted); max-width: 62ch; font-size: 13px; } .wf-head .sp { flex: 1; }
+.btn { border: 1px solid var(--line); background: var(--bubble); color: var(--fg); border-radius: 9px; padding: 7px 13px; font-size: 13px; cursor: pointer; font-family: inherit; white-space: nowrap; } .btn.primary { background: var(--accent); color: #111; border-color: transparent; font-weight: 600; } .btn.ghost { background: transparent; color: var(--fg-2); } .btn.sm { padding: 4px 10px; font-size: 12px; } .btn:disabled { opacity: .5; cursor: default; }
+.runline { margin: 6px 32px 16px; color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 8px; }
+.steps { list-style: none; margin: 0; padding: 4px 32px 8px; max-width: var(--wf-max, 1040px); }
+.st { display: flex; gap: 14px; padding: 0 0 30px; position: relative; cursor: pointer; } .st::before { content: ""; position: absolute; left: 13px; top: 28px; bottom: -2px; width: 1px; background: var(--line); } .st:last-child::before { display: none; }
+.mark-n { width: 28px; height: 28px; border-radius: 50%; background: var(--row); border: 1px solid #34342f; color: var(--fg-2); font-size: 12px; display: flex; align-items: center; justify-content: center; flex: none; position: relative; z-index: 1; }
+.st.done .mark-n { background: #1f3a2a; border-color: #2f5a3c; color: var(--ok); } .st.run .mark-n { background: #2c2e52; border-color: var(--accent); color: var(--accent); } .st.gate .mark-n { background: #3a3320; border-color: #6a5a2a; color: var(--warn); } .st.fail .mark-n { background: #3a2422; border-color: #6a3a36; color: var(--err); } .st.trigger .mark-n, .st.end .mark-n { background: transparent; border: 1px solid var(--line); color: var(--muted); } .st.end .mark-n { color: var(--ok); border-color: #2f4a36; }
+.st .body { flex: 1; min-width: 0; padding-top: 4px; } .line1 { display: flex; align-items: center; gap: 12px; min-height: 20px; } .line1 b { font-size: 14px; font-weight: 600; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; } /* a long title gives way, the agent stays whole */ .line1 .who { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; } .line1 .stat { margin-left: auto; font-size: 11.5px; color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.stat.ok { color: var(--ok); } .stat.run { color: var(--accent); } .stat.wait { color: var(--warn); } .stat.er { color: var(--err); } .stat .mark { width: 15px; height: 15px; } .stat .mark .over { stroke: var(--accent); } .stat .mark .under { stroke: var(--faint); }
+.line1 .who .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); } .line1 .who .dot.claude { background: var(--claude); } .line1 .who .dot.codex { background: var(--codex); } .line1 .who .dot.grok { background: var(--fg-2); } .line1 .who .dot.gate { background: var(--warn); }
+.wf-branch, .wf-last { margin-top: 5px; font-size: 12px; color: var(--faint); } .wf-last { color: var(--fg-2); } /* the workflow view's own names: a bare .branch took the sidebar's 9-pixel tree connector */ .st.sel .body { background: var(--row-hover); margin: -6px -10px; padding: 10px 10px 6px; border-radius: 8px; }
+.foot { padding: 8px 32px 24px; font-size: 12.5px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; max-width: var(--wf-max, 1040px); } .foot a { color: var(--accent); text-decoration: none; } .foot b { color: var(--fg-2); font-weight: 500; } .foot-head { display: flex; align-items: center; gap: 6px; } .foot-head .sp { flex: 1; } .def-link { margin-top: 8px; }
+.runs .ok, .runs-table .ok { color: var(--ok); } .runs .er, .runs-table .er { color: var(--err); } .runs .wn, .runs-table .wn { color: var(--accent); } .runs-table .faint { color: var(--faint); } .runs small { color: var(--faint); margin-left: 6px; } .runs a { color: var(--fg-2); text-decoration: none; } .runs a:hover { color: var(--fg); }
+.runs-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; } .runs-table th { text-align: left; color: var(--faint); font-weight: 500; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid var(--line); } .runs-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); color: var(--fg-2); vertical-align: top; } .runs-table .n { color: var(--faint); width: 24px; } .said-cell { color: var(--muted); font-size: 12px; margin-top: 3px; } .run-row { cursor: pointer; } .run-row:hover td { background: var(--row-hover); }
+.pane-view .kv { display: grid; grid-template-columns: 64px 1fr; gap: 4px 10px; font-size: 12.5px; margin: 4px 0 10px; } .pane-view .kv b { color: var(--faint); font-weight: 500; } .pane-view .kv span { color: var(--fg-2); }
+.pane-view .said { border-left: 2px solid var(--line); padding: 4px 10px; color: var(--fg-2); font-size: 12.5px; margin: 8px 0; } .pane-view .said i { color: var(--faint); font-style: normal; font-size: 11px; display: block; }
+.pane-view p { color: var(--fg-2); font-size: 13px; margin: 0 0 10px; } .pane-view .pane-note { color: var(--muted); font-size: 12.5px; } .pane-view code { background: var(--bubble); padding: 1px 5px; border-radius: 4px; } .pane-view .btns { display: flex; gap: 8px; margin: 12px 0 0; }
+.md-edit { width: 100%; height: 62vh; resize: vertical; background: var(--side); color: var(--fg-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; outline: none; } .md-edit:focus { border-color: var(--accent); }
+.gate-note { width: 100%; box-sizing: border-box; min-height: 64px; margin: 8px 0 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #151514; color: var(--fg); font: inherit; font-size: 13px; resize: vertical; }
+/* a workflow: the flow on top, its chat below */
+.wf-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; } .wf-wrap > .wf { flex: 1 1 auto; } .wf-chat { flex: 0 0 38%; min-height: 220px; }
+.wf-chat > header { padding: 10px 32px 0; min-width: 0; } .wf-chat > header b { white-space: nowrap; } .wf-chat > header span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .wf-chat .thread, .wf-chat .composer-wrap { margin: 0; padding-left: 32px; padding-right: 32px; } /* its left edge is the flow's */
+.runline.asking { color: var(--warn); display: flex; align-items: center; gap: 10px; }
+/* a workflow edited in place (T-167) */
+.wf-inline { cursor: text; border-radius: 6px; padding: 1px 4px; margin: -1px -4px; } .wf-inline:hover { background: var(--row-hover); } .wf-inline.empty { color: var(--faint); font-style: italic; }
+.wf-inline-input { font: inherit; color: inherit; background: var(--side); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; margin: -2px -7px; width: calc(100% + 14px); max-width: 64ch; outline: none; }
+.wf-ed { display: grid; gap: 12px; margin: 2px 0 16px; } .wf-ed label { display: grid; gap: 5px; font-size: 11.5px; color: var(--faint); letter-spacing: .02em; }
+.wf-ed input, .wf-ed select, .wf-ed textarea { font: 13px/1.45 -apple-system, "SF Pro Text", system-ui, sans-serif; color: var(--fg); background: #151514; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; width: 100%; outline: none; }
+.wf-ed input:focus, .wf-ed select:focus, .wf-ed textarea:focus { border-color: #3a3a37; } .wf-ed textarea { min-height: 180px; resize: vertical; } .wf-ed small { color: var(--faint); font-size: 11.5px; }
+.wf-ed-name { margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); letter-spacing: 0; } .wf-ed-name .wf-inline-input { max-width: none; }
+.wf-ed-btns { display: flex; gap: 8px; flex-wrap: wrap; } .wf-ed .btn.danger { color: var(--err); } /* not .btns: the gate's outcome buttons are those */
+/* the + on the line between two steps: halfway from this row's mark to the next one's (their centres are 14px below each row's top) */
+/* a step to read (its editor behind Edit), and the versions */
+.line1 b.wf-untitled { font-weight: 500; color: var(--fg-2); } /* a step with no title, called by its instructions */
+.wf-step-head, .wf-ed-top { display: flex; align-items: center; gap: 10px; } .wf-step-head h3 { margin: 0; flex: 1; font-size: 15px; font-weight: 600; } .wf-ed-top .wf-ed-name { flex: 1; }
+.wf-step-who { margin: 6px 0 12px; font-size: 12.5px; color: var(--fg-2); }
+.wf-step-text { white-space: pre-wrap; font-size: 13px; line-height: 1.5; color: var(--fg); background: #151514; border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; }
+.wf-step-where { display: block; margin-top: 6px; font-size: 11px; color: var(--faint); } .wf-step-h { margin: 20px 0 8px; font-size: 11.5px; font-weight: 500; color: var(--faint); letter-spacing: .02em; }
+.wf-step-run { display: grid; grid-template-columns: 38px 1fr; gap: 2px 8px; font-size: 12.5px; padding: 6px 0; border-top: 1px solid var(--line); } .wf-step-run b { color: var(--fg-2); font-weight: 500; }
+.wf-step-run p { grid-column: 2; margin: 0; color: var(--muted); font-size: 12px; } .wf-step-run .ok { color: var(--ok); } .wf-step-run .er { color: var(--err); } .wf-step-run .wn { color: var(--warn); }
+.wf-version-row { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-top: 1px solid var(--line); } .wf-version-row > div { display: grid; gap: 2px; } .wf-version-row b { font-size: 13px; font-weight: 600; }
+.wf-version-row small { font-size: 11.5px; color: var(--faint); } .wf-version-now { margin-left: 8px; font-size: 11px; color: var(--ok); } .wf-versions-notice { margin: 0 0 10px; font-size: 12.5px; color: var(--ok); }
+/* a gate the run waits at: what to do, first in the pane */
+.wf-gate { margin: 0 0 18px; padding: 0 0 16px; border-bottom: 1px solid var(--line); } .wf-gate .gate-note { margin-top: 10px; }
+.wf-gate-ask { border: 1px solid #6a5a2a; background: #211d12; border-radius: 10px; padding: 10px 12px; } .wf-gate-ask i { display: block; font-style: normal; font-size: 11.5px; color: var(--warn); margin-bottom: 4px; } .wf-gate-ask p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--fg); white-space: pre-wrap; }
+.wf-plus { position: absolute; left: 6px; top: calc(50% + 6px); width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 1px solid #34342f; background: var(--bg); color: var(--faint); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 2; }
+.wf-plus:hover { color: var(--fg); border-color: var(--accent); }
+/* a workflow on a narrow screen: the same view, its margins halved, the header's buttons under the title when they no longer fit */
+@media (max-width: 640px) {
+  .wf-head, .steps, .foot, .wf-chat > header { padding-left: 16px; padding-right: 16px; } .runline { margin-left: 16px; margin-right: 16px; }
+  .wf-chat .thread, .wf-chat .composer-wrap { padding-left: 16px; padding-right: 16px; } .wf-head { flex-wrap: wrap; row-gap: 10px; }
+}

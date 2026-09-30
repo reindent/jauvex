@@ -17,7 +17,12 @@ feature and why it works the way it does: read the relevant part before changing
   (Whisper, `say`, the voice helper, all voice decisions), `jev.ts`, `usage.ts`, `debug.ts`.
 - `web/src/` the window: `App.tsx` (sidebar, `Chat`, `Composer`, debugger), `voice.ts` (VAD and playback), `Orb.tsx`.
 - `shared/types.ts` types and the texts both sides share; `shared/roster.ts` session titles, unique short ids and the
-  agent a message is addressed to (pure, checked in `tests/roster.test.ts`). IPC only: preload -> main -> backend. No server.
+  agent a message is addressed to (pure, checked in `tests/roster.test.ts`); `shared/workflow.ts`, `shared/workflow-edit.ts` and
+  `shared/board.ts` the workflow and board markdown (pure, `tests/workflow-parse.test.ts`, `tests/workflow-edit.test.ts`,
+  `tests/board-parse.test.ts`); `electron/workfiles.ts` reads and writes those files in a folder; `web/src/WorkflowView.tsx` and
+  `BoardView.tsx` their views; `web/src/runner.ts` runs a workflow (pure: given how to deliver a message and how to save the record;
+  `tests/runner.test.ts` drives it with fakes, `tests/window/workflow-run.test.ts` through the window with no model). IPC only: preload
+  -> main -> backend. No server.
 - State lives in the data folder, `~/.jauvex/personal` (`state.json`, the window's profile, the logs, the command files), for every
   copy, run from source or compiled (`electron/paths.ts`; `CVC_DATA_DIR` moves it: the checks). It is outside the app's folder, so an
   update keeps it. One data folder, one copy running. Below, `data/` means that
@@ -158,13 +163,28 @@ debug panel.
 - Class names are global: a bare `.ctx` for the context meter's button (T-74) also styled the session menu, `menu ctx`, and laid its
   items out in a row (T-131). Give a component's classes its own prefix (`ctx-meter`), and never a short bare word.
 - Words held for "what comes next" must always have a way out (timer or `dropped`), or the message vanishes.
+- Every provider files a session by the folder it works in (Claude Code `<config>/projects/<folder's real path, dashed>/`, Grok
+  `<GROK_HOME>/sessions/<folder, URL-encoded>/`, Codex the thread's own settings): a workflow moved by hand took its files and left its
+  chat's session behind, and the chat opened empty (T-217). Move sessions with the app (`electron/move.ts`, `move-workflow`,
+  `move-session`), never by moving files, and teach the stand-ins any new place a provider keeps sessions (the Grok stand-in files them
+  as Grok does).
+- A workflow run lives in the window that started it (`runners` in `App.tsx`): a step's reply comes back with a `replyTo` of kind `run`
+  (the same `pendingReplyTo` path agent messages use) and goes to the Runner, not to `returnReply`. A window reload or an app restart
+  leaves a live run with nobody driving it: the window takes it over as it stands at load (`attachRun`), nothing re-sent.
+- Window checks share `tmp/scratch`: `run.sh` removes its `workflows/` and `boards/` before every window check (a live run left there is
+  taken over by the next window at load). They run on ports of their own (9351 for the window, 4351 and 4352 for Whisper), apart from
+  any other copy's checks on this Mac: two checks on one port drive each other's window. The fixture's sessions are found by the scratch
+  folder's real path: a new, empty scratch folder in its place failed eight checks that open one. A run record's own result is the
+  `result:` line of its header; `/^result: done/m` also matches a step's line.
 - The app's own agent lives in `~/.jauvex` (`JAUVEX_HOME`, `CVC_JAUVEX_HOME` in the checks: `run.sh` gives each check its own
   home, never the user's). Never make an agent's home depend on where
   the app is installed: Claude Code files sessions by working folder, and a renamed install folder lost the Jauvex agent.
 - The state is read once and kept in memory (`loadState` in `backend.ts`); every change edits that copy and every save writes
   it. Read-modify-write of the file lost changes when two ran at once. Code that builds a modified copy for output must
   not mutate the state it loaded. `forgetState` stops all writes after a reset.
-- A model that gets a prompt with several reply shapes will mix them up: validate every line before it is spoken.
+- A model that gets a prompt with several reply shapes will mix them up: validate every line before it is spoken. Forbidding what a line
+  may say pushes a small model into another job's shape: once HEARD forbade plans, Haiku answered it with NONE or STEER (T-201, 3 of 14
+  against 0 of 14); saying what the reply always is ("a spoken sentence, whatever the message asks for") brought it back to none.
 - Context (T-74, 2026-09-23): a Claude session at 962K of its 1M window took one more message, and the messages after it failed with
   "Prompt is too long" until it was compacted by hand (most likely Claude Code's own refusal: those errors had no request id, and
   the API took a bigger request minutes later). The meter reads Claude's

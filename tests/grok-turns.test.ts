@@ -3,7 +3,9 @@
 // that needs permission shows the same card as Claude's and its answer reaches Grok; a message handed to a running turn is read in it,
 // and one handed over after its last step (Grok runs it as a prompt of its own) still ends in the same turn; stop, compaction, a message
 // that does not fit, the model picked in the composer, renaming, the account, and the voice's own Grok session.
-import path from 'node:path'; import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path'; import { existsSync, readFileSync, readdirSync } from 'node:fs';
+// where the stand-in keeps a session, as Grok files them: <GROK_HOME>/sessions/<the folder, URL-encoded>/<id>/ (its own record: session.json)
+const mockFile = (id: string): string => { const root = path.join(process.env.GROK_HOME!, 'sessions'); for (const g of existsSync(root) ? readdirSync(root) : []) { const f = path.join(root, g, id, 'session.json'); if (existsSync(f)) return f; } return path.join(root, '-', id, 'session.json'); };
 process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR ??= path.resolve('tmp/testdata');
 process.env.CVC_GROK_BIN = path.resolve('tests/mock/grok'); process.env.GROK_HOME = path.join(process.env.CVC_DATA_DIR, 'grok'); // the stand-in files its sessions there
 process.env.MOCK_DELAY_MS = '2'; process.env.MOCK_CONTEXT_TOKENS = '150000'; process.env.MOCK_CONTEXT_WINDOW = '200000';
@@ -30,7 +32,7 @@ check('the turn ends once, well', t1.filter((e) => e.type === 'done').length ===
 const st1 = (await backend.state()).projects.find((x) => x.id === p.id)!;
 check('the session is kept in the folder as a Grok session', st1.sessions.includes(sid) && st1.providers?.[sid] === 'grok', JSON.stringify({ sessions: st1.sessions.slice(0, 3), provider: st1.providers?.[sid] }));
 check('the context meter: what the request carried, against the model\'s window', last(t1, 'context')?.usage.used === 150_000 && last(t1, 'context')?.usage.window === 200_000, JSON.stringify(last(t1, 'context')));
-{ const { readFileSync } = await import('node:fs'); const kept = JSON.parse(readFileSync(path.join(process.env.GROK_HOME!, 'mock-sessions', `${sid}.json`), 'utf8')) as { rules?: string };
+{ const { readFileSync } = await import('node:fs'); const kept = JSON.parse(readFileSync(mockFile(sid), 'utf8')) as { rules?: string };
   check('Grok is told the app\'s briefing once, as the session\'s rules, with the note on dictation', /About the client you are running in/.test(kept.rules ?? '') && /The user is talking to you by voice/.test(kept.rules ?? ''), (kept.rules ?? '').slice(0, 80)); }
 
 // Listing and history.
@@ -104,7 +106,7 @@ check('the voice of a Grok session answers through Grok', /I got: "HEARD: hello 
 check('the voice\'s own session is not one of the folder\'s', !(await backend.sessions(p.id)).some((s) => s.provider === 'grok' && /HEARD/.test(s.summary)));
 check('the voice model is the fast one when none is picked', (await grok.voiceModel('')) === 'mock-fast', await grok.voiceModel(''));
 { const { readFileSync, existsSync } = await import('node:fs'); const file = path.join(process.env.CVC_DATA_DIR!, 'grok-voice-session'); const first = existsSync(file) ? readFileSync(file, 'utf8').trim() : '';
-  const kept = (id: string) => existsSync(path.join(process.env.GROK_HOME!, 'mock-sessions', `${id}.json`));
+  const kept = (id: string) => existsSync(mockFile(id));
   check('the voice\'s session is noted in the data folder, to be deleted next time', !!first && kept(first), first);
   await grok.voiceAsk('Another voice.', 'HEARD: again', 'mock', 5000); const second = readFileSync(file, 'utf8').trim(); // another model: a new session, the old one deleted
   check('a new voice session deletes the one before it: Grok keeps no trail of them', second !== first && !kept(first) && kept(second), `${first} -> ${second}`); }
@@ -112,7 +114,7 @@ check('the voice model is the fast one when none is picked', (await grok.voiceMo
 // The app's per-provider setting reaches a session already loaded, in both directions: YOLO, Auto, then Ask again.
 for (const mode of ['yolo', 'auto', 'ask'] as const) {
   await backend.setUi({ providerPermissions: { grok: mode } }); await turn(sid, 'permission mode check');
-  const saved = JSON.parse(readFileSync(path.join(process.env.GROK_HOME!, 'mock-sessions', `${sid}.json`), 'utf8'));
+  const saved = JSON.parse(readFileSync(mockFile(sid), 'utf8'));
   check(`an existing Grok session takes ${mode} from the app's setting`, saved.yoloMode === (mode === 'yolo') && saved.autoMode === (mode === 'auto'), JSON.stringify([saved.yoloMode, saved.autoMode]));
 }
 await sleep(50); grok.shutdown();

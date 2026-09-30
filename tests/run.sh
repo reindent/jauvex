@@ -38,12 +38,12 @@ else
   for t in tests/window/*.test.ts tests/*.test.ts; do
     [ -f "$t" ] || continue
     case "$(basename "$t" | sed 's/\.test\..*//')" in *"$1"*) ;; *) continue ;; esac
-    prep "$t" || continue
+    prep "$t" || continue; case "$t" in tests/window/*) rm -rf "$ROOT/tmp/scratch/workflows" "$ROOT/tmp/scratch/boards" ;; esac # a live run left in the scratch folder would be taken over by the next window
     flags=""; grep -q '^// needs: mic' "$t" && flags="--no-sandbox --use-fake-device-for-media-stream --use-fake-ui-for-media-stream"
     wav=$(sed -n 's|^// wav: ||p' "$t"); [ -n "$wav" ] && flags="$flags --use-file-for-fake-audio-capture=$ROOT/$wav%noloop"
     echo "== $name"; ran=$((ran+1))
     case "$t" in
-      tests/window/*) env $envs CVC_HIDDEN=1 CVC_WHISPER_PORT=4331 CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" ./node_modules/.bin/electron . --remote-debugging-port=9341 $flags > "$DATA/app.log" 2>&1 & pid=$!
+      tests/window/*) env $envs CVC_HIDDEN=1 CVC_WHISPER_PORT=4351 CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" ./node_modules/.bin/electron . --remote-debugging-port=9351 $flags > "$DATA/app.log" 2>&1 & pid=$!
          out=$(CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" node "$t" 2>&1); ps -p $pid -o command= 2>/dev/null | grep -q electron && kill $pid; wait $pid 2>/dev/null; sleep 1 ;;
       *) out=$(backend "$t") ;;
     esac

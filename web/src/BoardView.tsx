@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { api } from './api';
 import { BOARD_FORMAT, doneFileOf, parseBoard, type Board, type BoardItem, type BoardSection } from '../../shared/board';
 import { BOARDS_FORMAT_TEXT, PROVIDER_LABEL, type Project, type Provider } from '../../shared/types';
+import type { EmbeddedMail } from './WorkflowView';
 import { Chat, type ChatEmbed } from './App';
 
 // A board (T-171), drawn from its markdown files, always the same way: one column per section, one card per task, the glyph as its status.
@@ -22,7 +23,7 @@ const VIEW_KEY = 'cvc.board.view';
 const isDone = (s: BoardSection) => /^Done/i.test(s.title);
 const shortTitle = (s: BoardSection) => s.title.replace(/\s*[—(].*$/, '');
 
-export function BoardView({ project, file, onChanged, chatProvider = 'claude', active = true, showMeta = false }: { project: Project; file: string; onChanged?: () => void /* the sidebar's counts */; chatProvider?: Provider; active?: boolean; showMeta?: boolean }) {
+export function BoardView({ project, file, onChanged, chatProvider = 'claude', active = true, showMeta = false, mail }: { mail?: EmbeddedMail /* its chat writes to other agents and hears back (T-205) */; project: Project; file: string; onChanged?: () => void /* the sidebar's counts */; chatProvider?: Provider; active?: boolean; showMeta?: boolean }) {
   const [files, setFiles] = useState({ md: '', done: '' }); const [loaded, setLoaded] = useState(false);
   const [showDone, setShowDone] = useState(() => localStorage.getItem(`cvc.board.done.${project.id}:${file}`) === '1');
   const [openKey, setOpenKey] = useState<string | null>(null); const [note, setNote] = useState('');
@@ -61,6 +62,11 @@ export function BoardView({ project, file, onChanged, chatProvider = 'claude', a
       return `<board-context>\nYou are the assistant of one board of this folder (${project.path}): the file ${file}, its finished items in ${doneFileOf(file)}. The user talks to you about it, by text or by voice: to add work, take it, move it on, finish or reopen it, or plan from it. Change the board by editing its files directly: the view draws the board from them as you save. ${BOARDS_FORMAT_TEXT}\n${now}\n</board-context>\n\n`; },
     onReply: () => redraw(),
   }), [provider, project.path, file]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Its chat writes to other agents and hears back, as any chat (T-205): the window's router knows it by its session, as "<title> board".
+  const inView = useRef<((text: string, replyTo?: never) => Promise<void>) | null>(null); const chatSid = useRef<string | null>(null); chatSid.current = chat?.sessionId ?? null;
+  const chatName = `${(board.title || file.replace(/^boards\//, '').replace(/\.md$/, '')).replace(/\s+board$/i, '')} board`;
+  useEffect(() => { const sid = chat?.sessionId; if (!mail || !sid) return;
+    return mail.register(project.id, sid, chatName, provider, async (t, r) => { for (let i = 0; i < 40 && !inView.current; i++) await new Promise((res) => setTimeout(res, 100)); await inView.current?.(t, r as never); }); }, [mail, chat?.sessionId, project.id, chatName, provider]);
   if (!loaded) return <div className="board-view"><p className="muted" style={{ padding: 28 }}>Opening…</p></div>;
   return (
     <div className="board-wrap">
@@ -79,6 +85,7 @@ export function BoardView({ project, file, onChanged, chatProvider = 'claude', a
     </div>
     {chat && <div className="jev-chat board-chat"><header><b>Talk to this board</b><span>{PROVIDER_LABEL[provider]} · sees the board on every message: adds, moves and finishes items in its files · text or voice</span></header>
       <Chat embed={embed} project={project} sessionId={chat.provider === provider ? chat.sessionId ?? null : null} active={active} info={null} showMeta={showMeta} onBusy={() => {}} onTurnEnd={redraw} onNew={() => {}}
+        onBridge={(b) => { inView.current = b ? (t, r) => b.deliver(t, r) : null; }} onReply={(text, replyTo) => { const sid = chatSid.current; if (sid && mail) mail.reply(project.id, sid, chatName, text, replyTo); }}
         onSession={(sid) => { const next = { provider, sessionId: sid }; setChat(next); void api.setBoardChat(project.id, file, next); }} /></div>}
     </div>
   );

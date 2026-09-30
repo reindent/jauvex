@@ -81,7 +81,9 @@ const methods = {
     const thread = { id: randomUUID(), preview: '', name: null, createdAt: now(), updatedAt: now(), cwd: p.cwd || process.cwd(), gitInfo: null, modelProvider: 'mock' };
     const t = { thread, items: [], ephemeral: !!p.ephemeral, approvalPolicy: 'untrusted', sandbox: { type: 'readOnly', networkAccess: false } }; threads.set(thread.id, t); save(t); return { thread, model: p.model || 'mock', approvalPolicy: t.approvalPolicy, sandbox: t.sandbox }; // a user's own read-only config, to be restored after YOLO
   },
-  'thread/resume': (p) => ({ thread: get(p.threadId).thread, model: p.model || 'mock', approvalPolicy: get(p.threadId).approvalPolicy, sandbox: get(p.threadId).sandbox }),
+  'thread/resume': (p) => { const t = get(p.threadId); if (p.cwd && p.cwd !== t.thread.cwd) { t.thread.cwd = p.cwd; save(t); } /* Codex records a resume's folder in the thread (thread_settings_applied): its next listing is there (T-217) */
+    return { thread: t.thread, model: p.model || 'mock', approvalPolicy: t.approvalPolicy, sandbox: t.sandbox }; },
+  'thread/unsubscribe': (p) => { get(p.threadId); return { status: 'unsubscribed' }; },
   'thread/list': () => ({ data: [...threads.values()].filter((t) => !t.ephemeral && t.items.length).map((t) => t.thread).sort((a, b) => b.updatedAt - a.updatedAt), nextCursor: null }),
   'thread/read': (p) => ({ thread: get(p.threadId).thread }),
   'thread/items/list': (p) => ({ data: get(p.threadId).items, nextCursor: null }),

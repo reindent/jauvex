@@ -11,6 +11,7 @@ import { APP_ROOT, projectOr404, saveContext, saveState } from './backend.js';
 import { shortTitle } from '../shared/roster.js';
 import { clientBriefing, type Attachment, type Block, type ChatEvent, type ChatMessage, type ChatStart, type ModelOption, type PermissionDecision, type SessionInfo } from '../shared/types.js';
 import { tooLong, type ContextUsage } from '../shared/context.js';
+import { moveGrokSession } from './move.js';
 
 /**
  * Grok sessions, through `grok agent stdio`: the Agent Client Protocol (ACP: JSON-RPC 2.0, one JSON object per line over stdio) that
@@ -396,4 +397,11 @@ export function voiceAsk(instructions: string, message: string, preferred: strin
 export function voiceWarm(instructions: string, preferred: string): void {
   if (voice) return;
   void voiceAsk(instructions, 'WARMUP: reply with the single word ok.', preferred, 15_000);
+}
+/** A session moved to another folder (T-217): closed here if this process has it open (its files are about to move), then its folder of
+ *  files moved where Grok looks for that folder's sessions. Not while a prompt runs in it. */
+export async function moveSession(sessionId: string, from: string, to: string): Promise<void> {
+  if (turns.has(sessionId)) throw new Error('a turn is running in it');
+  if (loaded.has(sessionId)) { await call('session/close', { sessionId }).catch(() => { /* already closed */ }); loaded.delete(sessionId); chosen.delete(sessionId); }
+  await moveGrokSession(sessionId, from, to);
 }

@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.2.1, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.3.0, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -166,6 +166,66 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   state for that board's file (a board's folder is often a repository: nothing of ours is written there), and it is left out of the
   folder's list of agents. A folder reached through a symlink keeps its history too: Claude Code files a session by the real path,
   and the app looks there as well (`tests/window/board-chat.test.ts`).
+- **Workflows** (T-210): a workflow is a markdown file in the folder, `workflows/<name>.md`, and a folder beside it, `workflows/<name>/`,
+  with one file per step: its instructions. The workflow file has a title and a line, `when:`, then the steps in order, one heading each:
+  `## 1. [Script](news-video/script.md) → Video Agent`, the step's name linked to the file of its instructions, and who does it; `→ you`
+  makes a step a human-in-the-loop gate (never a person's name). A step's file holds only what its agent is told, in plain words. They are
+  listed under the folder, between its sessions and its boards; a new one comes from the folder's options (New workflow) or
+  `new-workflow --name "..."`, and starts as a Hello World that runs as it is: the Jauvex agent says hello, you approve, it writes the
+  greeting down in the run's folder. The app's own agent is the one a step goes to when no agent is named, since every install has it.
+  - **The view**: one line, one row per step with its agent and the state of the current run; click a row for its details in the right pane,
+    the file name to edit the markdown in place (the flow follows, the file is saved), and "All runs" for the history. Everything is editable
+    without the markdown: the title and the line under it in place; a step's pane opens to be read (who does it, its instructions and the
+    file they are kept in, how it went in its last runs), and **Edit** opens its editor: who does it, picked from **In this folder** first,
+    then **Elsewhere** (the Jauvex agent first, then the other folders' agents), or you; its instructions; an optional title (without one,
+    the step is called by its instructions, cut short). A + on the line between two steps adds one there; a step can be removed. Each edit
+    rewrites only its part of the file (`shared/workflow-edit.ts`), and a step's file is made, renamed and removed with it; the app reads
+    and writes a step's file only in the workflow's own folder. **The sidebar's order** (T-224; the user, 2026-09-29: "when it needs a human
+    supervision, it should be on top, 100% ... then by those that were last modified, not created or last run"): the workflows waiting for
+    you first, then the running ones, then the rest by the last change of their file or their steps' instructions, the newest first
+    (`sortWorkflows` in `shared/workflow.ts`, `tests/workflow-parse.test.ts`).
+  - **Running one**: the Run button, or an agent's `run --workflow <name> --folder <name>` (a workflow written a moment ago is found: the
+    folder is read again when the window's list does not have it yet), sends step 1 as one message to the agent it
+    names, through the channel the agents already use, with its instructions, the previous step's words and how to end
+    (`OUTCOME: <one of the step's outcomes>`); the reply's OUTCOME line picks what comes next; a reply without it is asked for once more,
+    then the run stops as failed; a step whose agent is not in the app fails the run and says so. A step of yours waits: its pane offers one
+    button per outcome and a note (continue goes on, changes goes back to the step before with your notes), and the step before it is told to
+    end with a FOR YOU line saying plainly what to do there. A gate that is reached raises a silent notification, and the workflow's row in
+    the sidebar shows the app's mark turning while it runs, with a yellow dot while it waits for you. An agent may pass a gate only on your
+    explicit word (`decide --workflow … --outcome …`). A run is driven by the window that started it: after a reload or a restart it is taken
+    over as it stands, nothing re-sent; "Send step again" re-sends a step whose agent never answered, and Stop stops it.
+  - **Runs and versions**: each run is a markdown record, `workflows/<name>/runs/NNN.md` (started, result, took, each step's time and last
+    words), and a folder for its files; the view derives the live run, the history and the averages from them. When a run starts, the
+    workflow file and each step's instructions are compared with the latest version: the run takes it when nothing changed, else a new one,
+    `workflows/<name>/versions/NNN.md`, whole; editing takes none. **Versions** lists them, and any other than the current one can be
+    restored (what the workflow was is kept as a version of its own first, so nothing is lost).
+  - **Tries**: a step may come round as many times as its tries with no decision of yours in between; past that, a loop between agents alone
+    stops the run. A decision of yours starts the count again, so a loop through you has no limit. A workflow's number is its `tries:` line
+    (6 when there is none); a new one is written with the number in Settings, General, Workflows; a step can say its own, `tries: 1`.
+  - **Triggers**: `when:` is manual, a schedule (`every Monday 09:00`, `every weekday 8:30`, `every day at 7pm`, `every 2 hours`), a window
+    (`anytime between 9 and 12 am`: once a day, at a random time in it, at its end at the latest) or an event (`after <workflow of the same
+    folder>`: when that one ends done, read from the folder then, so one written a moment before counts too). Schedules are the app's own timer: every 15 s it reads the folder's workflows again (an edited `when:`
+    line counts at once) and starts one whose slot is under ten minutes old, once per slot, while the app is open. A schedule missed while
+    the app was closed (or the computer asleep) is the setting's, in Settings, General, Workflows: run it as soon as the app opens, have the
+    Jauvex agent tell you and ask whether to run it now (the default), or do nothing; only the latest missed time of each workflow counts
+    (`settings --workflow-missed run|alert|nothing`). A run records who started it (`by: its schedule (every weekday 6:32)`).
+  - **Talk to a workflow**: under the flow sits a chat of its own (a hidden session in the folder, kept in `workflows/<name>/chat.json`),
+    told on every message what the workflow is now, its steps' instructions included: it edits the files (the flow follows), and runs it,
+    stops it or passes its gate on your word. It writes to the app's agents and hears back as any chat does: the router knows it as
+    "<workflow> workflow" while its view is open and delivers to it there; a board's chat is reached the same way, as "<board> board".
+  - **Moving one to another folder** (T-217; the user, 2026-09-29: "The workflows were actually moved But the sessions of the agents were
+    not"): every provider files a session by the folder it works in, so a workflow moved by hand takes its files and leaves its chat's
+    session under the old folder, and its chat opens empty. `move-workflow --workflow <name> --to <folder> [--folder <its folder>]` moves
+    the file, its folder (steps, runs, versions, `chat.json`) and the chat's session, and puts the files back if the session cannot move:
+    Claude Code's transcript to the new folder's place (`<config>/projects/<folder, dashed>/`, by the folders' real paths, with what it
+    keeps beside it, every line's working folder rewritten, its time kept), Grok's session folder to the new folder's
+    (`<GROK_HOME>/sessions/<folder, URL-encoded>/`), and a Codex thread resumed in the new folder, which Codex records in the thread
+    (`electron/move.ts`, `moveThread` in `electron/codex.ts`, `moveSession` in `electron/grok.ts`). `move-session --session <id|title>
+    --to <folder>` moves one agent the same way, with what the app keeps for it (its place in the list, provider, settings, context); it
+    works in the new folder from its next turn. Neither runs while the session works or the workflow runs. A step's agent is found by name
+    wherever it lives. Checks: `tests/move-session.test.ts` (a folder reached through a symlink too), `tests/window/move-workflow.test.ts`.
+  - A workflow is deleted from its row's secondary click, after a yes, with its folder (instructions, runs, versions); one that runs is
+    stopped first. Every agent that runs in a folder is told its workflows, and that a step of its own ends with the OUTCOME line.
 - **Images an agent shows** (a markdown image with a local path, relative to its folder or absolute) load from the file
   and never overflow the thread (at most the thread's width and 60% of the window's height).
 - **Images in a message**: paste a screenshot from the clipboard into the composer, drop image files on it, or pick them
@@ -275,7 +335,10 @@ Press the white round button in the message box. All local except the two Claude
   ```
   When its turn ends the app delivers the text to that session, tagged `(from agent "Sender" [id])`: steered into the
   running turn if that agent is working, sent as a new turn otherwise (the session is mounted in the background if it
-  was not open). Whatever the other agent replies comes back to the sender by itself, tagged the same way, so an
+  was not open). A message that wants its own answer is never handed to a turn under way that answers someone else, nor is a
+  workflow's step: it waits in the queue with its address and goes as a turn of its own (T-228: a chat kept one address for its turn's
+  answer, and an answer went to an agent that had asked a question meanwhile; `shared/delivery.ts`, `tests/delivery.test.ts`).
+  Whatever the other agent replies comes back to the sender by itself, tagged the same way, so an
   explicit message is a question and no block is needed to answer it; an answer does not bounce back again, so two
   agents cannot ping-pong on their own (and the app stops relaying after 30 agent-to-agent messages in ten minutes).
   A reply that goes back to its sender leaves out the blocks it addressed to other agents (they went to them) and says who
@@ -464,7 +527,7 @@ Press the white round button in the message box. All local except the two Claude
   message; held at most three times, 4.5 s each). A long dictation is closed at its next short pause once it passes 6 s, and at 12 s whatever the pauses, and the next words join it (not counted as a hold): every
   transcription pass costs by the length of the audio, and a paragraph re-transcribed at each pause took seconds a pass, so the words
   landed late and the thought was cut in two. The fullest text any pass of a stretch heard is remembered: a final pass that heard far fewer words (a 14 s pass once came back as "I" where earlier passes had heard two sentences) is retried once, and the fuller text wins. Whole transcripts Whisper invents from near-silence ("Thank you for your time.", "Thanks for watching") are dropped whatever their score. The audio of every pass stays in `data/voice-audio` (the newest 120 files, never sent anywhere), named in the recorder, so a lost sentence can be replayed. One speculative pass at a time: a pause while the previous pass still runs skips it, whether it was a question or a thank-you (answered at once with
-  the voice answers in three stages: the quick line at once (Jev's fixed phrase, prepared during the pause), then the understanding (the voice model, told the quick line it comes after so it never repeats it, from the request and the last of the conversation: one or two sentences that reinforce what was said without parroting it; skipped for anything under five words, or once the turn is already over), then the summary of the answer when it lands), and queue / steer / stop / replace while the main thread is busy, with the spoken line
+  the voice answers in three stages: the quick line at once (Jev's fixed phrase, prepared during the pause), then the understanding (the voice model, told the quick line it comes after so it never repeats it, from the request and the last of the conversation: one or two sentences that say back what was said or asked, in its own words, and nothing else: never an answer, a plan or a promise, a request or a question back, a judgement or a guess, never a pronoun the user did not say; the answer is the third stage's (T-201; the user, 2026-09-28: it "should not attempt to solve the user's problem or answer the question"). Each line is checked before it is said, and every clause that does any of that is taken out (`shared/reflection.ts`). Skipped for a greeting, small talk or thanks (Jev's own question, else a rule on the words: no extra reply shape for the model), for anything under five words, or once the turn is already over), then the summary of the answer when it lands), and queue / steer / stop / replace while the main thread is busy, with the spoken line
   picked from a fixed set, in English, never the same line twice in a row. "Decisions" in the voice settings hands all of it back to the voice model. Below 0.6 confidence, in another language, over the 1.2 s budget, on any error, or with no key, the voice
   model decides as before. The key stays in the main process: never logged, never sent to the window. `CVC_JEV=off`
   switches it off. The voice settings say who is deciding.
