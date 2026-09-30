@@ -3,6 +3,12 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.3.2: 2026-09-30
+
+- **New replies, counted per agent.** A reply of an agent that is not on screen puts a badge with the count on its row in the sidebar,
+  the Jauvex agent's too (up to 99, then 99+). Opening the agent clears its count; a reply of the agent on screen counts nothing. A
+  reload or a restart keeps the counts.
+
 ## 1.3.1: 2026-09-30
 
 - **What a new version brings, told in the app.** Before an update, the Jauvex agent tells you what the new version brings, from its
