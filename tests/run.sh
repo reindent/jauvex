@@ -43,7 +43,7 @@ else
     wav=$(sed -n 's|^// wav: ||p' "$t"); [ -n "$wav" ] && flags="$flags --use-file-for-fake-audio-capture=$ROOT/$wav%noloop"
     echo "== $name"; ran=$((ran+1))
     case "$t" in
-      tests/window/*) env $envs CVC_HIDDEN=1 CVC_WHISPER_PORT=4351 CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" ./node_modules/.bin/electron . --remote-debugging-port=9351 $flags > "$DATA/app.log" 2>&1 & pid=$!
+      tests/window/*) env $envs CVC_HIDDEN=1 CVC_WHISPER_PORT=4451 CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" ./node_modules/.bin/electron . --remote-debugging-port=9451 $flags > "$DATA/app.log" 2>&1 & pid=$!
          out=$(CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" node "$t" 2>&1); ps -p $pid -o command= 2>/dev/null | grep -q electron && kill $pid; wait $pid 2>/dev/null; sleep 1 ;;
       *) out=$(backend "$t") ;;
     esac

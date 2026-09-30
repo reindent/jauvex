@@ -11,7 +11,8 @@ import { Copy, EyeOff as HideIcon, Pencil, Bug, ArrowLeft, ArrowRight, ArrowUp, 
 import { localSrc, md } from './md';
 import { Pane, type PaneTarget } from './Pane';
 import { findAgents, matchSession, shortIds, shortTitle } from '../../shared/roster';
-import { shouldAsk, updateNote, type UpdateStatus } from '../../shared/update';
+import { justUpdated, shouldAsk, updatedNote, updateNote, type UpdateStatus } from '../../shared/update';
+import { changelogSince } from '../../shared/changelog';
 import { answerIs, stopSaysMore } from '../../shared/orders';
 import { ACK_MODEL_KEY, DICTATED_TAG, JAUVEX_HELLO, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
 import { ago, api, pickFolder, size } from './api';
@@ -317,7 +318,15 @@ export default function App() {
   const offering = useRef(''); const reachJauvexRef = useRef(reachJauvex); reachJauvexRef.current = reachJauvex;
   useEffect(() => { if (!update?.latest || !jauvex || offering.current === update.latest) return; const u = update; offering.current = u.latest!;
     void (async () => { if (!shouldAsk(u, (await api.state()).ui?.updateAsked)) return;
-      if (await reachJauvexRef.current(updateNote(u.current, u.latest!))) await api.setUi({ updateAsked: u.latest }); else offering.current = ''; })(); }, [update, jauvex]);
+      if (await reachJauvexRef.current(updateNote(u.current, u.latest!, u.notes))) await api.setUi({ updateAsked: u.latest }); else offering.current = ''; })(); }, [update, jauvex]);
+  // Opened on a new version (T-218; the user, 2026-09-30: "the app should notify what the change log is about"): the Jauvex agent says so, and
+  // what it brings from the app's own changelog, then checks the app, in its chat, once per version.
+  const greeted = useRef('');
+  useEffect(() => { const u = update; if (!u || !jauvex || greeted.current === u.current) return; greeted.current = u.current;
+    void (async () => { const ui = (await api.state()).ui; const up = justUpdated(u, ui);
+      if (up) { const notes = changelogSince(await api.changelog().catch(() => ''), up.from, u.current); open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex' });
+        if (!(await reachJauvexRef.current(updatedNote(up.from, u.current, notes)))) { greeted.current = ''; return; } }
+      if (ui?.lastVersion !== u.current) await api.setUi({ lastVersion: u.current }); })(); }, [update, jauvex]); // eslint-disable-line react-hooks/exhaustive-deps
   const deliverTo = async (projectId: string, sessionId: string, text: string, replyTo?: Sel): Promise<boolean> => {
     if (jauvex && projectId === jauvex.id) return reachJauvex(text, replyTo);
     const inView = embedded.current.get(sessionId); if (inView) { await inView.deliver(text, replyTo); return true; } // a workflow's chat, where it is (T-205)

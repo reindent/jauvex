@@ -6,7 +6,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync, statSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { newer, shouldAsk, updateNote } from '../shared/update.ts';
+import { newer, shouldAsk, updateNote, justUpdated, updatedNote } from '../shared/update.ts';
 import { updater, appBundleOf, madeByInstaller, RUNNER } from '../electron/updater.ts';
 let failed = 0; const ok = (c: boolean, what: string, detail = '') => { console.log(`${c ? 'PASS' : 'FAIL'} ${what}${!c && detail ? ` ${detail}` : ''}`); if (!c) failed++; };
 const root = path.join(process.env.CVC_DATA_DIR ?? path.join(process.cwd(), 'tmp', 'testdata-update'), 'update-check'); rmSync(root, { recursive: true, force: true }); mkdirSync(root, { recursive: true });
@@ -30,6 +30,26 @@ const answer = (body: unknown, status = 200) => (async () => new Response(JSON.s
   ok(await u.check() && seen[0] === 'https://jauvex.reindent.com/api/personal/version' && (await u.status()).latest === '1.2.0', 'the check asks the site\'s version address and keeps the version it names', JSON.stringify(seen)); }
 for (const [what, f] of [['an answer that is not a version', answer({ latest_version: '1.2; rm -rf ~' })], ['an error', answer({}, 503)], ['no network', (async () => { throw new Error('offline'); }) as unknown as typeof fetch]] as const) {
   const u = updater({ dataDir: root, version: '1.1.0', pid: 1, appBundle: null, quit: () => {}, fetcher: f }); ok(!(await u.check()) && (await u.status()).latest === undefined, `${what}: nothing is known, nothing breaks`); }
+
+// what the new version brings (T-218): the site's changelog, its sections since this copy's version, in the offer; after an update, the
+// app's own changelog in the Jauvex agent's greeting, once per version, only on the copy that updates itself
+{ const log = '# Changelog\n\n## 1.2.0: 2026-10-01\n\n- **Timers.** Agents that wake up.\n\n## 1.1.1: 2026-09-30\n\n- A fix.\n\n## 1.1.0: 2026-09-27\n\n- Old.\n';
+  const seen: string[] = []; const u = updater({ dataDir: root, version: '1.1.0', pid: 1, appBundle: null, quit: () => {}, fetcher: (async (url: string) => { seen.push(url); return new Response(url.endsWith('/changelog') ? log : '{"latest_version":"1.2.0"}'); }) as unknown as typeof fetch });
+  await u.check(); const n = (await u.status()).notes ?? '';
+  ok(seen[1] === 'https://jauvex.reindent.com/api/personal/changelog' && /^## 1\.2\.0: 2026-10-01\n\n- \*\*Timers/.test(n) && /## 1\.1\.1/.test(n) && !/Old\./.test(n), 'a newer version: the check also reads what it brings, since this copy\'s version', JSON.stringify([seen, n]));
+  const note = updateNote('1.1.0', '1.2.0', n);
+  ok(/what it brings/.test(note) && note.indexOf('what it brings') < note.indexOf('ask') && /What 1\.2\.0 brings, from its changelog:\n## 1\.2\.0/.test(note) && /`update` order/.test(note), 'the offer tells what the version brings, then asks', note); }
+{ const u = updater({ dataDir: root, version: '1.2.0', pid: 1, appBundle: null, quit: () => {}, fetcher: (async (url: string) => (url.endsWith('/changelog') ? new Response('x', { status: 404 }) : new Response('{"latest_version":"1.3.0"}'))) as unknown as typeof fetch });
+  const st = (await u.check()) && (await u.status()); ok(!!st && st.latest === '1.3.0' && st.notes === undefined && !/changelog/.test(updateNote('1.2.0', '1.3.0')), 'no changelog from the site: the offer goes without it'); }
+{ const seen: string[] = []; const u = updater({ dataDir: root, version: '1.2.0', pid: 1, appBundle: null, quit: () => {}, fetcher: (async (url: string) => { seen.push(url); return new Response('{"latest_version":"1.2.0"}'); }) as unknown as typeof fetch });
+  await u.check(); ok(seen.length === 1, 'nothing newer: no changelog asked for'); }
+{ const now = { current: '1.2.0', available: false, installed: true };
+  ok(JSON.stringify(justUpdated(now, { lastVersion: '1.1.0' })) === '{"from":"1.1.0"}' && justUpdated(now, { lastVersion: '1.2.0' }) === null, 'opened on a newer version than the last it ran: just updated, from that one; the same: not');
+  ok(JSON.stringify(justUpdated(now, { updateAsked: '1.2.0' })) === '{"from":null}' && justUpdated(now, {}) === null && justUpdated(now, undefined) === null, 'a copy from before the app kept its version: updated when it runs the version the user agreed to; a first start: not');
+  ok(justUpdated({ ...now, installed: false }, { lastVersion: '1.1.0' }) === null && justUpdated(null, { lastVersion: '1.1.0' }) === null, 'a copy run from a clone never says it was updated');
+  const g = updatedNote('1.1.0', '1.2.0', '## 1.2.0: 2026-10-01\n\n- **Timers.**');
+  ok(/updated from 1\.1\.0 to Jauvex 1\.2\.0/.test(g) && /what it brings/.test(g) && /What 1\.2\.0 brings, from its changelog:\n## 1\.2\.0/.test(g) && /`list`/.test(g) && /`update --check`/.test(g), 'after an update the Jauvex agent says so, what the version brings, and checks the app', g);
+  ok(!/brings/.test(updatedNote(null, '1.2.0')) && /updated to Jauvex 1\.2\.0/.test(updatedNote(null, '1.2.0')), 'no changelog: it says it is updated and checks, nothing more'); }
 
 // the order
 const script = (v: string) => `#!/bin/sh\n# Jauvex Personal installer.\nset -eu\nmain() {\n  version='${v}'\n}\nmain "$@"\n`;

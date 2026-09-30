@@ -3,6 +3,13 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.3.1: 2026-09-30
+
+- **What a new version brings, told in the app.** Before an update, the Jauvex agent tells you what the new version brings, from its
+  changelog, then asks. After an update, its chat opens and it tells you what changed since the version you had, then checks that your
+  folders and agents are all there. Every release is in `CHANGELOG.md`, and at jauvex.reindent.com/changelog.
+- Agents no longer take Claude Code's note about a resized picture for a screenshot from you.
+
 ## 1.3.0: 2026-09-29
 
 - **Workflows.** A folder's workflows: a markdown file per workflow, `workflows/<name>.md`, its steps in order and who does each, and a

@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.3.0, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.3.1, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -25,12 +25,16 @@ prebuilt is downloaded, so there is nothing for Apple to notarize. Jauvex lands 
 `/Applications` is not writable), a real app with its own name, icon and microphone permission; the source and the build
 stay in `~/.jauvex/personal/app`. Run the command again to update, with Jauvex closed, or let Jauvex do it: it asks
 jauvex.reindent.com which version is the latest (`/api/personal/version`), at launch and every six hours, and when a newer one is out
-the sidebar's footer says so ("1.2.0 is out") and the Jauvex agent asks you, once per version, whether to update now. On a yes
+the sidebar's footer says so ("1.2.0 is out") and the Jauvex agent tells you what it brings, from the changelog the site serves
+(`/api/personal/changelog`: this repository's `CHANGELOG.md`, the sections since your version), and asks you, once per version, whether
+to update now. On a yes
 (or "update the app" at any time) it runs `node scripts/jauvex.ts update`: refused while other agents work (`--now` on your word);
 otherwise the app fetches the same install command, checks that it installs the version offered, leaves it and a small runner in
 `~/.jauvex/personal/update/`, hands the runner to launchd and quits. The runner waits for the app to exit, runs the install command
 (it rebuilds the app on your Mac and opens it), opens the old app again if it does not finish, and removes it; its log is
-`update/update.log`. Only the app the install command made updates itself; a clone updates with git (T-165). To remove it, quit it and delete
+`update/update.log`. When the app opens on a newer version than the one it last ran, the Jauvex agent's chat opens and it tells you it is
+updated and what the versions since bring, from the app's own `CHANGELOG.md`, then checks that your folders and agents are all there (T-218).
+Only the app the install command made updates itself; a clone updates with git (T-165). To remove it, quit it and delete
 `Jauvex.app` and `~/.jauvex/personal/app`; its settings stay in `~/.jauvex/personal`. To work on the code, clone this
 repository instead: `npm start` runs it from the clone, and `npm run app` makes the same app in `tmp/mac-app/Jauvex.app`
 (`scripts/mac-app.ts`: Electron's app renamed Jauvex, with the built app, the Whisper models, Claude and Codex inside, signed

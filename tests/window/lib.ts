@@ -2,7 +2,7 @@
 type Target = { type: string; url: string; webSocketDebuggerUrl: string };
 /** A DevTools Protocol call; the result is whatever the method returns. */
 export type Cdp = (method: string, params?: Record<string, unknown>) => Promise<any>;
-export async function connect(port = 9351): Promise<{ cdp: Cdp; js: (expression: string) => Promise<any>; close: () => void }> {
+export async function connect(port = 9451): Promise<{ cdp: Cdp; js: (expression: string) => Promise<any>; close: () => void }> {
   for (let i = 0; i < 40; i++) { try { await fetch(`http://127.0.0.1:${port}/json/version`); break; } catch { await new Promise((r) => setTimeout(r, 500)); } }
   const page = ((await (await fetch(`http://127.0.0.1:${port}/json`)).json()) as Target[]).find((t) => t.type === 'page' && !t.url.includes('#mini'))!;
   const ws = new WebSocket(page.webSocketDebuggerUrl); await new Promise((r) => (ws.onopen = r));

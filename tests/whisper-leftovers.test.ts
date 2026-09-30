@@ -8,7 +8,7 @@ const alive = (pid: number) => { try { execFileSync('ps', ['-p', String(pid)], {
 const model = ['ggml-tiny-q5_1.bin', 'ggml-tiny.bin', 'ggml-base-q5_1.bin', 'ggml-base.bin'].map((f) => path.join('models', f)).find((f) => existsSync(f));
 const bin = (() => { try { return execFileSync('which', ['whisper-server']).toString().trim(); } catch { return ''; } })();
 if (!model || !bin) { console.log('PASS skipped: no whisper-server or model on this machine'); console.log('ALL PASS'); process.exit(0); }
-const PORT = 4351, OTHER = 4352;
+const PORT = 4451, OTHER = 4452;
 const old = spawn(bin, ['-m', path.resolve(model), '--host', '127.0.0.1', '--port', String(PORT), '-l', 'auto', '-nt'], { stdio: 'ignore' }); // "left by a previous run"
 const other = http.createServer((_q, r) => r.end('hi')).listen(OTHER, '127.0.0.1');
 const up = async (port: number) => { for (let i = 0; i < 240; i++) { try { await fetch(`http://127.0.0.1:${port}/`); return true; } catch { await new Promise((r) => setTimeout(r, 250)); } } return false; };

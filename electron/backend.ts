@@ -223,6 +223,8 @@ export const backend = {
     project.prefs = { ...project.prefs, [sessionId]: { model: String(prefs.model ?? ''), effort: String(prefs.effort ?? ''), permissions: prefs.permissions === 'yolo' ? 'yolo' : prefs.permissions === 'auto' ? 'auto' : 'ask' } };
     await saveState(state); return true;
   },
+  /** The app's own changelog (T-218): what the version it runs brings, told after an update. */
+  changelog: async (): Promise<string> => fs.readFile(path.join(ROOT, 'CHANGELOG.md'), 'utf8').catch(() => ''),
   // ---- workflows: a file per workflow and a folder beside it, its steps' instructions, runs and versions (electron/workfiles.ts)
   workflows: async (id: string) => listWorkflows((await projectOr404(id)).project.path),
   workflow: async (id: string, file: string) => readWorkflow((await projectOr404(id)).project.path, file),

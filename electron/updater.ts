@@ -8,6 +8,7 @@ import { openSync, closeSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { newer, VERSION_RE, type UpdateStatus } from '../shared/update.js';
+import { changelogSince } from '../shared/changelog.js';
 
 export const SITE = 'https://jauvex.reindent.com';
 
@@ -79,10 +80,12 @@ export type UpdaterDeps = {
 };
 
 export function updater(deps: UpdaterDeps) {
-  let latest: string | undefined;
+  let latest: string | undefined; let notes = ''; // notes: what the latest brings since this version, from the changelog the site serves (T-218)
   const site = deps.site ?? SITE, get = deps.fetcher ?? fetch;
   const dir = path.join(deps.dataDir, 'update');
-  const status = async (): Promise<UpdateStatus> => ({ current: deps.version, latest, available: newer(latest, deps.version), installed: deps.installed ?? madeByInstaller(deps.appBundle, deps.dataDir) });
+  const status = async (): Promise<UpdateStatus> => ({ current: deps.version, latest, available: newer(latest, deps.version), installed: deps.installed ?? madeByInstaller(deps.appBundle, deps.dataDir), ...(notes ? { notes } : {}) });
+  /** What the latest brings: the site's changelog (the live package's CHANGELOG.md), its sections since this version. Nothing when it has none. */
+  const readNotes = async (to: string): Promise<void> => { try { const r = await get(`${site}/api/personal/changelog`, { redirect: 'error', signal: AbortSignal.timeout(15_000) }); if (!r.ok) { await r.body?.cancel(); return; } const md = await r.text(); if (md.length < 400_000) notes = changelogSince(md, deps.version, to).slice(0, 8000); } catch { /* the offer goes without it */ } };
   return {
     /** The latest version, as the site named it. */
     note(v: string) { if (VERSION_RE.test(v)) latest = v; },
@@ -94,7 +97,7 @@ export function updater(deps: UpdaterDeps) {
         if (!r.ok) { await r.body?.cancel(); return false; }
         const v = ((await r.json().catch(() => null)) as { latest_version?: unknown } | null)?.latest_version;
         if (typeof v !== 'string' || !VERSION_RE.test(v)) return false;
-        latest = v; return true;
+        latest = v; if (newer(v, deps.version)) await readNotes(v); return true;
       } catch { return false; }
     },
     /** On the user's yes: fetches the installer, hands the update to launchd, and quits the app. */

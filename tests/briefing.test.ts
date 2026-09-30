@@ -7,6 +7,10 @@ let failed = 0; const check = (name: string, ok: boolean, detail = '') => { cons
 
 const b = clientBriefing(false); const jx = b.split('\n').find((l) => l.startsWith('The Jauvex agent.')) ?? '';
 check('the briefing has its paragraph about the Jauvex agent', !!jx);
+// 2026-09-30: after an agent read two big pictures, Claude Code added its own user-role note "[Image: original 2880x1800, displayed at
+// 2000x1250. Multiply coordinates by 1.44 ...]" (hidden in the app: the stream marks it synthetic), and the agent told the user "I can't
+// see your two screenshots". Every agent is told what that note is.
+check('the note Claude Code adds after a picture is read is not the user\'s: never answered as one', /\[Image: original .*displayed at .*\]: that is not a message, a screenshot or an attachment from the user/.test(b) && /never tell the user you cannot see pictures they did not send/.test(b));
 check('nothing about the app is the Jauvex agent\'s alone', !/Anything about the app goes to it|rather than acting on the app yourself|developing it\)/.test(b));
 check('the app\'s code is the work of whoever the user asks, when its source is in their folder', /Work the user gives you is yours, the app's code included/.test(jx));
 check('work goes to another agent only when the user says so, or when it is out of reach', /only when the user says so, or when it is out of your reach/.test(jx));

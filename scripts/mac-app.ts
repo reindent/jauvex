@@ -28,7 +28,7 @@ rmSync(WORK, { recursive: true, force: true }); mkdirSync(WORK, { recursive: tru
 // The executable keeps Electron's name: Electron finds its helper apps (Electron Helper.app, ...) by that name.
 step('Electron, as Jauvex.app', () => { sh('ditto', [ELECTRON, BUNDLE]); /* ditto keeps the frameworks' symbolic links */ rmSync(path.join(RES, 'default_app.asar'), { force: true }); });
 step('the app inside it', () => {
-  for (const f of ['dist', 'dist-electron', 'assets', 'scripts/jauvex.ts', 'README.md', 'AGENTS.md', 'LICENSE', 'NOTICE']) if (existsSync(f)) { mkdirSync(path.dirname(path.join(APP, f)), { recursive: true }); cpSync(f, path.join(APP, f), { recursive: true }); }
+  for (const f of ['dist', 'dist-electron', 'assets', 'scripts/jauvex.ts', 'README.md', 'CHANGELOG.md', 'AGENTS.md', 'LICENSE', 'NOTICE']) if (existsSync(f)) { mkdirSync(path.dirname(path.join(APP, f)), { recursive: true }); cpSync(f, path.join(APP, f), { recursive: true }); }
   // The models the voice uses (MODEL_CANDIDATES in electron/voice.ts): cloned on APFS, so they take no space twice. Without them, it types.
   mkdirSync(path.join(APP, 'models'), { recursive: true });
   for (const m of ['ggml-small-q5_1.bin', 'ggml-base-q5_1.bin']) if (existsSync(path.join('models', m))) { const from = path.join('models', m); const to = path.join(APP, 'models', m); try { execFileSync('cp', ['-c', from, to], { stdio: 'ignore' }); } catch { cpSync(from, to); } }
