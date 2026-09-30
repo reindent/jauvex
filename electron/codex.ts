@@ -309,3 +309,10 @@ export function voiceWarm(instructions: string, preferred: string): void {
   if (voiceThread) return;
   void voiceAsk(instructions, 'WARMUP: reply with the single word ok.', preferred, 15_000);
 }
+/** A thread moved to another folder (T-217): resumed there, which Codex records in the thread itself (thread_settings_applied, its database
+ *  following), then let go, so its next turn resumes it as any other. Not while a turn runs in it. */
+export async function moveThread(threadId: string, cwd: string): Promise<void> {
+  if (turns.has(threadId)) throw new Error('a turn is running in it');
+  if (loaded.has(threadId)) { await call('thread/unsubscribe', { threadId }).catch(() => { /* not loaded after all */ }); loaded.delete(threadId); }
+  await call('thread/resume', { threadId, cwd, excludeTurns: true }); await call('thread/unsubscribe', { threadId }).catch(() => { /* let go by itself */ }); cache.delete(threadId);
+}

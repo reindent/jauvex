@@ -19,21 +19,25 @@ import { VoiceEngine, clean, type VoicePhase } from './voice';
 import { Orb } from './Orb';
 import { JevPad } from './JevPad';
 import { BoardView } from './BoardView';
+import { WorkflowView, type RunControl, type StepAgents, type EmbeddedMail } from './WorkflowView';
+import { Runner } from './runner';
+import { parseWorkflow, parseRun, formatRun, stamp, parseTrigger, isDue, windowDue, firesAfter, stepTitle, workflowBase, SCHEDULE_TICK_MS, DEFAULT_TRIES, missedSlot, missedBy, missedNote, MISSED_DEFAULT, MISSED_OPTIONS, type MissedPolicy, type Run, type WorkflowInfo } from '../../shared/workflow';
 import { doneFileOf, type BoardInfo } from '../../shared/board';
+import { ownTurn } from '../../shared/delivery';
 
 
 // One mounted chat, as the app's agent router sees it: it can be handed a message (steered into a running turn, or sent as a new one).
 type ChatBridge = { deliver: (text: string, replyTo?: Sel) => Promise<void> }; // replyTo: the reply to this message goes back to that agent by itself
 type SideVoice = { muteIn?: number | null; phase: VoicePhase; level: React.RefObject<number>; micMuted: boolean; speakerOff: boolean; hush: () => void; toggleMic: () => void; toggleSpeaker: () => void; end: () => void };
-type QueueItem = { text: string; images: Attachment[]; spoken?: boolean; shown?: boolean }; // shown: already in the thread (a stop's words, a message handed to a turn that never read it): sent without a second bubble // one queued message: its text, the images pasted with it, and whether it was dictated (it goes out tagged)
-type Sel = { projectId: string; sessionId: string | null; key: string; kind?: 'jev' | 'board'; file?: string /* a board's file, relative to the folder */; voice?: boolean; name?: string; kickoff?: string; purpose?: string; detailsId?: string; adopt?: string }; // adopt: a turn already running in the main process (the window was reloaded); its chat id // detailsId: the model is still reading the order; name and kickoff may still change // kickoff: the first message of an agent opened by an order to the app, sent by itself // name: given by a spoken command ("... named X"), applied once the session exists // voice: opened by a spoken command, so voice mode carries on there // kind jev: sessionId is a Jev agent's id, and the view is its pad, not a chat
+type QueueItem = { text: string; images: Attachment[]; spoken?: boolean; shown?: boolean; replyTo?: Sel /* an agent's or a workflow step's: its answer goes there (T-228) */ }; // shown: already in the thread (a stop's words, a message handed to a turn that never read it): sent without a second bubble // one queued message: its text, the images pasted with it, and whether it was dictated (it goes out tagged)
+type Sel = { projectId: string; sessionId: string | null; key: string; kind?: 'jev' | 'board' | 'workflow' | 'run'; file?: string /* a workflow's or a board's file, relative to the folder */; step?: number /* kind run: the step whose reply this is */; voice?: boolean; name?: string; kickoff?: string; purpose?: string; detailsId?: string; adopt?: string }; // adopt: a turn already running in the main process (the window was reloaded); its chat id // detailsId: the model is still reading the order; name and kickoff may still change // kickoff: the first message of an agent opened by an order to the app, sent by itself // name: given by a spoken command ("... named X"), applied once the session exists // voice: opened by a spoken command, so voice mode carries on there // kind jev: sessionId is a Jev agent's id, and the view is its pad, not a chat
 type Spoken = { text: string; audio: ArrayBuffer | null };
 // "Stop" must stop at once: a short utterance with a stop word is acted on from the transcript itself, without asking any model.
 // Spanish "para" and "alto" are also everyday words ("for", "high"), so they only count when they are the whole utterance, give or take "ya" or "eso".
 const STOP_WORD = /\b(stop|cancel|abort|halt)\b/i;
 /** The first sentences of an answer, up to about 260 characters: what gets said when the voice model has nothing in time. */
 const opening = (plain: string): string => { const parts = plain.match(/[^.!?]+[.!?]+/g) ?? [plain]; let out = ''; for (const s of parts) { if (out && (out + s).length > 260) break; out += s; } return (out || plain).slice(0, 320).trim(); };
-const CONTEXT_TAG = /<jev-agent-context>[\s\S]*?<\/jev-agent-context>\s*|<board-context>[\s\S]*?<\/board-context>\s*|^\[voice transcript\] /g; // what the app sends along with the user's words (a Jev agent's trainer context, the dictation tag): never shown
+const CONTEXT_TAG = /<jev-agent-context>[\s\S]*?<\/jev-agent-context>\s*|<workflow-context>[\s\S]*?<\/workflow-context>\s*|<board-context>[\s\S]*?<\/board-context>\s*|^\[voice transcript\] /g; // what the app sends along with the user's words (a Jev agent's trainer context, the dictation tag): never shown
 const HOLD_MS = 2500; // how long a half-finished thought waits for its second half before it is sent as it is
 const isStopCommand = (text: string): boolean => text.trim().split(/\s+/).length <= 10 && STOP_WORD.test(text);
 const CLAUDE_MODELS: ModelOption[] = [{ id: 'claude-opus-5-5', label: 'Opus 5.5' }, { id: 'claude-fable-5-1', label: 'Fable 5.1' }, { id: 'claude-opus-5', label: 'Opus 5' }, { id: 'claude-sonnet-5', label: 'Sonnet 5' }, { id: 'claude-haiku-4-5', label: 'Haiku 4.5' }]; // the ids the CLI knows (0.3.280 added Opus 5.5); 'Default model' in the selector is the CLI's own default
@@ -44,7 +48,7 @@ const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 const EFFORT_LABEL: Record<string, string> = { minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max', ultra: 'Ultra' };
 
 /** Jauvex's own mark: two strands that cross, one over the other (two providers, one app). The strands flow while a turn runs. */
-function Mark({ busy = false }: { busy?: boolean }) {
+export function Mark({ busy = false }: { busy?: boolean }) {
   return (
     <svg className={`mark${busy ? ' busy' : ''}`} viewBox="0 0 24 24" aria-hidden="true">
       <mask id="mark-under"><rect width="24" height="24" fill="#fff" /><path d="M4 6.5C11 6.5 13 17.5 20 17.5" stroke="#000" strokeWidth="6.4" /></mask>
@@ -70,6 +74,7 @@ export default function App() {
   const [picker, setPicker] = useState<Project | null>(null);
   // Each folder's boards (T-171): its markdown to-do lists, read again on every refresh, on focus and every 15 s (agents write them).
   const [boards, setBoards] = useState<Record<string, BoardInfo[]>>({});
+  const [workflows, setWorkflows] = useState<Record<string, WorkflowInfo[]>>({}); // each folder's workflows (workflows/*.md), for the sidebar and the schedules
   const [nameBox, setNameBox] = useState<{ title: string; hint?: string; placeholder?: string; then: (name: string | null) => void } | null>(null);
   const askName = (title: string, hint?: string, placeholder?: string) => new Promise<string | null>((then) => setNameBox({ title, hint, placeholder, then }));
   const [showMeta, setShowMeta] = useState(false);
@@ -127,6 +132,40 @@ export default function App() {
         case 'new-board': { const folder = findFolder(c.folder); if (!folder) return { ok: false, error: c.folder ? `no folder "${c.folder}"` : 'no folder yet: add-folder first' }; if (!c.name?.trim()) return { ok: false, error: 'name the board: --name "..."' };
           const file = await api.newBoard(folder.id, c.name.trim()); await loadBoards(folder); const title = (await api.boards(folder.id)).find((b) => b.file === file)?.title ?? c.name.trim();
           open({ projectId: folder.id, sessionId: null, key: `${folder.id}:board:${file}`, kind: 'board', file, name: title }); return { ok: true, folder: folder.name, board: file }; }
+        case 'new-workflow': { const folder = findFolder(c.folder); if (!folder) return { ok: false, error: c.folder ? `no folder "${c.folder}"` : 'no folder yet: add-folder first' }; if (!c.name?.trim()) return { ok: false, error: 'name the workflow: --name "..."' };
+          const name = c.name.trim(); const file = await api.newWorkflow(folder.id, name, DEFAULT_AGENT); await loadWorkflows(folder); open({ projectId: folder.id, sessionId: null, key: `${folder.id}:wf:${file}`, kind: 'workflow', file, name }); return { ok: true, folder: folder.name, file, path: `${folder.path}/${file}` }; }
+        case 'run': case 'runs': { const folder = findFolder(c.folder); if (!folder) return { ok: false, error: c.folder ? `no folder "${c.folder}"` : 'no folder yet: add-folder first' }; const wf = c.workflow ? await findWorkflow(folder, c.workflow) : null; if (!wf) return { ok: false, error: `no workflow "${c.workflow ?? ''}" in ${folder.name}: ${(workflows[folder.id] ?? []).map((w) => w.file).join(', ') || 'none yet'}` };
+          if (c.type === 'runs') { const { runs } = await api.workflow(folder.id, wf.file); return { ok: true, workflow: wf.name, file: wf.file, runs: runs.map((r) => ({ n: r.n, started: r.started, result: r.result, took: r.tookText ?? null, version: r.version ?? null, record: r.file })) }; }
+          open({ projectId: folder.id, sessionId: null, key: `${folder.id}:wf:${wf.file}`, kind: 'workflow', file: wf.file, name: wf.name }); await startRun(folder, wf.file); const { runs } = await api.workflow(folder.id, wf.file); const now = runs[0]; return { ok: true, workflow: wf.name, file: wf.file, run: now?.n ?? null, record: now?.file ?? null, note: 'the run record fills in as it goes; `runs` shows it' }; }
+        case 'decide': { const folder = findFolder(c.folder); if (!folder) return { ok: false, error: c.folder ? `no folder "${c.folder}"` : 'no folder yet' }; const wf = c.workflow ? await findWorkflow(folder, c.workflow) : null; if (!wf) return { ok: false, error: `no workflow "${c.workflow ?? ''}" in ${folder.name}` };
+          await attachRun(folder, wf.file); const r = runners.current.get(runKey(folder, wf.file)); if (!r) return { ok: false, error: `${wf.name} has no live run` }; if (r.waiting !== 'user') return { ok: false, error: `run #${r.run.n} of ${wf.name} is at step ${r.current}, which waits for "${r.waitingFor}", not for the user` };
+          const step = r.current; const gate = { ...r.def.steps[step - 1]!, name: stepTitle(r.def.steps[step - 1]!) }; const ok = await decideRun(folder, wf.file, step, c.outcome ?? '', c.note); return ok ? { ok: true, workflow: wf.name, run: r.run.n, step, decided: c.outcome } : { ok: false, error: `"${c.outcome ?? ''}" is not an outcome of step ${step} (${gate.name}): ${gate.then || 'no then line'}` }; }
+        case 'move-workflow': case 'move-session': { // T-217: to another folder of the app, with the sessions that go with it, whatever their provider
+          const from = findFolder(c.folder); const to = c.to ? findFolder(c.to) : null;
+          if (!to || to.builtin) return { ok: false, error: c.to ? `no folder "${c.to}"` : 'to which folder? --to <name|path|id>' };
+          const running = ((await window.desktop.chatLive().catch(() => [])) as { sessionId: string | null }[]).map((t) => t.sessionId);
+          if (c.type === 'move-workflow') {
+            if (!from || from.builtin) return { ok: false, error: c.folder ? `no folder "${c.folder}"` : 'which folder is it in? --folder <name|path|id>' };
+            const wf = await findWorkflow(from, c.workflow ?? ''); if (!wf) return { ok: false, error: `no workflow "${c.workflow ?? ''}" in ${from.name}` };
+            if (from.id === to.id) return { ok: false, error: `${wf.name} is in ${to.name} already` };
+            if (runners.current.get(runKey(from, wf.file)) && !runners.current.get(runKey(from, wf.file))!.over) return { ok: false, error: `${wf.name} is running: stop its run first, or wait for it to end` };
+            const chat = await api.workflowChat(from.id, wf.file); if (chat.sessionId && running.includes(chat.sessionId)) return { ok: false, error: `${wf.name}'s chat is answering: move it when its turn is over` };
+            // its view and the chat mounted in it close here, and any view of that file left open in the new folder: they open again from the
+            // new folder, the conversation with them
+            const here = (x: { projectId: string; file?: string }) => (x.projectId === from.id || x.projectId === to.id) && x.file === wf.file;
+            setOpened((o) => o.filter((x) => !here(x))); if (sel && here(sel)) setSel(null);
+            const moved = await api.moveWorkflow(from.id, wf.file, to.id); await refresh();
+            return { ok: true, workflow: wf.name, file: moved.file, from: from.name, to: to.name, chat: moved.chat ? `its chat's session (${moved.chat.provider ?? 'claude'}) moved with it` : 'it had no chat yet' };
+          }
+          const hit = findSession(from, c.session ?? ''); if (!hit) return { ok: false, error: `no session "${c.session ?? ''}"${from ? ` in ${from.name}` : ''}` };
+          const owner = projects.find((p) => p.id === hit.projectId); if (!owner || owner.builtin) return { ok: false, error: "the app's own agent stays in its own folder" };
+          if (owner.id === to.id) return { ok: false, error: `it is in ${to.name} already` }; if (running.includes(hit.sessionId)) return { ok: false, error: 'it is working: move it when its turn is over' };
+          setOpened((o) => o.filter((x) => !(x.projectId === owner.id && x.sessionId === hit.sessionId))); if (sel?.projectId === owner.id && sel.sessionId === hit.sessionId) setSel(null);
+          const r = await api.moveSession(owner.id, hit.sessionId, to.id); await refresh();
+          return { ok: true, session: hit.sessionId, provider: r.provider, from: owner.name, to: to.name }; }
+        case 'stop-run': case 'resend-run': { const folder = findFolder(c.folder); if (!folder) return { ok: false, error: `no folder "${c.folder ?? ''}"` }; const wf = c.workflow ? await findWorkflow(folder, c.workflow) : null; if (!wf) return { ok: false, error: `no workflow "${c.workflow ?? ''}" in ${folder.name}` };
+          if (c.type === 'stop-run') { await stopRun(folder, wf.file); return { ok: true, workflow: wf.name, stopped: true }; }
+          await attachRun(folder, wf.file); const r = runners.current.get(runKey(folder, wf.file)); if (!r) return { ok: false, error: `${wf.name} has no live run` }; await resendRun(folder, wf.file); return { ok: true, workflow: wf.name, resent: r.current }; }
         case 'open': { if (!c.session) { if (!jauvex) return { ok: false, error: 'no Jauvex agent' }; const key = `${jauvex.id}:jauvex`; open({ projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' }); return { ok: true, opened: 'Jauvex' }; }
           const hit = findSession(c.folder ? findFolder(c.folder) : null, c.session) /* no folder named: every folder */; if (!hit) return { ok: false, error: `no session "${c.session}"` };
           // an opened session goes in its folder's list too: shown only as an open chat, it dropped out when other chats took the eight places (the user, 2026-09-26: seven sessions an agent opened, gone a few at a time)
@@ -144,7 +183,10 @@ export default function App() {
             await api.setUi({ providerPermissions: modes }); window.dispatchEvent(new CustomEvent('provider-permissions', { detail: modes }));
             return { ok: true, providerPermissions: modes };
           }
-          if (c.jauvexMove) { setJauvexMove(c.jauvexMove); ui.jauvexMove = c.jauvexMove; } if (c.defaultProvider) { setDefaultProvider(c.defaultProvider); localStorage.setItem('cvc.provider', c.defaultProvider); ui.defaultProvider = c.defaultProvider; } if (typeof c.showJauvex === 'boolean') { setShowJauvex(c.showJauvex); ui.showJauvex = c.showJauvex; } if (typeof c.welcomeNext === 'boolean') { setWelcomeNext(c.welcomeNext); ui.welcomed = !c.welcomeNext; } if (typeof c.autoCompact === 'number') { if (!(c.autoCompact >= 0 && c.autoCompact <= 100)) return { ok: false, error: '--auto-compact takes a percentage from 1 to 99, or provider (the provider decides)' }; const n = Math.round(c.autoCompact); setAutoCompact(n); window.dispatchEvent(new CustomEvent('cvc-auto-compact', { detail: n })); ui.autoCompact = n; } if (Object.keys(ui).length) await api.setUi(ui); return { ok: true, ...ui }; }
+          if (c.jauvexMove) { setJauvexMove(c.jauvexMove); ui.jauvexMove = c.jauvexMove; } if (c.defaultProvider) { setDefaultProvider(c.defaultProvider); localStorage.setItem('cvc.provider', c.defaultProvider); ui.defaultProvider = c.defaultProvider; } if (typeof c.showJauvex === 'boolean') { setShowJauvex(c.showJauvex); ui.showJauvex = c.showJauvex; } if (typeof c.welcomeNext === 'boolean') { setWelcomeNext(c.welcomeNext); ui.welcomed = !c.welcomeNext; } if (typeof c.autoCompact === 'number') { if (!(c.autoCompact >= 0 && c.autoCompact <= 100)) return { ok: false, error: '--auto-compact takes a percentage from 1 to 99, or provider (the provider decides)' }; const n = Math.round(c.autoCompact); setAutoCompact(n); window.dispatchEvent(new CustomEvent('cvc-auto-compact', { detail: n })); ui.autoCompact = n; }
+          if (c.workflowMissed !== undefined) { if (!MISSED_OPTIONS.some(([k]) => k === c.workflowMissed)) return { ok: false, error: '--workflow-missed takes run (run it as soon as the app opens), alert (tell the user and ask: the default) or nothing' }; ui.workflowMissed = c.workflowMissed as MissedPolicy; }
+          if (!Object.keys(ui).length) { const cur = (await api.state()).ui; return { ok: true, workflowMissed: cur?.workflowMissed ?? MISSED_DEFAULT }; }
+          await api.setUi(ui); return { ok: true, ...ui }; }
         case 'update': { // the app the install command made, to the latest version
           const s = await window.desktop.appUpdateStatus(); if (c.check) return { ok: true, ...s };
           const busy = roster().filter((a) => a.busy && a.sessionId !== jauvexSession).map((a) => a.name); // the Jauvex agent's own turn ends with its order
@@ -166,6 +208,7 @@ export default function App() {
   const [panes, setPanes] = useState<Record<string, PaneTarget>>({});
   const paneKey = sel?.key ?? ''; const pane = panes[paneKey] ?? null;
   const setPane = (t: PaneTarget | null) => setPanes((all) => { const next = { ...all }; if (t) next[paneKey] = t; else delete next[paneKey]; return next; });
+  const showPane = (title: string, node: React.ReactNode, key?: string) => setPane({ kind: 'view', title, node, key }); // a workflow's step, its runs, its versions
   const openLink = (href: string, base: string) => { const h = href.trim(); if (!h || h.startsWith('#')) return;
     if (/^https?:\/\//i.test(h)) { setPane({ kind: 'url', url: h }); return; }
     if (/^[a-z][a-z0-9+.-]*:/i.test(h) && !/^file:/i.test(h)) { void window.desktop.openExternal(h); return; } /* mailto and the like: the Mac */
@@ -195,14 +238,15 @@ export default function App() {
   const [debugOpen, setDebugOpen] = useState(() => localStorage.getItem('cvc.debug') === '1');
 
   const loadBoards = useCallback(async (p: Project) => { if (p.builtin) return; try { const b = await api.boards(p.id); setBoards((x) => (JSON.stringify(x[p.id] ?? []) === JSON.stringify(b) ? x : { ...x, [p.id]: b })); } catch { /* the folder is gone */ } }, []);
+  const loadWorkflows = useCallback(async (p: Project) => { if (p.builtin) return; try { const w = await api.workflows(p.id); setWorkflows((x) => (JSON.stringify(x[p.id] ?? []) === JSON.stringify(w) ? x : { ...x, [p.id]: w })); } catch { /* the folder is gone */ } }, []);
   const loadInfos = useCallback(async (p: Project) => {
     try { const sessions = await api.sessions(p.id); setInfos((m) => ({ ...m, [p.id]: sessions })); } catch (e) { setError((e as Error).message); }
   }, []);
   const refresh = useCallback(async () => {
-    try { const s = await api.state(); setProjects(s.projects); s.projects.forEach((p) => { void loadInfos(p); void loadBoards(p); }); } catch (e) { setError((e as Error).message); }
-  }, [loadInfos, loadBoards]);
+    try { const s = await api.state(); setProjects(s.projects); s.projects.forEach((p) => { void loadInfos(p); void loadBoards(p); void loadWorkflows(p); }); } catch (e) { setError((e as Error).message); }
+  }, [loadInfos, loadBoards, loadWorkflows]);
   const projectsRef = useRef<Project[]>([]); projectsRef.current = projects;
-  useEffect(() => { const again = () => projectsRef.current.forEach((p) => void loadBoards(p)); const t = setInterval(again, 15_000); window.addEventListener('focus', again); return () => { clearInterval(t); window.removeEventListener('focus', again); }; }, [loadBoards]);
+  useEffect(() => { const again = () => projectsRef.current.forEach((p) => { void loadBoards(p); void loadWorkflows(p); }); const t = setInterval(again, 15_000); window.addEventListener('focus', again); return () => { clearInterval(t); window.removeEventListener('focus', again); }; }, [loadBoards, loadWorkflows]);
   // First load: restore the folders, the picked sessions, and the session that was open last time.
   const restored = useRef(false);
   useEffect(() => { void (async () => {
@@ -232,6 +276,14 @@ export default function App() {
   // the app already sees every reply and can reach every session. Relays are capped so two agents cannot ping-pong forever.
   const bridges = useRef(new Map<string, ChatBridge>()); // by chat key
   const relays = useRef<number[]>([]);
+  // Chats inside a view (T-205), a workflow's, by their session: what they are called and how to write to them. Their replies go through the same router.
+  const embedded = useRef(new Map<string, { sel: Sel; provider: Provider; deliver: (text: string, replyTo?: Sel) => Promise<void> }>());
+  const embeddedReply = useRef((_s: Sel, _text: string, _replyTo?: Sel) => {});
+  const mail = useRef<EmbeddedMail>({
+    register: (projectId, sessionId, name, provider, deliver) => { const e = { sel: { projectId, sessionId, key: `${projectId}:inview:${sessionId}`, name }, provider, deliver: (t: string, r?: Sel) => deliver(t, r) };
+      embedded.current.set(sessionId, e); return () => { if (embedded.current.get(sessionId) === e) embedded.current.delete(sessionId); }; },
+    reply: (projectId, sessionId, name, text, replyTo) => embeddedReply.current({ projectId, sessionId, key: `${projectId}:inview:${sessionId}`, name }, text, replyTo as Sel | undefined),
+  }).current;
   const nameOf = (o: Sel): string => { const i = o.sessionId ? infos[o.projectId]?.find((x) => x.sessionId === o.sessionId) : undefined; return i?.customTitle || o.name || i?.summary || (o.sessionId ? `Session ${o.sessionId.slice(0, 6)}` : 'New session'); };
   // The roster is the app's own world: the sessions added to each folder in the sidebar (plus ones opened in this run), never
   // every conversation the providers keep on disk for that folder.
@@ -244,7 +296,10 @@ export default function App() {
       const o = opened.find((x) => x.key === `${p.id}:jauvex`); return [{ ...row(o?.sessionId ?? jauvexSession ?? p.id, 'Jauvex'), provider: jauvexProvider ?? defaultProvider ?? 'claude', busy: !!o && !!busy[o.key] }]; }
     const ids = new Set([...p.sessions, ...opened.filter((o) => o.projectId === p.id && o.sessionId && o.kind !== 'jev').map((o) => o.sessionId!)]);
     return [...ids].map((sid) => row(sid));
-  }); const short = shortIds(rows.map((r) => r.sessionId)); return rows.map((r) => ({ ...r, id: short.get(r.sessionId) ?? r.sessionId.slice(0, 6) })); };
+  });
+  for (const e of embedded.current.values()) { const p = projects.find((x) => x.id === e.sel.projectId); // a workflow's chat, while its view is open (T-205)
+    if (p && e.sel.sessionId && !rows.some((r) => r.sessionId === e.sel.sessionId)) rows.push({ projectId: p.id, sessionId: e.sel.sessionId, id: '', name: e.sel.name ?? 'Workflow chat', provider: e.provider, folder: p.name, busy: false }); }
+  const short = shortIds(rows.map((r) => r.sessionId)); return rows.map((r) => ({ ...r, id: short.get(r.sessionId) ?? r.sessionId.slice(0, 6) })); };
   const idOf = (sid: string) => roster().find((a) => a.sessionId === sid)?.id ?? sid.slice(0, 6); // the short id, as long as it needs to be unique in the roster
   const rosterText = () => roster().map((a) => `- "${a.name}" [${a.id}] (${PROVIDER_LABEL[a.provider]}, folder ${a.folder}, ${a.busy ? 'working' : 'idle'})`).join('\n') || '(no other sessions yet)';
   // The app's own agent: always its own chat (the key its row opens), mounted in the background if it is closed, with its session, or with
@@ -265,6 +320,7 @@ export default function App() {
       if (await reachJauvexRef.current(updateNote(u.current, u.latest!))) await api.setUi({ updateAsked: u.latest }); else offering.current = ''; })(); }, [update, jauvex]);
   const deliverTo = async (projectId: string, sessionId: string, text: string, replyTo?: Sel): Promise<boolean> => {
     if (jauvex && projectId === jauvex.id) return reachJauvex(text, replyTo);
+    const inView = embedded.current.get(sessionId); if (inView) { await inView.deliver(text, replyTo); return true; } // a workflow's chat, where it is (T-205)
     let o = opened.find((x) => x.sessionId === sessionId); const key = o?.key ?? `${projectId}:${sessionId}`;
     if (!o) { o = { projectId, sessionId, key }; const mounted = o; setOpened((all) => (all.some((x) => x.key === key) ? all : [...all, mounted])); } // mounted in the background, not shown
     for (let i = 0; i < 60 && !bridges.current.get(key); i++) await new Promise((r) => setTimeout(r, 150));
@@ -290,6 +346,7 @@ export default function App() {
     if (wantsList) await answer(`Agents in this app:\n${rosterText()}`);
     for (const b of blocks) { const r = await sendAgentMessage(from, b.to, b.text, 'block'); if (!r.sent) { await answer(r.note); if (r.stop) return; } }
   };
+  embeddedReply.current = (sel, text, replyTo) => { void routeAgentBlocks(sel, text); if (replyTo && replyTo.kind !== 'run') void returnReply(sel, replyTo, text); };
   // One message from one agent to another, by name or short id, from a fenced block or from the message_agent tool of a Claude session:
   // the same router. Names are matched without case, spaces or punctuation ("CodexAgent" finds "Codex agent"); the short id always wins
   // (findAgents in shared/roster.ts). An explicit message is a question: whatever the other agent replies with comes back to the sender
@@ -328,6 +385,94 @@ export default function App() {
     if (push) { setHistory((h) => [...h.slice(0, cursor + 1), next]); setCursor((c) => c + 1); }
   }, [cursor]);
   const go = (d: -1 | 1) => { const i = cursor + d; const t = history[i]; if (t) { setCursor(i); open(t, false); } };
+
+  // ---- workflows: the agents a step may be given, and the runs this window drives
+  /** The agents a workflow's step may be given (the user, 2026-09-27: "the agent selection should be the project agents ... the first ones
+   *  that should appear, and it should be differentiated"): this folder's first, then the app's own agent and the other folders' agents. */
+  const stepAgents = (p: Project): StepAgents => { const all = roster(); const byId = new Map(projects.map((x) => [x.id, x]));
+    const pick = (a: Agent) => ({ name: a.name, provider: a.provider, folder: a.folder });
+    const own = all.filter((a) => byId.get(a.projectId)?.builtin === 'jauvex').map((a) => ({ ...pick(a), folder: '' }));
+    return { here: all.filter((a) => a.projectId === p.id).map(pick), elsewhere: [...(own.length ? own : [{ name: DEFAULT_AGENT, provider: '', folder: '' }]), ...all.filter((a) => a.projectId !== p.id && !byId.get(a.projectId)?.builtin).map(pick)] }; };
+  // One Runner per live run driven by this window; each step is one message to the agent it names, through the same channel the agents use;
+  // the reply comes back to the runner (replyTo of kind 'run'); the record is written at every change.
+  const runners = useRef(new Map<string, Runner>()); const runKey = (p: Project, file: string) => `${p.id}:${file}`;
+  const tidyRun = (key: string) => { const r = runners.current.get(key); if (r?.over) runners.current.delete(key); };
+  const deliverToAgent = async (from: Sel, agent: string, text: string): Promise<{ ok: true } | { ok: false; note: string }> => {
+    const hits = findAgents(roster(), agent); if (hits.length !== 1) return { ok: false, note: hits.length ? `"${agent}" matches several agents (${hits.map((h) => h.name).join(', ')}): name one` : `no agent named "${agent}" in the app` };
+    const t = hits[0]!; const ok = await deliverTo(t.projectId, t.sessionId, text, from); return ok ? { ok: true } : { ok: false, note: `"${t.name}" could not be reached` };
+  };
+  const makeRunner = (p: Project, file: string, md: string, prompts: Record<string, string> | undefined, run: Run): Runner => {
+    const key = runKey(p, file); const def = parseWorkflow(md, file, prompts); const folder = run.file.replace(/\.md$/, '/');
+    const r = new Runner(def, run, folder, { deliver: (agent, text, step) => deliverToAgent({ projectId: p.id, sessionId: null, key: `run:${key}`, kind: 'run', file, step, name: def.name }, agent, text), save: (m) => api.saveRun(p.id, run.file, m).then(() => {}), log: (t) => window.desktop.debugPush('note', t),
+      onGate: (n, name) => { void loadWorkflows(p); /* the sidebar marks it: it waits for you */ try { new Notification(`${def.name} waits for you`, { body: `Step ${n}, ${name}: open the workflow in ${p.name} to decide.`, silent: true }); } catch { /* no notifications */ } }, // silent: a banner, never a sound
+      onFinish: (result) => { runners.current.delete(key); void loadWorkflows(p); if (/^done/i.test(result)) void runAfter(p, def); } });
+    r.root = p.path; runners.current.set(key, r); return r;
+  };
+  /** Event triggers: a run that ends done starts the workflows of the same folder whose when line names it ("after News video"). */
+  const runAfter = async (p: Project, def: { name: string; file?: string }) => { for (const w of (await api.workflows(p.id).catch(() => null)) ?? workflowsRef.current[p.id] ?? []) { /* the folder as it is now: one written since the window loaded its list counts too */ if (w.file === def.file || !firesAfter(parseTrigger(w.when), def)) continue; window.desktop.debugPush('note', `workflow "${w.name}" starts: "${def.name}" finished done`); await startRun(p, w.file, `"${def.name}" finishing`).catch((e: Error) => window.desktop.debugPush('note', `workflow "${w.name}" did not start after "${def.name}": ${e.message}`)); } };
+  const startRun = async (p: Project, file: string, by?: string /* what started it when not a person: kept in its record */) => { if (runners.current.has(runKey(p, file))) throw new Error('a run of this workflow is live: stop it first'); const { md, runs, prompts } = await api.workflow(p.id, file); const live = runs.find((r) => /^running/i.test(r.result)); if (live) throw new Error(`run #${live.n} is still running: stop it first`); const { n, file: rec, version } = await api.newRun(p.id, file); const r = makeRunner(p, file, md, prompts, parseRun(`# Run ${n}\nstarted: ${stamp()}\n${by ? `by: ${by}\n` : ''}result: running\n${version ? `version: ${version}\n` : ''}`, rec)); try { await r.start(); } finally { void loadWorkflows(p); } };
+  /** A live run with nobody driving it (the window reloaded, the app restarted): taken over as it stands, nothing re-sent. */
+  const attaching = useRef(new Set<string>());
+  const attachRun = async (p: Project, file: string): Promise<boolean> => { const key = runKey(p, file); if (runners.current.has(key)) return true; if (attaching.current.has(key)) return false; attaching.current.add(key);
+    try { const { md, runs, prompts } = await api.workflow(p.id, file); const live = runs.find((r) => /^running/i.test(r.result)); if (!live || runners.current.has(key)) return runners.current.has(key); const r = makeRunner(p, file, md, prompts, live); if (!r.attach()) { runners.current.delete(key); return false; } void loadWorkflows(p); return true; } finally { attaching.current.delete(key); } };
+  useEffect(() => { for (const p of projects) for (const w of workflows[p.id] ?? []) if (/^running/i.test(w.latest?.result ?? '') && !runners.current.has(runKey(p, w.file))) void attachRun(p, w.file); }, [workflows, projects]); // eslint-disable-line react-hooks/exhaustive-deps
+  const stopRun = async (p: Project, file: string) => { const key = runKey(p, file); const r = runners.current.get(key); if (r) { await r.stop(); runners.current.delete(key); void loadWorkflows(p); return; }
+    const { md, runs } = await api.workflow(p.id, file); const live = runs.find((x) => /^running/i.test(x.result)); if (!live) return; live.result = 'stopped: by you (nobody was driving it)'; live.ended = stamp(); const cur = Object.keys(live.steps).map(Number).sort((a, b) => b - a).find((k) => live.steps[k]!.took == null); if (cur) live.steps[cur]!.result = 'stopped'; await api.saveRun(p.id, live.file, formatRun(live, parseWorkflow(md, file))); void loadWorkflows(p); };
+  // Deleting a workflow (the user, 2026-09-27: "I wanna be able to delete workflows and boards (with confirmation)"): from the row's
+  // secondary-click menu, asked first in words that name what goes; a workflow that runs is stopped first, never deleted under its run.
+  const workflowRuns = (p: Project, w: WorkflowInfo) => runners.current.has(runKey(p, w.file)) || /^running/i.test(w.latest?.result ?? '');
+  const deleteWorkflowFile = async (p: Project, w: WorkflowInfo) => {
+    if (workflowRuns(p, w)) { setError(`"${w.name}" is running: stop its run first, then delete it.`); return; }
+    if (!window.confirm(deleteWorkflowText(w, p.name))) return;
+    try { await api.deleteWorkflow(p.id, w.file); const key = `${p.id}:wf:${w.file}`; setOpened((o) => o.filter((x) => x.key !== key)); setSel((cur) => (cur?.key === key ? null : cur)); await loadWorkflows(p); } catch (e) { setError((e as Error).message); } };
+  const decideRun = async (p: Project, file: string, step: number, outcome: string, note?: string) => { const key = runKey(p, file); if (!runners.current.has(key)) await attachRun(p, file); const r = runners.current.get(key); if (!r) return false; const ok = await r.decide(step, outcome, note); tidyRun(key); void loadWorkflows(p); return ok; };
+  const resendRun = async (p: Project, file: string) => { const r = runners.current.get(runKey(p, file)); if (r) await r.resend(); void loadWorkflows(p); };
+  const onRunReply = async (to: Sel, text: string) => { const key = to.key.replace(/^run:/, ''); const r = runners.current.get(key); if (!r || to.step == null) return; await r.onReply(to.step, text); tidyRun(key); const p = projects.find((x) => x.id === to.projectId); if (p) void loadWorkflows(p); };
+  /** A reply that is not addressed to a run (the window reloaded while the step's agent worked) still ends that step when it comes from the
+   * agent the run waits for and carries an OUTCOME line. */
+  const routeToWaitingRun = async (o: Sel, text: string) => { if (!o.sessionId || !/OUTCOME\s*[:：]/i.test(text)) return; for (const [key, r] of [...runners.current]) { const agent = r.waitingFor; if (!agent) continue; const hits = findAgents(roster(), agent); if (hits.length !== 1 || hits[0]!.sessionId !== o.sessionId) continue; await r.onReply(r.current, text); tidyRun(key); const p = projects.find((x) => key.startsWith(`${x.id}:`)); if (p) void loadWorkflows(p); } };
+  const runControl = (p: Project, file: string): RunControl => ({ run: () => startRun(p, file), resume: () => attachRun(p, file).then(() => {}), resend: () => resendRun(p, file), stop: () => stopRun(p, file), decide: (step, outcome, note) => decideRun(p, file, step, outcome, note), driven: () => runners.current.has(runKey(p, file)), waitingFor: () => runners.current.get(runKey(p, file))?.waitingFor ?? null, asking: () => null });
+  // Schedules: every tick (SCHEDULE_TICK_MS), each folder's workflows as they are on disk now, so an edited `when:` line counts at once. A time
+  // whose slot is under ten minutes old, with no run since, starts it (once per slot); a window draws its time (windowDue). The run's record says so.
+  const workflowsRef = useRef(workflows); workflowsRef.current = workflows; const fired = useRef(new Set<string>());
+  // When each folder's schedules were last looked at, kept on this computer: a slot that passed after that look and before this one came
+  // while the app was closed (or the computer asleep); what is done with it is the setting's (missedSlot, onMissed).
+  const looked = useRef<Record<string, number> | null>(null);
+  const scheduleTick = useRef(async () => {}); scheduleTick.current = async () => {
+    if (!looked.current) { try { looked.current = JSON.parse(localStorage.getItem('cvc.scheduleLooked') ?? '{}') ?? {}; } catch { looked.current = {}; } }
+    const seen = looked.current!; const missed: { p: Project; w: WorkflowInfo; slot: Date }[] = [];
+    for (const p of projects) { if (p.builtin || !workflows[p.id]) continue;
+    const list = await api.workflows(p.id).catch(() => null); if (!list) continue; const now = new Date();
+    setWorkflows((f) => (JSON.stringify(f[p.id] ?? []) === JSON.stringify(list) ? f : { ...f, [p.id]: list })); // the sidebar follows the files too
+    for (const w of list) { const tr = parseTrigger(w.when); if (tr.kind !== 'every' && tr.kind !== 'at' && tr.kind !== 'window') continue;
+      const lost = missedSlot(tr, w.latest?.started ?? null, seen[p.id], now); if (lost) { if (!workflowRuns(p, w)) missed.push({ p, w, slot: lost }); continue; }
+      const slot = tr.kind === 'window' ? windowDue(tr, w.latest?.started ?? null) : isDue(tr, w.latest?.started ?? null); if (!slot) continue;
+      const k = `${p.id}:${w.file}@${slot.getTime()}`; if (fired.current.has(k) || runners.current.has(runKey(p, w.file)) || /^running/i.test(w.latest?.result ?? '')) continue; fired.current.add(k);
+      window.desktop.debugPush('note', `workflow "${w.name}": its schedule (${w.when}) is due, running it`); void startRun(p, w.file, `its schedule (${w.when})`).catch((e: Error) => window.desktop.debugPush('note', `workflow "${w.name}" did not start on its schedule: ${e.message}`)); }
+    seen[p.id] = now.getTime(); }
+    try { localStorage.setItem('cvc.scheduleLooked', JSON.stringify(seen)); } catch { /* not kept: the next start cannot tell what it missed */ }
+    if (missed.length) await onMissed(missed).catch((e: Error) => window.desktop.debugPush('note', `missed workflows: ${e.message}`)); };
+  // A schedule missed while the app was closed (the user, 2026-09-29: "if a workflow was missed because the app was closed, it should at least
+  // be prompted"): the setting says to run it now, to have the Jauvex agent tell the user and ask (the default: in words, with a silent banner),
+  // or nothing. Only the latest missed slot of each workflow.
+  const onMissed = async (missed: { p: Project; w: WorkflowInfo; slot: Date }[]) => {
+    const policy: MissedPolicy = (await api.state()).ui?.workflowMissed ?? MISSED_DEFAULT; const hm = (d: Date) => d.toTimeString().slice(0, 5);
+    for (const m of missed) window.desktop.debugPush('note', `workflow "${m.w.name}": its schedule (${m.w.when}) was missed at ${hm(m.slot)} while the app was closed: ${policy === 'run' ? 'running it now' : policy === 'alert' ? 'asking the user' : 'nothing done, as the setting says'}`);
+    if (policy === 'nothing') return;
+    if (policy === 'run') { for (const m of missed) void startRun(m.p, m.w.file, missedBy(m.w.when, m.slot)).catch((e: Error) => window.desktop.debugPush('note', `workflow "${m.w.name}" did not start: ${e.message}`)); return; }
+    const text = missedNote(missed.map((m) => ({ name: m.w.name, file: m.w.file, folder: m.p.name, when: m.w.when, slot: m.slot })));
+    const ok = await reachJauvexRef.current(text);
+    window.desktop.debugPush('note', ok ? `missed workflows: the Jauvex agent asks the user about ${missed.map((m) => `"${m.w.name}"`).join(', ')}` : 'missed workflows: the Jauvex agent could not be reached');
+    try { new Notification(missed.length > 1 ? `${missed.length} workflows missed their schedule` : `${missed[0]!.w.name} missed its schedule`, { body: `The app was closed at ${missed.map((m) => `${hm(m.slot)} (${m.w.name})`).join(', ')}: the Jauvex agent asks whether to run ${missed.length > 1 ? 'them' : 'it'} now.`, silent: true }); } catch { /* no notifications */ } };
+  useEffect(() => { const first = setTimeout(() => void scheduleTick.current(), 4000); const t = setInterval(() => void scheduleTick.current(), SCHEDULE_TICK_MS); return () => { clearTimeout(first); clearInterval(t); }; }, []);
+  /** A workflow of the folder by its file or its name; one an agent has just written is not in the list the window loaded yet: the folder is
+   *  read again (an order naming it said "no workflow" until a refresh or the next schedule check). */
+  const findWorkflow = async (folder: Project, ref: string): Promise<WorkflowInfo | null> => { const sq = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ''); const want = sq(ref.replace(/^workflows\//, '').replace(/\.md$/, ''));
+    const pick = (list: WorkflowInfo[]) => list.find((w) => sq(w.file.replace(/^workflows\//, '').replace(/\.md$/, '')) === want) ?? list.find((w) => sq(w.name) === want) ?? list.find((w) => sq(w.name).includes(want)) ?? null;
+    const hit = pick(workflowsRef.current[folder.id] ?? []); if (hit) return hit;
+    const list = await api.workflows(folder.id).catch(() => null); if (!list) return null;
+    setWorkflows((f) => ({ ...f, [folder.id]: list })); return pick(list); };
+  const agentProviders = useMemo(() => { const m: Record<string, string> = {}; for (const p of projects) for (const i of infos[p.id] ?? []) { const n = i.customTitle || i.summary; if (n && !m[n]) m[n] = i.provider; } return m; }, [projects, infos]);
 
   const addFolder = async () => {
     const dir = await pickFolder(); if (!dir) return;
@@ -382,6 +527,8 @@ export default function App() {
             {projects.filter((p) => !p.builtin).length === 0 && <p className="side-empty">Add a folder to see the Claude, Codex and Grok sessions that exist for it.</p>}
             {projects.filter((p) => !p.builtin).map((p) => (
               <ProjectGroup key={p.id} project={p} infos={infos[p.id]} sel={sel} renaming={renameAt === 'row' && renaming?.startsWith(`${p.id}:`) ? renaming.slice(p.id.length + 1) : null} onRenaming={(sid) => { setRenameAt('row'); setRenaming(sid ? `${p.id}:${sid}` : null); }} onRename={(sid, t) => void rename(p.id, sid, t)} onHide={(sid) => void hideSession(p, sid)} onOpenJev={(aid) => openJev(p.id, aid)} onDeleteJev={(aid) => void deleteJev(p.id, aid)} working={new Set(opened.filter((o) => o.projectId === p.id && busy[o.key] && o.sessionId).map((o) => o.sessionId!))} listening={opened.find((o) => o.key === listening && o.projectId === p.id)?.sessionId ?? null} onOpen={(sid) => open({ projectId: p.id, sessionId: sid, key: `${p.id}:${sid}` })} onNew={() => open({ projectId: p.id, sessionId: null, key: `${p.id}:new:${Date.now()}` })} onAdd={() => setPicker(p)} onRemove={() => void removeProject(p)}
+                workflows={workflows[p.id] ?? []} onOpenWorkflow={(file, name) => open({ projectId: p.id, sessionId: null, key: `${p.id}:wf:${file}`, kind: 'workflow', file, name })} onDeleteWorkflow={(w) => void deleteWorkflowFile(p, w)}
+                onNewWorkflow={() => void askName('New workflow', `A workflow in ${p.name}: workflows/<name>.md, its steps in order and who does each, with a file per step beside it. It starts as a Hello World that runs as it is, and opens here.`, 'News video').then(async (name) => { if (!name?.trim()) return; try { const file = await api.newWorkflow(p.id, name.trim(), DEFAULT_AGENT); await loadWorkflows(p); open({ projectId: p.id, sessionId: null, key: `${p.id}:wf:${file}`, kind: 'workflow', file, name: name.trim() }); } catch (e) { setError((e as Error).message); } })}
                 boards={boards[p.id] ?? []} onDeleteBoard={(b) => void deleteBoardFile(p, b)} onOpenBoard={(file, title) => open({ projectId: p.id, sessionId: null, key: `${p.id}:board:${file}`, kind: 'board', file, name: title })}
                 onNewBoard={() => void askName('New board', `A to-do board in ${p.name}: boards/<name>.md, a markdown file its agents keep. It opens here.`, 'Launch').then(async (name) => { if (!name) return; try { const file = await api.newBoard(p.id, name); await loadBoards(p); open({ projectId: p.id, sessionId: null, key: `${p.id}:board:${file}`, kind: 'board', file, name }); } catch (e) { setError((e as Error).message); } })} />
             ))}
@@ -403,7 +550,8 @@ export default function App() {
       <main className="main" onClickCapture={catchLinks}>
         {error && <div className="toast" onClick={() => setError(null)}>{error}<X size={14} /></div>}
         {opened.map((o) => { const proj = projects.find((x) => x.id === o.projectId); if (!proj) return null; const active = o.key === sel?.key;
-          if (o.kind === 'board' && o.file) return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}><BoardView project={proj} file={o.file} onChanged={() => void loadBoards(proj)} active={active} showMeta={showMeta} chatProvider={jauvexProvider ?? defaultProvider ?? 'claude'} /></div>;
+          if (o.kind === 'workflow' && o.file) return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}><WorkflowView project={proj} file={o.file} showPane={showPane} paneShows={(k) => pane?.kind === 'view' && pane.key === k} paneOpen={() => !!pane} openFile={(f) => setPane({ kind: 'file', path: f })} agents={agentProviders} control={runControl(proj, o.file)} active={active} showMeta={showMeta} chatProvider={(jauvexProvider ?? defaultProvider ?? 'claude') as Provider} defaultAgent={DEFAULT_AGENT} stepAgents={() => stepAgents(proj)} mail={mail} /></div>;
+          if (o.kind === 'board' && o.file) return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}><BoardView project={proj} file={o.file} mail={mail} onChanged={() => void loadBoards(proj)} active={active} showMeta={showMeta} chatProvider={jauvexProvider ?? defaultProvider ?? 'claude'} /></div>;
           if (o.kind === 'jev') { const agent = proj.jev?.find((a) => a.id === o.sessionId); return agent ? <div key={o.key} className="chat-host" style={{ display: active ? 'contents' : 'none' }}><JevPad project={proj} agent={agent} active={active} showMeta={showMeta} onChanged={() => void refresh()} /></div> : null; }
           return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}>
             <Chat storeKey={o.key} signedIn={signedIn} jev={jevKey && !o.sessionId ? () => void newJev(proj.id, o.key) : undefined} startVoice={o.voice} kickoff={o.kickoff} nameOnStart={o.name} adopt={o.adopt} onNamed={() => void refresh()} folders={projects.map((x) => ({ id: x.id, name: x.name, path: x.path }))} onCommand={(cmd, fallback) => runCommand(cmd, proj.id, fallback)} project={proj} sessionId={o.sessionId} active={active} info={infos[o.projectId]?.find((x) => x.sessionId === o.sessionId) ?? null} showMeta={showMeta}
@@ -411,7 +559,7 @@ export default function App() {
               onSession={(sid, prov) => { const named = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: sid } : x); setSel((cur) => (cur ? named(cur) : cur)); setOpened((all) => all.map(named)); setHistory((h) => h.map(named)); if (proj.builtin === 'jauvex') { setJauvexSession(sid); setJauvexProvider(prov ?? null); void api.setUi({ jauvexSession: sid, ...(prov ? { jauvexProvider: prov } : {}) }); } void refresh(); }}
               hybrid={proj.builtin === 'jauvex' ? { provider: jauvexProvider ?? defaultProvider ?? 'claude', mode: jauvexMove, onProvider: (p) => { setJauvexProvider(p); setJauvexSession(null); void api.setUi({ jauvexProvider: p, jauvexSession: null }); const unbind = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: null } : x); setOpened((all) => all.map(unbind)); setSel((cur) => (cur ? unbind(cur) : cur)); setHistory((h) => h.map(unbind)); },
                 onLost: () => { setJauvexSession(null); void api.setUi({ jauvexSession: null }); const unbind = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: null } : x); setOpened((all) => all.map(unbind)); setSel((cur) => (cur ? unbind(cur) : cur)); setHistory((h) => h.map(unbind)); } } : undefined}
-              onTurnEnd={() => void refresh()} onReply={(text, replyTo) => { void routeAgentBlocks(o, text); if (replyTo) void returnReply(o, replyTo, text); }} onBridge={(b) => { if (b) bridges.current.set(o.key, b); else bridges.current.delete(o.key); }} onNew={() => open({ projectId: proj.id, sessionId: null, key: `${proj.id}:new:${Date.now()}` })} /></div>; })}
+              onTurnEnd={() => void refresh()} onReply={(text, replyTo) => { void routeAgentBlocks(o, text); if (replyTo?.kind === 'run') void onRunReply(replyTo, text); else { if (replyTo) void returnReply(o, replyTo, text); void routeToWaitingRun(o, text); } }} onBridge={(b) => { if (b) bridges.current.set(o.key, b); else bridges.current.delete(o.key); }} onNew={() => open({ projectId: proj.id, sessionId: null, key: `${proj.id}:new:${Date.now()}` })} /></div>; })}
         {sel && project ? null
           : <div className="empty"><Mark /><h2>Pick a session</h2><p>Add a folder, choose which of its Claude, Codex and Grok sessions to keep in the sidebar, then open one and keep talking, or start a new one with either.</p></div>}
       </main>
@@ -454,14 +602,18 @@ function RenameInput({ initial, onDone, onCancel }: { initial: string; onDone: (
     onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); }} />;
 }
 
-function ProjectGroup({ project, infos, sel, working, listening, renaming, onRenaming, onRename, onHide, onOpenJev, onDeleteJev, onOpen, onNew, onAdd, onRemove, boards, onOpenBoard, onNewBoard, onDeleteBoard }: { boards: BoardInfo[]; onOpenBoard: (file: string, title: string) => void; onNewBoard: () => void; onDeleteBoard: (b: BoardInfo) => void; project: Project; infos?: SessionInfo[]; sel: Sel | null; working: Set<string>; listening: string | null; renaming: string | null; onRenaming: (sid: string | null) => void; onRename: (sid: string, title: string) => void; onHide: (sid: string) => void; onOpenJev: (agentId: string) => void; onDeleteJev: (agentId: string) => void; onOpen: (sid: string) => void; onNew: () => void; onAdd: () => void; onRemove: () => void }) {
+/** Who a workflow's step goes to when nobody is named: the app's own agent, which every install has (a new workflow's Hello World runs on it). */
+const DEFAULT_AGENT = 'Jauvex';
+/** What deleting a workflow takes away, asked before it happens. */
+const deleteWorkflowText = (w: WorkflowInfo, folder: string) => `Delete the workflow "${w.name}"?\n\n${w.file} and its folder, workflows/${workflowBase(w.file)}/ (its steps' instructions, its ${w.runs === 1 ? 'run' : `${w.runs} runs`} and its versions), are deleted from ${folder}. The app cannot undo this.`;
+function ProjectGroup({ project, infos, sel, working, listening, renaming, onRenaming, onRename, onHide, onOpenJev, onDeleteJev, onOpen, onNew, onAdd, onRemove, workflows, onOpenWorkflow, onNewWorkflow, onDeleteWorkflow, boards, onOpenBoard, onNewBoard, onDeleteBoard }: { workflows: WorkflowInfo[]; onOpenWorkflow: (file: string, name: string) => void; onNewWorkflow: () => void; onDeleteWorkflow: (w: WorkflowInfo) => void; boards: BoardInfo[]; onOpenBoard: (file: string, title: string) => void; onNewBoard: () => void; onDeleteBoard: (b: BoardInfo) => void; project: Project; infos?: SessionInfo[]; sel: Sel | null; working: Set<string>; listening: string | null; renaming: string | null; onRenaming: (sid: string | null) => void; onRename: (sid: string, title: string) => void; onHide: (sid: string) => void; onOpenJev: (agentId: string) => void; onDeleteJev: (agentId: string) => void; onOpen: (sid: string) => void; onNew: () => void; onAdd: () => void; onRemove: () => void }) {
   const [filter, setFilter] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   // A folder folds from its name, and stays folded across reloads.
   const [folded, setFolded] = useState(() => localStorage.getItem(`cvc.folder.${project.id}`) === '0');
   const fold = () => setFolded((v) => { localStorage.setItem(`cvc.folder.${project.id}`, v ? '1' : '0'); return !v; });
   // Secondary click on a session: what can be done with it.
-  const [ctx, setCtx] = useState<{ sid: string; x: number; y: number; jev?: boolean; board?: BoardInfo } | null>(null);
+  const [ctx, setCtx] = useState<{ sid: string; x: number; y: number; jev?: boolean; wf?: WorkflowInfo; board?: BoardInfo } | null>(null);
   useEffect(() => { if (!ctx) return; const close = () => setCtx(null); const key = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
     window.addEventListener('click', close); window.addEventListener('contextmenu', close); window.addEventListener('blur', close); window.addEventListener('keydown', key);
     return () => { window.removeEventListener('click', close); window.removeEventListener('contextmenu', close); window.removeEventListener('blur', close); window.removeEventListener('keydown', key); }; }, [ctx]);
@@ -480,7 +632,7 @@ function ProjectGroup({ project, infos, sel, working, listening, renaming, onRen
         <button className="icon-btn sm" title="Add sessions" onClick={onAdd}><Plus size={16} /></button>
         <button className="icon-btn sm" title="Filter" onClick={() => setFilter((f) => (f === null ? '' : null))}><Search size={15} /></button>
         <button className="icon-btn sm" title="Folder options" onClick={() => setMenu((v) => !v)}><SlidersHorizontal size={15} /></button>
-        {menu && <div className="menu" onMouseLeave={() => setMenu(false)}><div className="menu-path">{project.path}</div><button onClick={() => { setMenu(false); onNewBoard(); }}><Plus size={14} />New board</button><button onClick={() => { setMenu(false); onRemove(); }}><Trash2 size={14} />Remove folder</button></div>}
+        {menu && <div className="menu" onMouseLeave={() => setMenu(false)}><div className="menu-path">{project.path}</div><button onClick={() => { setMenu(false); onNewWorkflow(); }}><Plus size={14} />New workflow</button><button onClick={() => { setMenu(false); onNewBoard(); }}><Plus size={14} />New board</button><button onClick={() => { setMenu(false); onRemove(); }}><Trash2 size={14} />Remove folder</button></div>}
       </div>
       {!folded && <>
       {filter !== null && <input className="group-filter" autoFocus placeholder="Filter sessions" value={filter} onChange={(e) => setFilter(e.target.value)} />}
@@ -496,6 +648,15 @@ function ProjectGroup({ project, infos, sel, working, listening, renaming, onRen
           <img className="provider-icon jev" src={typesafeMark} alt="" aria-label="Jev (TypeSafe)" width={12} height={12} />{renaming === a.id ? <RenameInput initial={a.name} onDone={(t) => onRename(a.id, t)} onCancel={() => onRenaming(null)} /> : <span className="row-title">{a.name}</span>}<span className="row-time">{ago(a.updatedAt)}</span>
         </button>
       ))}
+      {workflows.length > 0 && <div className="group-sub">Workflows</div>}
+      {workflows.map((w) => (
+        <button key={w.file} className={`row${sel?.projectId === project.id && sel.kind === 'workflow' && sel.file === w.file ? ' on' : ''}`} onClick={() => onOpenWorkflow(w.file, w.name)} title={`${w.file} · ${w.steps} steps · ${w.runs} runs · right-click to delete`}
+          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: '', wf: w, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }}>
+          <span className={`wf-dot${w.latest && /^running/i.test(w.latest.result) ? ' live' : ''}`} /><span className="row-title">{w.name}</span>{w.latest && /^running/i.test(w.latest.result)
+            ? <span className="row-working" title={w.latest.waiting ? `Run #${w.latest.n} waits for you` : `Running · run #${w.latest.n}`}>{w.latest.waiting && <i className="wf-waits" />}<Mark busy /></span> /* the user, 2026-09-27: a running workflow shows the app's mark turning, as a working agent does; one that waits for a person, a yellow dot beside it ("when a workflow is waiting for the human in the loop, it must be marked in the left pane") */
+            : <span className="row-time">{w.latest ? w.latest.started.slice(5, 10) : w.when.split('·')[0]?.trim().slice(0, 12) || ''}</span>}
+        </button>
+      ))}
       {boards.length > 0 && <div className="group-sub">Boards</div>}
       {boards.map((b) => (
         <button key={b.file} className={`row${sel?.projectId === project.id && sel.kind === 'board' && sel.file === b.file ? ' on' : ''}`} onClick={() => onOpenBoard(b.file, b.title)} title={`${b.file} · ${b.done} of ${b.total} done · right-click to delete`}
@@ -505,7 +666,8 @@ function ProjectGroup({ project, infos, sel, working, listening, renaming, onRen
       ))}
       </>}
       {ctx && <div className="menu ctx" style={{ left: ctx.x, top: ctx.y }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
-        {ctx.board ? <button className="danger" onClick={() => { const b = ctx.board!; setCtx(null); onDeleteBoard(b); }}><Trash2 size={14} />Delete board</button> : <>
+        {ctx.wf ? <button className="danger" onClick={() => { const w = ctx.wf!; setCtx(null); onDeleteWorkflow(w); }}><Trash2 size={14} />Delete workflow</button>
+        : ctx.board ? <button className="danger" onClick={() => { const b = ctx.board!; setCtx(null); onDeleteBoard(b); }}><Trash2 size={14} />Delete board</button> : <>
         <button onClick={() => { const sid = ctx.sid; setCtx(null); onRenaming(sid); }}><Pencil size={14} />Rename</button>
         {!ctx.jev && <button onClick={() => { void navigator.clipboard.writeText(ctx.sid); setCtx(null); }}><Copy size={14} />Copy session ID</button>}
         {!ctx.jev && <button className="danger" onClick={() => { const sid = ctx.sid; setCtx(null); onHide(sid); }}><HideIcon size={14} />Remove from sidebar</button>}
@@ -609,7 +771,7 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
   const onReplyRef = useRef(onReply); onReplyRef.current = onReply;
   // A message from another agent (or from the app) lands here: into the running turn if there is one, as a new turn otherwise.
   const onBridgeRef = useRef(onBridge); onBridgeRef.current = onBridge; const pendingReplyTo = useRef<Sel | undefined>(undefined);
-  useEffect(() => { onBridgeRef.current?.({ deliver: async (text, replyTo) => { if (replyTo) pendingReplyTo.current = replyTo; if (v.current.running) { const ok = !compactTurn.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${text}` : text).catch(() => false); if (ok) { turnSteers.current.push({ text, images: [], shown: true }); setMessages((m) => [...m, { uuid: `local-${Date.now()}`, role: 'user', blocks: [{ type: 'text', text }], meta: false, steered: true }]); toBottom(); return; } enqueueForMain(text); return; } await sendRef.current(text, false); } }); return () => onBridgeRef.current?.(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onBridgeRef.current?.({ deliver: async (text, replyTo) => { if (v.current.running && replyTo && ownTurn(replyTo, pendingReplyTo.current)) { enqueueForMain(text, undefined, false, replyTo); return; } /* it wants its own answer: a turn of its own (T-228) */ const was = pendingReplyTo.current; if (replyTo) pendingReplyTo.current = replyTo; if (v.current.running) { const ok = !compactTurn.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${text}` : text).catch(() => false); if (ok) { turnSteers.current.push({ text, images: [], shown: true }); setMessages((m) => [...m, { uuid: `local-${Date.now()}`, role: 'user', blocks: [{ type: 'text', text }], meta: false, steered: true }]); toBottom(); return; } pendingReplyTo.current = was; enqueueForMain(text, undefined, false, replyTo); return; } await sendRef.current(text, false); } }); return () => onBridgeRef.current?.(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [turns, setTurns] = useState(0); // a finished turn has used some of the plan: the battery looks again
   const mountedAt = useRef(Date.now()); const ownWrite = useRef(0); // the session file's writes that are this chat's own (its turns) are not "another window"
   const emptyInterims = useRef(0); // live-word passes in a row that found no words in the sound being heard
@@ -845,9 +1007,9 @@ export function Chat({ embed, jev, startVoice, kickoff, nameOnStart, onNamed, on
   const startCompactRef = useRef(startCompact); startCompactRef.current = startCompact; const compactEventRef = useRef(compactEvent); compactEventRef.current = compactEvent; const endCompactRef = useRef(endCompactTurn); endCompactRef.current = endCompactTurn;
   // Queued messages leave one at a time, each as its own turn, in the order they were typed: nothing is ever merged into another message.
   const qLabel = (q: QueueItem) => `${q.text}${q.images.length ? ` (+${q.images.length} image${q.images.length > 1 ? 's' : ''})` : ''}`;
-  const flushQueue = (why: string): boolean => { const next = queue.current.shift(); setQueued([...queue.current]); persistQueue(); if (!next) return false;
+  const flushQueue = (why: string): boolean => { const next = queue.current.shift(); setQueued([...queue.current]); persistQueue(); if (!next) return false; if (next.replyTo) pendingReplyTo.current = next.replyTo; /* its answer goes where it was asked for (T-228) */
     window.desktop.debugPush('queue', `${why}: sending the next queued message${queue.current.length ? ` (${queue.current.length} more wait for the next turn)` : ''}: ${qLabel(next)}`); void sendRef.current(next.text, false, undefined, true, next.images.length ? next.images : undefined, !!next.shown, !!next.spoken); return true; };
-  const enqueueForMain = (text: string, images?: Attachment[], spoken = false) => { setDraft(null); const item: QueueItem = { text, images: images ?? [], ...(spoken ? { spoken: true } : {}) }; if (!item.text && !item.images.length) return; window.desktop.debugPush('queue', `queued for the main thread: ${qLabel(item)}`); queue.current.push(item); setQueued([...queue.current]); persistQueue(); toBottom(); if (!v.current.running) flushQueue('queued while no turn was running'); };
+  const enqueueForMain = (text: string, images?: Attachment[], spoken = false, replyTo?: Sel) => { setDraft(null); const item: QueueItem = { text, images: images ?? [], ...(spoken ? { spoken: true } : {}), ...(replyTo ? { replyTo } : {}) }; if (!item.text && !item.images.length) return; window.desktop.debugPush('queue', `queued for the main thread: ${qLabel(item)}`); queue.current.push(item); setQueued([...queue.current]); persistQueue(); toBottom(); if (!v.current.running) flushQueue('queued while no turn was running'); };
 
   const toggleVoice = async () => {
     if (voiceOn) { if (thought.current.text) { window.desktop.debugPush('thought', 'voice switched off with words held: sending them now'); await flushHeldRef.current(); } hush(); v.current.engine?.stop(); v.current.engine = null; setVoiceOn(false); setPhase('off'); setDraft(null); setMicMuted(false); void window.desktop.voiceOn(false, ears.current); return; }
@@ -1319,6 +1481,19 @@ function ProviderPermissionSettings() {
 
 type SettingsTab = 'general' | 'voice' | 'context' | 'safety' | 'reset';
 const SETTINGS_TABS: [SettingsTab, string][] = [['general', 'General'], ['voice', 'Voice'], ['context', 'Context'], ['safety', 'Safety'], ['reset', 'Reset']];
+/** The tries a new workflow is written with (the user, 2026-09-28: "the global one of the application will set the default value for the
+ *  creation of new workflows, and then each workflow can have its own"): past them, a loop between agents alone stops the run; a decision
+ *  of the user's starts the count again. Each workflow keeps its own number in its file, and a step can say its own. */
+function WorkflowTriesSetting() {
+  const [n, setN] = useState<number>(DEFAULT_TRIES); const [missed, setMissed] = useState<MissedPolicy>(MISSED_DEFAULT);
+  useEffect(() => { void api.state().then((st) => { setN(st.ui?.workflowTries ?? DEFAULT_TRIES); setMissed(st.ui?.workflowMissed ?? MISSED_DEFAULT); }).catch(() => {}); }, []);
+  return <section className="settings-group"><strong>Workflows</strong>
+    {/* the user, 2026-09-29: a schedule missed while the app was closed is at least asked about; run it, or nothing, if you say so */}
+    <label className="check stack">When a workflow's schedule is missed because the app was closed<select className="model" aria-label="A missed workflow" value={missed} onChange={(e) => { const v = e.target.value as MissedPolicy; setMissed(v); void api.setUi({ workflowMissed: v }); }}>{MISSED_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}{k === MISSED_DEFAULT ? ' (default)' : ''}</option>)}</select></label>
+    <p className="muted">Schedules run while the app is open. When it opens after missing one (closed, or this computer asleep), only the latest missed time of each workflow counts: run it then, have the Jauvex agent tell you and ask whether to run it now, or skip it.</p>
+    <label><span className="lhead">Tries per step in a new workflow<em>{n}</em></span><input type="range" min={1} max={20} step={1} value={n} onChange={(e) => { const v = Number(e.target.value); setN(v); void api.setUi({ workflowTries: v }); }} /></label>
+    <p className="muted">How many times a step may come round with no decision of yours: past that, a loop between agents stops the run. Your decisions start the count again, so a loop through you has no limit. Each workflow keeps its own number (its <code>tries:</code> line), and a step can say its own in its instructions.</p></section>;
+}
 function SettingsPanel({ signedIn, welcomeNext, onWelcomeNext, onOpenWelcome, defaultProvider, onDefaultProvider, showJauvex, onShowJauvex, jauvexMove, onJauvexMove, autoCompact, onAutoCompact, onClose }: { autoCompact: number; onAutoCompact: (pct: number) => void; signedIn: Record<Provider, boolean>; welcomeNext: boolean; onWelcomeNext: (on: boolean) => void; onOpenWelcome: () => void; defaultProvider: Provider | null; onDefaultProvider: (p: Provider) => void; showJauvex: boolean; onShowJauvex: (on: boolean) => void; jauvexMove: 'unified' | 'handoff'; onJauvexMove: (m: 'unified' | 'handoff') => void; onClose: () => void }) {
   // One tab per kind of setting, a bar across the top (the user, 2026-09-24: the settings were "a freaking mess because there are no tabs").
   // The window keeps its size from tab to tab; a long tab scrolls under the bar.
@@ -1340,6 +1515,7 @@ function SettingsPanel({ signedIn, welcomeNext, onWelcomeNext, onOpenWelcome, de
             <label className="check"><input type="checkbox" checked={showJauvex} onChange={(e) => onShowJauvex(e.target.checked)} />Show it at the top of the sidebar (hidden, it still exists and still answers other agents)</label>
             <label className="check stack">When it moves to the other provider<select className="model" value={jauvexMove} onChange={(e) => onJauvexMove(e.target.value as 'unified' | 'handoff')}><option value="unified">Unified (experimental): the app replays the whole conversation</option><option value="handoff">Handover: the leaving agent writes a note, the next starts from it</option></select></label>
           </section>
+          <WorkflowTriesSetting />
           <section className="settings-group">
             <strong>Welcome screen</strong>
             <label className="check"><input type="checkbox" checked={welcomeNext} onChange={(e) => onWelcomeNext(e.target.checked)} />Show it again on the next start</label>

@@ -12,7 +12,8 @@ import * as codex from './codex.js';
 import * as grok from './grok.js';
 import type { ContextUsage } from '../shared/context.js';
 import * as jev from './jev.js';
-import { listBoards, readBoardFiles, setBoardStatus, newBoard, deleteBoard } from './workfiles.js';
+import { listBoards, readBoardFiles, setBoardStatus, newBoard, deleteBoard, listWorkflows, readWorkflow, saveWorkflow, saveWorkflowStep, removeWorkflowStep, deleteWorkflow, workflowVersions, restoreVersion, readVersion, newWorkflow, readRun, newRun, saveRun, workflowChat, setWorkflowChat, moveWorkflow as moveWorkflowFiles } from './workfiles.js';
+import { moveClaudeSession } from './move.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // CVC_ROOT is set by the Electron main process (its bundle lives in dist-electron/).
@@ -67,6 +68,21 @@ async function addProject(dir: string): Promise<Project> {
   const project: Project = { id: randomUUID(), path: abs, name: path.basename(abs) || abs, sessions: [] };
   state.projects.push(project); await saveState(state);
   return project;
+}
+
+/** A session's files where its provider looks for another folder's sessions (T-217, electron/move.ts). */
+async function moveSessionFiles(provider: Provider, sessionId: string, from: string, to: string): Promise<void> {
+  if (provider === 'codex') await codex.moveThread(sessionId, to); else if (provider === 'grok') await grok.moveSession(sessionId, from, to); else await moveClaudeSession(sessionId, from, to);
+}
+/** What the app keeps for a session, from its old folder to its new one: its place in the list (a workflow's or a board's chat has none),
+ *  its provider, its settings, its context, and Codex's permissions from before YOLO. */
+function carrySession(from: Project, to: Project, sessionId: string): void {
+  if (from.sessions.includes(sessionId)) { from.sessions = from.sessions.filter((x) => x !== sessionId); if (!to.sessions.includes(sessionId)) to.sessions = [...to.sessions, sessionId]; }
+  for (const k of ['providers', 'prefs', 'context', 'codexPermissionBaseline'] as const) {
+    const m = from[k] as Record<string, unknown> | undefined; if (!m || !(sessionId in m)) continue;
+    (to as Record<string, unknown>)[k] = { ...((to[k] as Record<string, unknown> | undefined) ?? {}), [sessionId]: m[sessionId] };
+    const { [sessionId]: _gone, ...rest } = m; (from as Record<string, unknown>)[k] = rest;
+  }
 }
 
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -206,6 +222,48 @@ export const backend = {
     const { state, project } = await projectOr404(id);
     project.prefs = { ...project.prefs, [sessionId]: { model: String(prefs.model ?? ''), effort: String(prefs.effort ?? ''), permissions: prefs.permissions === 'yolo' ? 'yolo' : prefs.permissions === 'auto' ? 'auto' : 'ask' } };
     await saveState(state); return true;
+  },
+  // ---- workflows: a file per workflow and a folder beside it, its steps' instructions, runs and versions (electron/workfiles.ts)
+  workflows: async (id: string) => listWorkflows((await projectOr404(id)).project.path),
+  workflow: async (id: string, file: string) => readWorkflow((await projectOr404(id)).project.path, file),
+  saveWorkflow: async (id: string, file: string, md: string) => { await saveWorkflow((await projectOr404(id)).project.path, file, md); return true; },
+  saveWorkflowStep: async (id: string, file: string, step: string, text: string) => { await saveWorkflowStep((await projectOr404(id)).project.path, file, step, text); return true; },
+  removeWorkflowStep: async (id: string, file: string, step: string) => { await removeWorkflowStep((await projectOr404(id)).project.path, file, step); return true; },
+  workflowVersions: async (id: string, file: string) => workflowVersions((await projectOr404(id)).project.path, file),
+  restoreWorkflowVersion: async (id: string, file: string, v: number) => restoreVersion((await projectOr404(id)).project.path, file, v),
+  workflowVersion: async (id: string, file: string, v: number) => readVersion((await projectOr404(id)).project.path, file, v),
+  newWorkflow: async (id: string, name: string, agent?: string) => newWorkflow((await projectOr404(id)).project.path, name, agent, (await loadState()).ui?.workflowTries), // written with the app's tries
+  workflowChat: async (id: string, file: string) => workflowChat((await projectOr404(id)).project.path, file),
+  setWorkflowChat: async (id: string, file: string, c: { provider?: string; sessionId?: string | null }) => { await setWorkflowChat((await projectOr404(id)).project.path, file, c); return true; },
+  run: async (id: string, file: string) => readRun((await projectOr404(id)).project.path, file),
+  newRun: async (id: string, file: string) => newRun((await projectOr404(id)).project.path, file),
+  saveRun: async (id: string, file: string, md: string) => { await saveRun((await projectOr404(id)).project.path, file, md); return true; },
+  deleteWorkflow: async (id: string, file: string) => deleteWorkflow((await projectOr404(id)).project.path, file),
+  /** A workflow moved to another folder (T-217; the user, 2026-09-29: its files moved "but the sessions of the agents were not"): its file,
+   *  its folder beside it, and its chat's session, so the chat opens there with its conversation. The session's move failing puts the files
+   *  back: nothing is left half moved. Its steps' agents stay where they are (they are found by name, wherever they live). */
+  moveWorkflow: async (fromId: string, file: string, toId: string) => {
+    const { state, project: from } = await projectOr404(fromId); const to = state.projects.find((p) => p.id === toId);
+    if (!to) throw new HttpError(404, 'Unknown folder'); if (from.id === to.id) throw new HttpError(400, 'it is in that folder already');
+    const chat = await workflowChat(from.path, file); await moveWorkflowFiles(from.path, file, to.path);
+    if (chat.sessionId) {
+      const provider = (['claude', 'codex', 'grok'] as const).find((p) => p === chat.provider) ?? providerOf(from, chat.sessionId);
+      try { await moveSessionFiles(provider, chat.sessionId, from.path, to.path); } catch (e) {
+        await moveWorkflowFiles(to.path, file, from.path).catch(() => { /* left where it went: the error says so */ });
+        throw new HttpError(409, `${file} stayed in ${from.name}: its chat's session could not move (${(e as Error).message})`); }
+      carrySession(from, to, chat.sessionId); await saveState(state);
+    }
+    return { file, chat: chat.sessionId ? { provider: chat.provider ?? providerOf(to, chat.sessionId), sessionId: chat.sessionId } : null };
+  },
+  /** A session moved to another folder (T-217): its provider's files where that provider looks for the new folder's sessions, then what
+   *  the app keeps for it (its place in the folder's list, its provider, settings and context). It works in the new folder from its
+   *  next turn. The window refuses it while a turn runs in it. */
+  moveSession: async (fromId: string, sessionId: string, toId: string) => {
+    const { state, project: from } = await projectOr404(fromId); const to = state.projects.find((p) => p.id === toId);
+    if (!to) throw new HttpError(404, 'Unknown folder'); if (from.builtin || to.builtin) throw new HttpError(400, "the app's own agent stays in its own folder");
+    if (from.id === to.id) return { provider: providerOf(from, sessionId) };
+    const provider = providerOf(from, sessionId); await moveSessionFiles(provider, sessionId, from.path, to.path); carrySession(from, to, sessionId); await saveState(state);
+    return { provider };
   },
   // ---- boards: markdown to-do lists in the project folder (electron/workfiles.ts, T-171)
   boards: async (id: string) => listBoards((await projectOr404(id)).project.path),

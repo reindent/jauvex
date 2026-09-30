@@ -10,7 +10,7 @@ await js("window.desktop.api('setUi', { voice: { autoMute: true, autoMuteSec: 6 
 await js('location.reload()'); await sleep(4000);
 await js("document.querySelector('.group-head button[title=\"New session\"]').click()"); await sleep(1500);
 await js(`${V}.querySelector('.voice-start').click()`); // the capture starts: the file plays once
-let bar: any = null; for (let i = 0; i < 40 && !bar; i++) { await sleep(250); bar = (await (await fetch('http://127.0.0.1:9341/json')).json()).find((t) => t.type === 'page' && t.url.includes('#mini')); }
+let bar: any = null; for (let i = 0; i < 40 && !bar; i++) { await sleep(250); bar = (await (await fetch('http://127.0.0.1:9351/json')).json()).find((t) => t.type === 'page' && t.url.includes('#mini')); }
 check('the floating bar is there while voice is on', !!bar);
 const ws = new WebSocket(bar.webSocketDebuggerUrl); await new Promise((r) => (ws.onopen = r)); let id = 0; const waiting = new Map();
 ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && waiting.has(m.id)) { waiting.get(m.id)(m.result ?? {}); waiting.delete(m.id); } };

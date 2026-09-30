@@ -3,6 +3,27 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.3.0: 2026-09-29
+
+- **Workflows.** A folder's workflows: a markdown file per workflow, `workflows/<name>.md`, its steps in order and who does each, and a
+  folder beside it with one file per step, its instructions. They are listed under the folder, between its sessions and its boards: the
+  ones waiting for you first, then the running ones, then the rest by their last change.
+  - Run one from its view, or ask an agent to (`run --workflow`): each step goes to the agent it names as one message, and the OUTCOME line
+    of its answer says what comes next. A step addressed to `→ you` waits for you: pick an outcome, add a note if you like.
+  - Everything is editable in place: the steps, who does each, their instructions, the trigger. Or edit the markdown: the view follows.
+  - Every run keeps a record in the workflow's folder, and every change that a run meets becomes a version you can go back to.
+  - Triggers: by hand, on a schedule (`every weekday 9:00`), once in a time window (`anytime between 9 and 12 am`), or after another
+    workflow ends. A schedule missed while the app was closed: run it when the app opens, have the Jauvex agent ask you (the default), or
+    nothing, as you choose in Settings.
+  - Each workflow has a chat of its own, which writes it, runs it and explains a run with you.
+  - A new workflow starts as a Hello World that runs as it is.
+  - Move a workflow to another folder with its chat's conversation (`move-workflow`), and an agent with its conversation (`move-session`).
+- A board's chat, and a workflow's, can write to your other agents and hear back.
+- A message that wants its own answer (a workflow's step, another agent's question) waits for a turn of its own instead of joining a
+  turn that answers someone else.
+- The voice's second line, what it understood, only says back what you said or asked: never an answer, a plan, a promise or a guess.
+  A greeting or thanks gets none.
+
 ## 1.2.1: 2026-09-28
 
 - **Talk to a board.** Under each board, "Talk to this board": a chat with an agent of its own, by text or by voice. Ask it to add a
