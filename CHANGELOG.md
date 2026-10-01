@@ -3,6 +3,24 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.3.4: 2026-10-01
+
+- **Folders move**: drag a folder by its name, in the left panel, above or below another; the order is kept.
+- **A light theme, and the app follows your Mac.** By default it is light, dark or auto as your Mac's Appearance is set, and changes
+  with it. Settings, General, Appearance can make it Light or Dark for the app alone. The light theme: a white chat beside a light grey
+  left pane.
+- **Developer mode**, the glasses at the top right, off by default. Off, an agent's tool calls and thoughts show as one "Working" row
+  that opens with a click; on, every tool call shows as before.
+- A Codex session that another program has open (the Codex app, VS Code, the terminal) is waited for, then explained, instead of
+  failing with "already has an active writer"; the app lets a Codex session go when its turn ends.
+- A folder's workflows list only workflows: a rules or notes file kept beside them is left out and never runs.
+- A workflow's later step reaches its agent even when the app closed that agent's chat during the run (it keeps eight open): it failed
+  with "could not be reached".
+- A workflow step ends only on its own agent's reply to it: an answer to other messages that had waited in that agent's queue no longer
+  closes a step the agent had not started.
+- An agent or board made for a folder named Jauvex goes to that folder, not to the app's own folder of the same name.
+- An agent ordered of a provider that is not signed in is refused, saying so, instead of quietly being made with another provider.
+
 ## 1.3.3: 2026-09-30
 
 - **What's new**, at the foot of the sidebar. A click asks jauvex.reindent.com whether a newer version is out. If one is, the Jauvex agent

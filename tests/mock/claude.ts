@@ -74,7 +74,15 @@ async function work() {
       out({ type: 'assistant', message, parent_tool_use_id: null, error: 'invalid_request', session_id: sessionId, uuid: record('assistant', message) });
       result(started, 'Prompt is too long', { is_error: true, terminal_reason: 'prompt_too_long', modelUsage: {} }); continue;
     }
-    const THINK = Number(process.env.MOCK_THINK_MS ?? 0); if (THINK > 0) await sleep(THINK); // the model thinking first: a turn that stays busy a while
+    if (textOf(content).includes('[[tool]]')) { // a tool call first, and its result, before the answer (developer mode, T-247)
+      const id = `toolu_mock_${randomUUID().slice(0, 8)}`;
+      const use = { id: `msg_mock_${randomUUID().slice(0, 8)}`, type: 'message', role: 'assistant', model, content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'ls', description: 'List the folder' } }], stop_reason: 'tool_use', stop_sequence: null, usage: usage() };
+      out({ type: 'assistant', message: use, parent_tool_use_id: null, session_id: sessionId, uuid: record('assistant', use) });
+      const res = { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'README.md', is_error: false }] };
+      out({ type: 'user', message: res, parent_tool_use_id: null, session_id: sessionId, uuid: record('user', res) }); await sleep(DELAY * 4);
+    }
+    const asked = /\[\[wait (\d+)\]\]/.exec(textOf(content)); // a message with [[wait N]] in it takes N ms (a workflow's step that works long: T-252)
+    const THINK = asked ? Number(asked[1]) : Number(process.env.MOCK_THINK_MS ?? 0); if (THINK > 0) await sleep(THINK); // the model thinking first: a turn that stays busy a while
     let said = ''; out({ type: 'stream_event', event: { type: 'message_start', message: { id: `msg_mock_${randomUUID().slice(0, 8)}`, type: 'message', role: 'assistant', model, content: [], usage: usage() } }, parent_tool_use_id: null, session_id: sessionId, uuid: randomUUID() }); // a request starts: what was handed over before it is in it
     for (const piece of replyTo(textOf(content)).match(/\S+\s*/g) ?? []) {
       if (cut) break; said += piece;

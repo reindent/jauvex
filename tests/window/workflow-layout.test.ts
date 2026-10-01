@@ -2,10 +2,11 @@
 // stop, tell the user") took the sidebar's `.branch` rule, a 9-pixel tree connector placed absolutely: each word fell on a line of its
 // own down the left edge, over the step marks, the runs and the links. The chat under the flow greeted with the Jev trainer's words
 // ("what this agent should judge"), and its header sat apart from the flow's left edge. A picture of the view is left in tmp/.
-import { connect, sleep, check, done, V } from './lib.ts';
+import { connect, sleep, check, done, V, useWork } from './lib.ts';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs'; import path from 'node:path';
 const { cdp, js, close } = await connect(); await sleep(3000);
-const root = process.cwd(); const wdir = path.join(root, 'tmp/scratch/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(wdir, { recursive: true });
+await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
+const root = process.cwd(); const wdir = path.join(root, 'tmp/work/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(wdir, { recursive: true });
 writeFileSync(path.join(wdir, 'news-video-creation.md'), '# News Video Creation\n\nA news story made into a short video, with your approval before it goes out.\n\nwhen: manual\n\n'
   + '## 1. Script → Video Agent\nWrite the script.\nthen: done → Your approval · failed → stop, tell the user\n\n'
   + '## 2. Your approval → you\nthen: approved → Done · changes → back to step 1 with your notes\n\ndone: the video, approved\n');

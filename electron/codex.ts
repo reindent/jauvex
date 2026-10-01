@@ -145,6 +145,33 @@ export async function transcript(threadId: string): Promise<ChatMessage[]> {
   return messages;
 }
 
+// One program writes to a Codex thread at a time (Codex 0.159: "thread <id> already has an active writer"; a tester's turn failed with it,
+// 2026-09-30; T-250, from the other edition's 3df63e9). The program that has a thread loaded is its writer, idle or not, and lets it go only
+// about a minute after its last subscriber leaves. This app kept every thread it had used loaded for as long as it ran, so no other Codex
+// program (the Codex app, VS Code, the terminal) could use it, and theirs blocked this one the same way. Now a thread is let go when its turn
+// is over, and a thread another program holds is waited for (the chat says so), then refused in plain words.
+const HELD = /already has an active writer/i;
+const HELD_MS = 75_000; // past the minute another program keeps a thread after letting it go
+export const heldNote = 'Another program has this Codex session open, and Codex lets only one write to it: the Codex app, VS Code, the terminal, or another copy of this app. Close the session there (Codex frees it about a minute later), then send your message again.';
+const releasing = new Map<string, Promise<void>>();
+/** A thread whose turn is over, let go: Codex frees it for other programs about a minute later; the next turn here takes it again. */
+function release(threadId: string): void {
+  if (!loaded.has(threadId) || turns.has(threadId)) return; loaded.delete(threadId);
+  const p: Promise<void> = call('thread/unsubscribe', { threadId }).then(() => {}, () => { /* not loaded after all */ }).finally(() => { if (releasing.get(threadId) === p) releasing.delete(threadId); });
+  releasing.set(threadId, p);
+}
+/** thread/resume, waiting while another program holds the thread (the chat says so), then refusing in plain words. */
+async function resumeHeld<T>(params: Record<string, unknown> & { threadId: string }, waiting: () => void, waitMs = HELD_MS): Promise<T> {
+  await releasing.get(params.threadId); const t0 = Date.now(); let told = false;
+  for (;;) {
+    try { return await call<T>('thread/resume', params); } catch (e) {
+      if (!HELD.test((e as Error).message)) throw e;
+      if (Date.now() - t0 >= waitMs) throw new Error(heldNote);
+      if (!told) { told = true; waiting(); }
+      await new Promise((r) => setTimeout(r, Number(process.env.CVC_CODEX_HELD_RETRY_MS) || 5000));
+    }
+  }
+}
 /** Codex keeps the name with the thread itself (`thread/name/set`), so the Codex CLI and app show it too. */
 export async function rename(threadId: string, name: string): Promise<void> { await call('thread/name/set', { threadId, name }); cache.delete(threadId); }
 
@@ -176,7 +203,7 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   const s = (server ??= boot());
   const spoken = { developerInstructions: clientBriefing(!!req.voice, req.vocabulary, !!req.steward, APP_ROOT, await folderFiles(project.path)) }; // every session is told where it is running; dictated text is read for intent
   if (!threadId) { const r = await call<{ thread: Thread; model: string; approvalPolicy?: unknown; sandbox?: unknown }>('thread/start', { cwd: project.path, ...(req.model ? { model: req.model } : {}), ...spoken }); threadId = r.thread.id; model = r.model; rememberPermissions(threadId, r); loaded.add(threadId); }
-  else if (!loaded.has(threadId)) { const r = await call<{ model: string; approvalPolicy?: unknown; sandbox?: unknown }>('thread/resume', { threadId, excludeTurns: true, ...spoken }); model ??= r.model; rememberPermissions(threadId, r); loaded.add(threadId); }
+  else if (!loaded.has(threadId)) { const r = await resumeHeld<{ model: string; approvalPolicy?: unknown; sandbox?: unknown }>({ threadId, excludeTurns: true, ...spoken }, () => send({ chatId, type: 'status', text: 'Waiting: another program has this Codex session open (Codex lets only one write to it). It goes on once that program lets it go.' }), Number(process.env.CVC_CODEX_HELD_MS) || HELD_MS); model ??= r.model; rememberPermissions(threadId, r); loaded.add(threadId); }
   if (turns.has(threadId)) throw new Error('This session is already running a turn.');
   let restore = project.codexPermissionBaseline?.[threadId];
   if (req.permissions === 'yolo' && !restore) {
@@ -202,7 +229,7 @@ function inputItems(text: string, images?: Attachment[]): unknown[] {
 }
 function runTurn(s: Server, id: string, chatId: string, text: string, images: Attachment[] | undefined, extra: Record<string, unknown>, send: (e: ChatEvent) => void, projectId?: string, opts: TurnOpts = {}): Promise<void> {
   return new Promise<void>((resolve) => {
-    const end = (e: ChatEvent) => { for (const f of entry.pending.values()) f('deny'); if (entry.compactAt) compacted(entry, e.type === 'done' && e.ok); turns.delete(id); cache.delete(id);
+    const end = (e: ChatEvent) => { for (const f of entry.pending.values()) f('deny'); if (entry.compactAt) compacted(entry, e.type === 'done' && e.ok); turns.delete(id); cache.delete(id); release(id); /* other Codex programs may have it a minute later (T-250) */
       if (projectId && entry.ctx && entry.ctx.window > 0) void saveContext(projectId, id, entry.ctx).catch(() => { /* shown, just not kept */ }); send(e); resolve(); };
     const entry: LiveTurn = { projectId, server: s, chatId, threadId: id, turnId: null, send, pending: new Map(), items: new Map(), error: '', compact: !!opts.compact, ctx: opts.ctx ?? null, ...(opts.model ? { model: opts.model } : {}), compactAt: 0, tooLong: false,
       fail: (why) => end({ chatId, type: 'done', ok: false, sessionId: id, error: why, ...(tooLong(null, why) ? { tooLong: true } : {}) }),
@@ -314,5 +341,5 @@ export function voiceWarm(instructions: string, preferred: string): void {
 export async function moveThread(threadId: string, cwd: string): Promise<void> {
   if (turns.has(threadId)) throw new Error('a turn is running in it');
   if (loaded.has(threadId)) { await call('thread/unsubscribe', { threadId }).catch(() => { /* not loaded after all */ }); loaded.delete(threadId); }
-  await call('thread/resume', { threadId, cwd, excludeTurns: true }); await call('thread/unsubscribe', { threadId }).catch(() => { /* let go by itself */ }); cache.delete(threadId);
+  await resumeHeld({ threadId, cwd, excludeTurns: true }, () => {}, 0).catch((e: Error) => { throw HELD.test(e.message) ? new Error(heldNote) : e; }); await call('thread/unsubscribe', { threadId }).catch(() => { /* let go by itself */ }); cache.delete(threadId);
 }

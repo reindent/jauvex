@@ -1,10 +1,11 @@
-import { connect, sleep, check, done, V } from './lib.ts'; import { execFileSync } from 'node:child_process'; import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'; import path from 'node:path';
+import { connect, sleep, check, done, V, useWork } from './lib.ts'; import { execFileSync } from 'node:child_process'; import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'; import path from 'node:path';
 const { js, close } = await connect(); await sleep(3000);
+await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
 // A when line changed in the file reaches the schedule with no refresh (T-204; the user, 2026-09-29: a workflow set to "every weekday 6:32"
 // did not run at 6:32, and its row still said manual). The scheduler read the list the window had loaded, and the window loaded it again only
 // on a refresh: the edit waited for one. Now every check of the schedule reads the folder's workflows again. A run the schedule starts says
 // so in its record (by: its schedule (...)), and the view shows when each run started, to the minute.
-const root = process.cwd(); const wdir = path.join(root, 'tmp/scratch/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(wdir, { recursive: true });
+const root = process.cwd(); const wdir = path.join(root, 'tmp/work/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(wdir, { recursive: true });
 const flow = (name, when) => `# ${name}\n\nStarts on its own once its when line says so.\n\nwhen: ${when}\n\n## 1. Your go → you\nthen: go → Done · not now → stop, not now\n\ndone: nothing\n`;
 const at = (ms) => { const d = new Date(Date.now() + ms); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 writeFileSync(path.join(wdir, 'edit-flow.md'), flow('Edit flow', 'manual')); writeFileSync(path.join(wdir, 'later-flow.md'), flow('Later flow', 'manual'));
@@ -23,6 +24,6 @@ check('...and it did not run: its slot is later', !existsSync(path.join(wdir, 'l
 await js("[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes('Edit flow'))?.click()"); await sleep(2500);
 const runs = await js(`[...(${V}?.querySelectorAll('.foot .runs small') ?? [])].map((x) => x.textContent).join(' | ')`);
 check('the view shows when the run started, to the minute, and that its schedule started it', /\d{4}-\d\d-\d\d \d\d:\d\d.* · by its schedule \(every day at /.test(runs), runs);
-const ok = run('decide', '--folder', 'scratch', '--workflow', 'edit flow', '--outcome', 'go'); await sleep(2000);
+const ok = run('decide', '--folder', 'work', '--workflow', 'edit flow', '--outcome', 'go'); await sleep(2000);
 check('its gate is decided as before', ok.ok && /^result: done/m.test(rec('edit-flow')), JSON.stringify(ok));
 done(close);

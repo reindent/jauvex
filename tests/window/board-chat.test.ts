@@ -2,13 +2,14 @@
 // A board's own chat (T-199, asked for 2026-09-28: a way to talk to a board, as to a Jev agent). Under the board: a session of its own, told
 // on every message what the board is now (the stand-in quotes both ends of what it got: the board's context, then the words); the thread
 // shows the words, never the context; the session is kept for the board, and the conversation is still there after a reload.
-import { connect, sleep, check, done, V } from './lib.ts';
+import { connect, sleep, check, done, V, useWork } from './lib.ts';
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'; import path from 'node:path';
 const { js, close } = await connect(); await sleep(3000);
-const bdir = path.join(process.cwd(), 'tmp/scratch/boards'); rmSync(bdir, { recursive: true, force: true }); mkdirSync(bdir, { recursive: true });
+await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
+const bdir = path.join(process.cwd(), 'tmp/work/boards'); rmSync(bdir, { recursive: true, force: true }); mkdirSync(bdir, { recursive: true });
 writeFileSync(path.join(bdir, 'launch.md'), '<!-- boards: v1 -->\n# Launch\n\n## P0 — now\n\n- [ ] **T-01 · Write the plan** — first.\n');
 const until = async (f: () => Promise<boolean>, ms = 20000) => { for (let t = 0; t < ms; t += 300) { if (await f()) return true; await sleep(300); } return false; };
-const chats = () => { try { return JSON.parse(readFileSync(path.join(process.env.CVC_DATA_DIR!, 'state.json'), 'utf8')).projects.find((p) => p.name === 'scratch')?.boardChats ?? {}; } catch { return {}; } };
+const chats = () => { try { return JSON.parse(readFileSync(path.join(process.env.CVC_DATA_DIR!, 'state.json'), 'utf8')).projects.find((p) => p.name === 'work')?.boardChats ?? {}; } catch { return {}; } };
 const openBoard = async () => { await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await until(() => js("[...document.querySelectorAll('.row')].some((r) => r.querySelector('.row-title')?.textContent === 'Launch')")); await js("[...document.querySelectorAll('.row')].find((r) => r.querySelector('.row-title')?.textContent === 'Launch').click()"); };
 await openBoard();
 check('a board shows its chat under it', await until(() => js(`${V}?.querySelector('.board-chat header b')?.textContent === 'Talk to this board' && !!${V}.querySelector('.board-view .board')`)), await js(`${V}?.textContent.slice(0, 200) ?? ''`));

@@ -7,7 +7,7 @@
 # Header lines a check can carry:  // needs: mic (a fake microphone)  // wav: tests/fixtures/x.wav (what it hears, 48 kHz mono)
 #                                  // env: KEY=VALUE (__ROOT__ = this repository)   // fresh (empty data folder)
 #                                  // llm (calls a real model: skipped unless CVC_TEST_LLM=1)
-cd "$(dirname "$0")/.." || exit 1; ROOT="$PWD"; mkdir -p tmp/scratch tmp/testrun
+cd "$(dirname "$0")/.." || exit 1; ROOT="$PWD"; mkdir -p tmp/scratch tmp/work tmp/testrun
 QUICK=""; [ "$1" = --quick ] && { QUICK=1; shift; }
 fail=0; ran=0
 prep() { # prep <check>: its name, a data folder of its own (the fixture state unless "// fresh") and its env; fails when it is skipped
@@ -38,7 +38,7 @@ else
   for t in tests/window/*.test.ts tests/*.test.ts; do
     [ -f "$t" ] || continue
     case "$(basename "$t" | sed 's/\.test\..*//')" in *"$1"*) ;; *) continue ;; esac
-    prep "$t" || continue; case "$t" in tests/window/*) rm -rf "$ROOT/tmp/scratch/workflows" "$ROOT/tmp/scratch/boards" ;; esac # a live run left in the scratch folder would be taken over by the next window
+    prep "$t" || continue; case "$t" in tests/window/*) rm -rf "$ROOT/tmp/work/workflows" "$ROOT/tmp/work/boards" ;; esac # a live run left in the checks' work folder would be taken over by the next window; never tmp/scratch: it is the other edition's folder, through a link
     flags=""; grep -q '^// needs: mic' "$t" && flags="--no-sandbox --use-fake-device-for-media-stream --use-fake-ui-for-media-stream"
     wav=$(sed -n 's|^// wav: ||p' "$t"); [ -n "$wav" ] && flags="$flags --use-file-for-fake-audio-capture=$ROOT/$wav%noloop"
     echo "== $name"; ran=$((ran+1))
