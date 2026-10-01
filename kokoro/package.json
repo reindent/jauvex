@@ -1,0 +1,9 @@
+{
+  "name": "jauvex-kokoro",
+  "private": true,
+  "description": "The spoken voice on Linux (macOS speaks with say): Kokoro-82M through kokoro-js, run by server.mjs. Installed on Linux only (start.sh), so the Mac install does not carry onnxruntime.",
+  "type": "module",
+  "dependencies": {
+    "kokoro-js": "1.2.1"
+  }
+}

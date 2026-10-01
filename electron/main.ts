@@ -16,6 +16,7 @@ process.env.CVC_ROOT = ROOT;
 const DEV_URL = process.env.CVC_DEV_URL;        // set by `npm run dev` (Vite)
 const HIDDEN = process.env.CVC_HIDDEN === '1';   // UI checks without taking focus
 const MINI_CHECK = HIDDEN && process.env.CVC_MINI_CHECK === '1'; // a check reads the floating bar: it is made, never shown (tests/window/mini-countdown.test.ts)
+const MAC = process.platform === 'darwin';
 
 // Everything this app stores is in its data folder, ~/.jauvex/personal for every copy (electron/paths.ts), run from source or compiled:
 // the state, and the Chromium profile in its profile/. CVC_DATA_DIR points automated checks at a throwaway folder so they can never
@@ -43,7 +44,7 @@ function showMini(): void {
   if ((HIDDEN && !MINI_CHECK) || !voiceActive || !win) return;
   if (!mini) {
     mini = new BrowserWindow({ width: 268, height: 72, show: false, frame: false, transparent: true, resizable: false, hasShadow: false, alwaysOnTop: true, skipTaskbar: true,
-      fullscreenable: false, minimizable: false, maximizable: false, type: 'panel', webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+      fullscreenable: false, minimizable: false, maximizable: false, ...(MAC ? { type: 'panel' as const } : {}), webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     mini.setAlwaysOnTop(true, 'floating');
     // visibleOnFullScreen alone turns the whole app into a background-only app (no Dock tile, no way back to the window from
     // the Dock): skipTransformProcessType keeps it a normal app. The controller still floats above other windows.
@@ -73,7 +74,7 @@ function showMini(): void {
 // ~/.claude and listed none of a user's Claude Code sessions, while Codex's showed) and CODEX_HOME. Taken from the login shell.
 function adoptShellPath(): void {
   try {
-    const shell = process.env.SHELL || '/bin/zsh';
+    const shell = process.env.SHELL || (MAC ? '/bin/zsh' : '/bin/sh');
     const out = execFileSync(shell, ['-ilc', SHELL_VARS.map((k) => `printf "__${k}__%s__END_${k}__" "$${k}"`).join('; ')], { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] });
     const got = parseShellVars(out); if (got.PATH) process.env.PATH = got.PATH;
     for (const k of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME'] as const) if (got[k] && !process.env[k]) process.env[k] = got[k];
@@ -83,9 +84,13 @@ function adoptShellPath(): void {
 async function createWindow(): Promise<void> {
   win = new BrowserWindow({
     width: 1360, height: 880, minWidth: 900, minHeight: 600, show: false,
-    backgroundColor: '#141413', titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 15 },
+    backgroundColor: '#141413',
+    // macOS: the traffic lights inset in the app's own title bar. Elsewhere the system's frame, with no menu bar (the app has no menu, and
+    // Alt is push-to-talk: Electron's default menu bar would take it), and the window's icon (macOS takes it from the Dock, below).
+    ...(MAC ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 15 } } : { autoHideMenuBar: true, icon: path.join(ROOT, 'assets', 'icon.png') }),
     webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required', webviewTag: true /* the right pane frames pages and PDFs in a <webview> */ },
   });
+  if (!MAC) win.removeMenu();
   // The window stays muted until voice mode is switched on by the user or the welcome screen is open (and always during hidden automated checks).
   win.webContents.setAudioMuted(true);
   win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' }; });
@@ -101,6 +106,9 @@ async function createWindow(): Promise<void> {
 }
 
 app.setName('Jauvex');
+// Linux: Chromium refuses WebGL on many drivers, and on a screen with no GPU (a virtual one), unless its software renderer is allowed. The orb
+// is drawn with WebGL. A GPU it accepts is still used first.
+if (!MAC) app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 app.whenReady().then(async () => {
   // Updates (T-165): the app asks jauvex.reindent.com which version is the latest, at launch and every six hours; the copy the install
   // command made, when it runs an older one, tells the window, whose Jauvex agent asks the user; on a yes the `update` order hands the
@@ -206,7 +214,7 @@ app.whenReady().then(async () => {
     if (on && process.platform === 'darwin' && !HIDDEN) { const ok = await systemPreferences.askForMediaAccess('microphone'); if (!ok) throw new Error('Microphone access is off for this app. Allow it in System Settings > Privacy & Security > Microphone, then try again.'); }
     const key = who || 'voice'; if (on) ears.add(key); else ears.delete(key); applyMute();
     debug.log('note', `voice ${on ? 'on' : 'off'} for ${key}${provider ? ` (${provider})` : ''}; listening now: ${[...ears].join(', ') || 'nobody'}; the window is ${audible() ? 'audible' : 'muted'}`, { by: 'app' });
-    if (on) { if (stt) voice.configureStt(stt.model, stt.vocabulary); void voice.ensureWhisper(); if (provider && ackModel !== undefined) voice.warmAck(provider, ackModel); } else if (!ears.size) voice.cancelSpeech(); /* the last ears off: nothing left to render for */ return voice.status(); });
+    if (on) { if (stt) voice.configureStt(stt.model, stt.vocabulary); void voice.ensureWhisper(); voice.warmSpeech(); if (provider && ackModel !== undefined) voice.warmAck(provider, ackModel); } else if (!ears.size) voice.cancelSpeech(); /* the last ears off: nothing left to render for */ return voice.status(); });
   const jev = await import('./jev.js');
   ipcMain.handle('welcome:intent', (_e, text: string) => voice.welcomeIntent(text));
   ipcMain.on('audio:welcome', (_e, open: boolean) => { welcomeOpen = open; applyMute(); }); // the welcome screen speaks without voice mode

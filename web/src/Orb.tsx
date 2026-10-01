@@ -54,7 +54,8 @@ export function Orb({ size, level, phase, dim = false, mute = false, silent = fa
   const live = useRef({ phase, mute: mute || dim, silent: silent || dim }); live.current = { phase, mute: mute || dim, silent: silent || dim };
   useEffect(() => {
     const el = host.current; if (!el) return;
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, premultipliedAlpha: false });
+    // No WebGL (a machine with no GPU Chromium accepts, a virtual screen): no orb rather than no window. An exception here took the whole app down.
+    let renderer: THREE.WebGLRenderer; try { renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, premultipliedAlpha: false }); } catch { return; }
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.setSize(size, size); renderer.setClearColor(0x000000, 0);
     el.appendChild(renderer.domElement);
     const uniforms = { uTime: { value: 0 }, uLevel: { value: 0 }, uEnergy: { value: 0.12 }, uMute: { value: 0 }, uSilent: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } };

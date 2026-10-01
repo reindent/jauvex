@@ -11,6 +11,11 @@
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT" || exit 1
 mkdir -p tmp
+# Elsewhere than macOS there is no launchd: nohup + setsid (setsid(1) where perl's POSIX is missing).
+if [ -z "$RESTART_DETACHED" ] && [ "$(uname)" != Darwin ]; then
+  RESTART_DETACHED=1 nohup setsid /bin/sh "$ROOT/scripts/restart.sh" "$1" "$2" >> tmp/restart.log 2>&1 < /dev/null &
+  echo "--- $(date '+%H:%M:%S') detached with setsid" >> tmp/restart.log; exit 0
+fi
 if [ -z "$RESTART_DETACHED" ]; then
   LABEL="app-restart-$$"; PLIST="$ROOT/tmp/$LABEL.plist"; NODE_DIR=$(dirname "$(command -v node)")
   cat > "$PLIST" <<PL
@@ -35,7 +40,7 @@ delay=$1; shift
 set -- $*
 echo "--- $(date '+%H:%M:%S') restart in ${delay}s for: $* (pid $$, parent $PPID)"
 sleep "$delay"
-APP="$ROOT/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+if [ "$(uname)" = Darwin ]; then APP="$ROOT/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"; else APP="$ROOT/node_modules/electron/dist/electron"; fi
 for pid in "$@"; do
   cmd=$(ps -p "$pid" -o command= 2>/dev/null)
   case "$cmd" in
