@@ -247,9 +247,14 @@ const KOKORO_DIR = path.join(ROOT, 'kokoro');
 const kokoroInstalled = () => existsSync(path.join(KOKORO_DIR, 'node_modules', 'kokoro-js')) && existsSync(path.join(ROOT, 'models', 'kokoro', 'onnx', 'model.onnx'));
 type Kokoro = { proc: ChildProcess; ready: Promise<boolean>; voices: string[]; pending: Map<number, (wav: ArrayBuffer | null) => void>; next: number };
 let kokoro: Kokoro | null = null;
-function ensureKokoro(): Kokoro | null {
+// Once it has stopped by itself (or is not installed), it is not started again at every sentence, each paying seconds of loading and a line
+// in the log: only at the next voice-on or welcome check (retry).
+let kokoroFailed = false;
+function ensureKokoro(retry = false): Kokoro | null {
   if (kokoro) return kokoro;
-  if (!kokoroInstalled()) { debug.log('note', `no spoken voice: Kokoro is not installed in ${KOKORO_DIR} (sh start.sh installs it)`, { by: 'app' }); return null; }
+  if (kokoroFailed && !retry) return null;
+  kokoroFailed = false;
+  if (!kokoroInstalled()) { kokoroFailed = true; debug.log('note', `no spoken voice: Kokoro is not installed in ${KOKORO_DIR} (sh start.sh installs it)`, { by: 'app' }); return null; }
   // Electron's own Node runs it (process.execPath is the Electron binary in the app, node in the backend checks).
   const proc = spawn(process.execPath, [path.join(KOKORO_DIR, 'server.mjs'), path.join(ROOT, 'models')], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
   let err = ''; proc.stderr?.on('data', (d: Buffer) => { err = (err + d.toString()).slice(-4000); });
@@ -268,16 +273,16 @@ function ensureKokoro(): Kokoro | null {
       }
     });
     proc.on('exit', (code, signal) => {
-      resolve(false); if (kokoro === k) kokoro = null; for (const done of k.pending.values()) done(null); k.pending.clear();
+      resolve(false); if (kokoro === k) kokoro = null; if (!stopping) kokoroFailed = true; for (const done of k.pending.values()) done(null); k.pending.clear();
       if (!stopping) debug.log('note', `Kokoro stopped (${signal ?? `exit ${code}`})`, { by: 'app', ...(err ? { detail: err } : {}) });
     });
     proc.on('error', () => resolve(false));
   });
   kokoro = k; return k;
 }
-let stopping = false;
+let stopping = false; // set by shutdown() only, which is final: the app is quitting
 /** Kokoro takes several seconds to load: started when voice is switched on (and by the welcome's check), as Whisper is. */
-export function warmSpeech(): void { if (KOKORO) ensureKokoro(); }
+export function warmSpeech(): void { if (KOKORO) ensureKokoro(true); }
 export async function voices(): Promise<string[]> {
   if (KOKORO) { const k = ensureKokoro(); return k && (await k.ready) ? k.voices : []; }
   if (cachedVoices) return cachedVoices;
@@ -697,7 +702,7 @@ export async function summarize(asked: string, answer: string, provider: Provide
 }
 
 /** What the first-run screen needs to know, without starting a server: is `say` there, whisper-server, a model, a TypeSafe key. */
-export async function setupCheck(): Promise<SetupCheck> { if (process.env.CVC_SETUP_FAKE === 'missing') return { say: true, voice: 'basic', whisperBinary: false, models: [], jevKey: false }; /* window checks: the failing screen */ const say = KOKORO ? kokoroInstalled() && !!ensureKokoro() : !!findOnPath('say') || existsSync('/usr/bin/say'); return { say, voice: !say ? 'unknown' : KOKORO ? 'natural' : await voiceQuality(), whisperBinary: !!findOnPath('whisper-server'), models: listModels(), jevKey: await jev.hasKey() }; }
+export async function setupCheck(): Promise<SetupCheck> { if (process.env.CVC_SETUP_FAKE === 'missing') return { say: true, voice: 'basic', whisperBinary: false, models: [], jevKey: false }; /* window checks: the failing screen */ const say = KOKORO ? kokoroInstalled() && !!ensureKokoro(true) : !!findOnPath('say') || existsSync('/usr/bin/say'); return { say, voice: !say ? 'unknown' : KOKORO ? 'natural' : await voiceQuality(), whisperBinary: !!findOnPath('whisper-server'), models: listModels(), jevKey: await jev.hasKey() }; }
 /** Is the System voice still the basic one? `say` with no voice renders the System voice (Spoken Content); on a fresh Mac that is the
  *  compact Samantha, which sounds robotic. A Siri voice cannot be named by an app (say -v falls back to Samantha), only that setting
  *  reaches it: so the check renders one word both ways and compares the bytes. Same bytes: basic. */
