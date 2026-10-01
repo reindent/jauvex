@@ -1,6 +1,6 @@
 {
   "name": "jauvex",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Jauvex: your coding agents (Claude and Codex, with Jev for the fast decisions), side by side, by voice. Electron, TypeScript, no server.",
   "scripts": {
     "postinstall": "install-electron",

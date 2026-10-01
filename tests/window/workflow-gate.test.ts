@@ -4,10 +4,11 @@
 // open ... I had to go to the next step and then come back"). An agent's step (the stand-in, scripted) ends with a FOR YOU line; the step
 // after it, yours, shows that first, then the note and the buttons, in a pane opened before the run got there; approving closes the input
 // there and then, and the run goes on.
-import { connect, sleep, check, done, V } from './lib.ts';
+import { connect, sleep, check, done, V, useWork } from './lib.ts';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'; import path from 'node:path';
 const { cdp, js, close } = await connect(); await sleep(3000);
-const root = process.cwd(); const wdir = path.join(root, 'tmp/scratch/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(path.join(wdir, 'guess'), { recursive: true });
+await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
+const root = process.cwd(); const wdir = path.join(root, 'tmp/work/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(path.join(wdir, 'guess'), { recursive: true });
 writeFileSync(path.join(wdir, 'guess.md'), '# Guess\n\nA number to guess.\n\nwhen: manual\n\n## 1. [Draw](guess/draw.md) → Jauvex\n\n## 2. [Your guess](guess/your-guess.md) → you\n\n## 3. [Check](guess/check.md) → Jauvex\n\ndone: a guess, checked\n');
 writeFileSync(path.join(wdir, 'guess/draw.md'), 'Draw a number, 1 or 2, and keep it secret.\n[[reply]]I drew a number and kept it to myself.\nFOR YOU: Guess the number I drew: 1 or 2.\nOUTCOME: done\n');
 writeFileSync(path.join(wdir, 'guess/your-guess.md'), 'Guess the number.\n');
@@ -21,7 +22,7 @@ await js("[...document.querySelectorAll('.group .row')].find((r) => r.textConten
 // opened, a workflow shows the step it is at (the user, 2026-09-27: "when clicking on a workflow item, when it opens, it should show the current
 // step it's at, if not initiated then first step, if already finished then last step")
 const title = () => js("document.querySelector('.pane .pane-title')?.textContent ?? ''");
-const reopen = async () => { await js("document.querySelector('.pane .icon-btn[title=\"Close\"]')?.click()"); await sleep(200); await js("[...document.querySelectorAll('.group .row')].find((r) => !r.textContent.includes('Guess'))?.click()"); await sleep(800); await js("[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes('Guess')).click()"); await sleep(1200); };
+const reopen = async () => { await js("document.querySelector('.pane .icon-btn[title=\"Close\"]')?.click()"); await sleep(200); await js("document.querySelector('.jauvex-row')?.click()"); /* away from the workflow: the Jauvex agent's row is always there */ await sleep(800); await js("[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes('Guess')).click()"); await sleep(1200); };
 check('opened, never run: its first step shows in the pane', await until(async () => (await title()) === 'Step 1' && /Draw/.test(await pane()), 5000), await title());
 await js(`${V}.querySelectorAll('.steps .st')[2].click()`); await sleep(500); // step 2, yours, opened before the run starts
 check('before a run, your step says it waits for you, with no input yet', await js("!document.querySelector('.pane-view .gate-note')") && /waits here/.test(await pane()), await pane());

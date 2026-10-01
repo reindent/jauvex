@@ -1,5 +1,5 @@
 // The roster helpers: session titles cut short, short ids that stay unique, and the agent a message is addressed to.
-const { shortTitle, shortIds, findAgents, matchSession } = await import('../shared/roster.ts');
+const { shortTitle, shortIds, findAgents, matchSession, findFolderIn } = await import('../shared/roster.ts');
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };
 const dictated = "Hey, you're going to take care of helping me with the Jauvex development. So basically the name of this application development. So you're going to be the Jauvex development agent.";
 const t = shortTitle(dictated);
@@ -28,4 +28,11 @@ check('an unknown name finds nobody', findAgents(all, 'Nobody Here').length === 
   const list = [{ sessionId: '7956cf18-aaaa', summary: 'Fix the login', customTitle: 'Landing page' }, { sessionId: '01a0bd26-bbbb', summary: 'Write the post' }];
   check('a session is named by id, the start of its id, its title or its summary', matchSession(list, '7956cf18-aaaa')?.summary === 'Fix the login' && matchSession(list, '01a0bd')?.summary === 'Write the post' && matchSession(list, 'landing page')?.sessionId === '7956cf18-aaaa' && matchSession(list, 'write the post')?.sessionId === '01a0bd26-bbbb');
   check('a name nobody has, or none, names no session', matchSession(list, 'nothing like it') === undefined && matchSession(list, '  ') === undefined); }
+{ // the folder an order names (--folder), when a folder and the app's own share a name (T-254)
+  const own = { id: 'jx', path: '/home/u/.jauvex', name: 'Jauvex', builtin: 'jauvex' }, mine = { id: 'f1', path: '/home/u/Reindent/Jauvex', name: 'Jauvex' };
+  const other = { id: 'f2', path: '/home/u/Other/Jauvex', name: 'Jauvex' }, site = { id: 'f3', path: '/home/u/Reindent/site', name: 'site' };
+  const all = [own, other, mine, site];
+  check("by name, a folder wins over the app's own folder of the same name, whatever the order", findFolderIn(all, 'Jauvex')?.id === 'f2' && findFolderIn([own, mine], 'jauvex')?.id === 'f1');
+  check("the app's own folder: by its name when no other folder has it, by its path or id always", findFolderIn([own, site], 'Jauvex')?.id === 'jx' && findFolderIn(all, '/home/u/.jauvex')?.id === 'jx' && findFolderIn(all, 'jx')?.id === 'jx');
+  check('a name no folder has names none', findFolderIn(all, 'nowhere') === null); }
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

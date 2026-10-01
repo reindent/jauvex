@@ -145,6 +145,11 @@ debug panel.
   tells the window (`end(wav, id, cut)`): the window holds it for the next words without counting a hold. `maybeEnd`
   never starts a speculative pass while one runs (`sttBusy`), and the end of a segment never clears `hearing` once the
   next segment has begun (`starts` counter). Whisper's cost grows with the audio length: keep segments short.
+- One program writes to a Codex thread at a time (Codex 0.159, T-250): the program that has a thread loaded is its writer, idle or not,
+  and frees it about a minute after its last subscriber leaves (`thread/unsubscribe`); any other program's `thread/resume` meanwhile fails
+  with "thread <id> already has an active writer" (the Codex app, VS Code, the terminal, another copy of this app). The app lets a thread
+  go when its turn ends (`release` in `codex.ts`) and waits out a held one, then explains (`resumeHeld`, `heldNote`); check
+  `tests/codex-held.test.ts`.
 - Codex `thread/list` without `useStateDbOnly: true` scans the rollout files and drops the threads an agent created
   (`threadSource: agent_created_thread`, the desktop app's agents), and its `cwd` filter is exact: the desktop's agents
   run in worktrees under `~/.codex/worktrees/<id>/<basename>`. `listSessions` in `codex.ts` lists from the database and
@@ -160,6 +165,9 @@ debug panel.
   `GGML_ASSERT` (`whisperFailure` in `voice.ts`), and stop waiting when its process ends (`waitForServer`): on 2026-09-24, on a new
   Mac, the app showed "exited (null). 9 dyld ... start + 6124" after waiting out a whole minute, for a small model an interrupted
   download had left incomplete (start.sh took any file of that name for done; `scripts/models.sh` checks sizes and SHA-256 now).
+- Colours (T-248): use the theme's tokens (`var(--bg)`, `var(--fg)`, `var(--line)`, `var(--accent)`...). A colour written as a literal in a
+  rule is named in the block at the end of `web/src/styles.css` (`--k-<hex>`, its dark value and its light counterpart); a new literal
+  that is not named there stays dark in the light theme. Name it there, or use a token.
 - Class names are global: a bare `.ctx` for the context meter's button (T-74) also styled the session menu, `menu ctx`, and laid its
   items out in a row (T-131). Give a component's classes its own prefix (`ctx-meter`), and never a short bare word.
 - Words held for "what comes next" must always have a way out (timer or `dropped`), or the message vanishes.
@@ -171,10 +179,19 @@ debug panel.
 - A workflow run lives in the window that started it (`runners` in `App.tsx`): a step's reply comes back with a `replyTo` of kind `run`
   (the same `pendingReplyTo` path agent messages use) and goes to the Runner, not to `returnReply`. A window reload or an app restart
   leaves a live run with nobody driving it: the window takes it over as it stands at load (`attachRun`), nothing re-sent.
-- Window checks share `tmp/scratch`: `run.sh` removes its `workflows/` and `boards/` before every window check (a live run left there is
-  taken over by the next window at load). They run on ports of their own (9451 for the window, 4451 and 4452 for Whisper), apart from
+- A safety net that matches by who answered, not by what was asked, catches the wrong answer (T-253, 2026-10-01): a reply with no address
+  that came from the agent a run waited on, with an OUTCOME line, closed the run's step; it was meant for a turn a reloaded window took back,
+  but it took every reply, and an agent's answer to messages that had waited in its queue closed the next step before the agent had read it.
+  Only a taken-back turn's reply goes to a waiting run now (`takenBack` in the chat, `closesWaitingStep` in `shared/delivery.ts`), never
+  while the step's message still waits in that chat's queue; a message sent again after a compaction keeps its address.
+  `tests/window/workflow-queued-reply.test.ts`, `tests/delivery.test.ts`.
+- Window checks keep their workflows and boards in `tmp/work`, a folder of this edition's own (`useWork()` in `tests/window/lib.ts` adds it at a
+  check's start), and `run.sh` removes its `workflows/` and `boards/` before every window check (a live run left there is taken over by the
+  next window at load). `tmp/scratch`, where the agents' sessions are, is a link to the other edition's folder: never clear anything in it
+  (on 2026-10-01 this edition's run.sh cleared its `workflows/` and wiped the other edition's check mid-run). They run on ports of their own (9451 for the window, 4451 and 4452 for Whisper), apart from
   any other copy's checks on this Mac: two checks on one port drive each other's window. **Every fixed port in this edition's checks is in
-  the 4400s or the 9400s** (the window 9451, Whisper 4451 and 4452, the voice checks 4471 and 4472); the other edition's checks keep to
+  the 4400s or the 9400s** (the window 9451, Whisper 4451 and 4452, the voice checks 4471 and 4472, whisper-cannot-start 4473: the quick checks run all at once, and it once met wake-check's
+  Whisper on 4471); the other edition's checks keep to
   4331 to 4373 and 9333 to 9382, and run on the same Mac: on 2026-09-30 both used 4351 and 4352 and broke each other's runs. A new check
   takes its ports in this range. The fixture's sessions are found by the scratch
   folder's real path: a new, empty scratch folder in its place failed eight checks that open one. A run record's own result is the
