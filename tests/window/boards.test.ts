@@ -3,16 +3,17 @@
 // the template and opens it; a glyph clicked moves its task on by rewriting the file; done, the task leaves the board for the top of its
 // done file (boards format v1, T-174), shown as a last column with "Show done", and its glyph there reopens it; a board an agent writes
 // shows up; plain markdown is not a board.
-import { connect, sleep, check, done, V } from './lib.ts';
+import { connect, sleep, check, done, V, useWork } from './lib.ts';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-const dir = path.resolve('tmp/scratch/boards'); rmSync(dir, { recursive: true, force: true });
+const dir = path.resolve('tmp/work/boards'); rmSync(dir, { recursive: true, force: true });
 const { js, close } = await connect(); await sleep(2500);
+await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
 const run = (...args) => { try { return { code: 0, out: JSON.parse(execFileSync('node', ['scripts/jauvex.ts', ...args], { env: { ...process.env }, encoding: 'utf8' })) }; } catch (e) { return { code: e.status, out: (() => { try { return JSON.parse(e.stdout || e.stderr); } catch { return {}; } })() }; } };
 const until = async (expr, ms = 10000) => { for (let t = 0; t < ms; t += 300) { if (await js(expr)) return true; await sleep(300); } return false; };
 const file = () => readFileSync(path.join(dir, 'launch-plan.md'), 'utf8'); const doneFile = () => { try { return readFileSync(path.join(dir, 'launch-plan-DONE.md'), 'utf8'); } catch { return ''; } };
-const made = run('new-board', '--folder', 'scratch', '--name', 'Launch Plan');
+const made = run('new-board', '--folder', 'work', '--name', 'Launch Plan');
 check('new-board makes boards/<name>.md from the template', made.code === 0 && made.out.board === 'boards/launch-plan.md' && /^<!-- boards: v1 -->\n# Launch Plan/.test(file()), JSON.stringify(made.out));
 check('...and opens it: a column per section, Done hidden', await until("document.querySelector('.board-view h1')?.textContent === 'Launch Plan'") && (await js("[...document.querySelectorAll('.board-view .bcol h2')].map((h) => h.textContent).join(' | ')")) === 'P0 — now | P1 — next | P2 — later', await js("[...document.querySelectorAll('.board-view .bcol h2')].map((h) => h.textContent).join(' | ')"));
 check('the sidebar lists it under the folder, with its count', await until("[...document.querySelectorAll('.row')].some((r) => r.textContent.includes('Launch Plan') && r.textContent.includes('0/1'))"));
@@ -48,7 +49,7 @@ await js("window.__asked = ''; window.confirm = (m) => { window.__asked = m; ret
 await js("[...document.querySelectorAll('.row')].find((r) => r.textContent.includes('Launch Plan')).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 200 }))"); await sleep(200);
 check('a board\'s row has Delete board on its secondary click', await js("[...document.querySelectorAll('.menu.ctx button')].map((b) => b.textContent).join() === 'Delete board'"), await js("[...document.querySelectorAll('.menu.ctx button')].map((b) => b.textContent).join()"));
 await js("[...document.querySelectorAll('.menu.ctx button')].find((b) => b.textContent === 'Delete board').click()"); await sleep(800);
-check('it asks first, naming the file and its done file', /^Delete the board "Launch Plan"\?\n\nboards\/launch-plan\.md is deleted from scratch, with its done file \(boards\/launch-plan-DONE\.md\) when it has one\. The app cannot undo this\.$/.test(await js('window.__asked')), await js('window.__asked'));
+check('it asks first, naming the file and its done file', /^Delete the board "Launch Plan"\?\n\nboards\/launch-plan\.md is deleted from work, with its done file \(boards\/launch-plan-DONE\.md\) when it has one\. The app cannot undo this\.$/.test(await js('window.__asked')), await js('window.__asked'));
 check('on a yes the board and its done file are gone, its row and its view too', !existsSync(path.join(dir, 'launch-plan.md')) && !existsSync(path.join(dir, 'launch-plan-DONE.md')) && !(await js("[...document.querySelectorAll('.row')].some((r) => r.textContent.includes('Launch Plan'))")) && !(await js("[...document.querySelectorAll('.board-view h1')].some((h) => h.textContent === 'Launch Plan')")));
 rmSync(dir, { recursive: true, force: true });
 done(close);

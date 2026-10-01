@@ -4,12 +4,13 @@
 // so that when the chat is loaded, they appear ... on the new moved workflow"). Moved by hand, its files go and its chat's session stays
 // filed under the old folder: the chat opens empty (the bug, reproduced first). `move-workflow` moves the session too: the conversation is
 // there in the new folder, and goes on there. An agent's session moves with `move-session`.
-import { connect, sleep, check, done, V } from './lib.ts';
+import { connect, sleep, check, done, V, useWork } from './lib.ts';
 import { execFileSync } from 'node:child_process'; import { mkdirSync, writeFileSync, readFileSync, rmSync, renameSync, existsSync, realpathSync } from 'node:fs'; import path from 'node:path';
 const { js, close } = await connect(); await sleep(3000);
+await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
 const run = (...args) => { try { return JSON.parse(execFileSync('node', ['scripts/jauvex.ts', ...args], { encoding: 'utf8' })); } catch (e) { try { return JSON.parse(e.stdout); } catch { return { ok: false, error: String(e) }; } } };
 const until = async (f, ms = 20000) => { for (let t = 0; t < ms; t += 300) { if (await f()) return true; await sleep(300); } return false; };
-const ROOT = process.cwd(); const A = path.join(ROOT, 'tmp/scratch'), B = path.join(ROOT, 'tmp/scratch-b'); rmSync(B, { recursive: true, force: true }); mkdirSync(B, { recursive: true });
+const ROOT = process.cwd(); const A = path.join(ROOT, 'tmp/work'), B = path.join(ROOT, 'tmp/scratch-b'); rmSync(B, { recursive: true, force: true }); mkdirSync(B, { recursive: true });
 const CLAUDE = path.join(ROOT, 'tmp/testrun/move-workflow/claude/projects'); const group = (dir) => dir.replace(/[^a-zA-Z0-9]/g, '-');
 const added = run('add-folder', B); check('a second folder, scratch-b', added.ok === true, JSON.stringify(added));
 mkdirSync(path.join(A, 'workflows'), { recursive: true }); writeFileSync(path.join(A, 'workflows', 'move-flow.md'), '# Move flow\n\nA flow that moves.\n\nwhen: manual\n\n## 1. Your go → you\nthen: go → Done\n');
@@ -32,7 +33,7 @@ await sleep(2500);
 check('...with its chat empty: its session stayed under scratch (the bug)', !(await shows('apricot')) && existsSync(path.join(CLAUDE, group(realpathSync(A)), `${sid}.jsonl`)));
 byHand(B, A); await openFlow(A);
 // the fix: the order moves the chat's session with it
-const moved = run('move-workflow', '--workflow', 'Move flow', '--folder', 'scratch', '--to', 'scratch-b');
+const moved = run('move-workflow', '--workflow', 'Move flow', '--folder', 'work', '--to', 'scratch-b');
 check('move-workflow moves it, its chat\'s session with it', moved.ok === true && /moved with it/.test(moved.chat ?? ''), JSON.stringify(moved));
 check('...the files are in scratch-b, none left in scratch', existsSync(path.join(B, 'workflows', 'move-flow.md')) && chatOf(B).sessionId === sid && !existsSync(path.join(A, 'workflows', 'move-flow.md')) && !existsSync(path.join(A, 'workflows', 'move-flow')));
 check('...and the session is filed under scratch-b, where Claude Code looks for it', existsSync(path.join(CLAUDE, group(B), `${sid}.jsonl`)) && !existsSync(path.join(CLAUDE, group(realpathSync(A)), `${sid}.jsonl`)));
@@ -41,10 +42,10 @@ await say('And a second word: banana.');
 check('...and goes on there: the same session, in scratch-b', await until(() => shows('banana')) && readFileSync(path.join(CLAUDE, group(B), `${sid}.jsonl`), 'utf8').includes('banana') && chatOf(B).sessionId === sid, JSON.stringify(chatOf(B)));
 check('a second move to where it is is refused', run('move-workflow', '--workflow', 'Move flow', '--folder', 'scratch-b', '--to', 'scratch-b').ok === false);
 // an agent's own session, moved on its own
-run('new-agent', '--provider', 'claude', '--folder', 'scratch', '--name', 'Mover', '--kickoff', 'Say hello.');
+run('new-agent', '--provider', 'claude', '--folder', 'work', '--name', 'Mover', '--kickoff', 'Say hello.');
 const folderOf = (name) => (run('list').folders ?? []).find((f) => (f.sessions ?? []).some((s) => s.name === name))?.name;
 const mover = () => (run('list').folders ?? []).flatMap((f) => (f.sessions ?? []).map((s) => ({ ...s, folder: f.name }))).find((s) => s.name === 'Mover');
-check('an agent, Mover, works in scratch', await until(() => mover()?.folder === 'scratch', 30000), JSON.stringify(run('list').folders?.map((f) => [f.name, (f.sessions ?? []).map((s) => s.name)])));
+check('an agent, Mover, works in work', await until(() => mover()?.folder === 'work', 30000), JSON.stringify(run('list').folders?.map((f) => [f.name, (f.sessions ?? []).map((s) => s.name)])));
 await until(() => mover()?.busy === false, 20000); // its first turn over: nothing moves under a turn
 const ms = run('move-session', '--session', 'Mover', '--to', 'scratch-b');
 check('move-session moves it to scratch-b, where it is listed', ms.ok === true && await until(() => folderOf('Mover') === 'scratch-b', 10000), JSON.stringify(ms));

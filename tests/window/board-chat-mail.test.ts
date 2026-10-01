@@ -2,17 +2,18 @@
 // A board's chat writes to the app's agents and hears back (T-205, as a workflow's): the router hears a chat under a view, knows it by name
 // ("<board> board", in the roster while its view is open), and delivers to it there, never to a second copy of its session. (The stand-in
 // answers a message ending in [[reply]] with the words after it: here, a message block.)
-import { connect, sleep, check, done, V } from './lib.ts';
+import { connect, sleep, check, done, V, useWork } from './lib.ts';
 import { execFileSync } from 'node:child_process'; import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'; import path from 'node:path';
 const { js, close } = await connect(); await sleep(3000);
+await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
 const run = (...args: string[]) => { try { return JSON.parse(execFileSync('node', ['scripts/jauvex.ts', ...args], { encoding: 'utf8' })); } catch (e: any) { try { return JSON.parse(e.stdout); } catch { return { ok: false, error: String(e) }; } } };
 const until = async (f: () => any, ms = 20000) => { for (let t = 0; t < ms; t += 300) { if (await f()) return true; await sleep(300); } return false; };
 const log = () => { try { return readFileSync(path.join(process.env.CVC_DATA_DIR!, 'voice-debug.log'), 'utf8'); } catch { return ''; } };
-const scratch = () => (run('list').folders ?? []).find((f: any) => f.name === 'scratch')?.sessions ?? [];
-run('new-agent', '--provider', 'claude', '--folder', 'scratch', '--name', 'Helper', '--no-kickoff');
+const scratch = () => (run('list').folders ?? []).find((f: any) => f.name === 'work')?.sessions ?? [];
+run('new-agent', '--provider', 'claude', '--folder', 'work', '--name', 'Helper', '--no-kickoff');
 let helper: any; await until(() => (helper = scratch().find((s: any) => s.name === 'Helper')));
 check('an agent to write to, Helper, has a session', !!helper, JSON.stringify(scratch().slice(0, 4)));
-const bdir = path.join(process.cwd(), 'tmp/scratch/boards'); mkdirSync(bdir, { recursive: true });
+const bdir = path.join(process.cwd(), 'tmp/work/boards'); mkdirSync(bdir, { recursive: true });
 writeFileSync(path.join(bdir, 'launch.md'), '<!-- boards: v1 -->\n# Launch\n\n## P0 — now\n\n- [ ] **T-01 · Write the plan** — first.\n');
 await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(1500);
 await js("[...document.querySelectorAll('.group .row')].find((r) => r.querySelector('.row-title')?.textContent === 'Launch')?.click()");

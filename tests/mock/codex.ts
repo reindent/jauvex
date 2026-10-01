@@ -4,7 +4,7 @@
 // threads (start, resume, list, read, items, name) and turns: every message gets one short canned reply that quotes what it got,
 // streamed in pieces like a model's, signed with this machine's name. Threads are kept in <CODEX_HOME>/mock-threads/<id>.json (ephemeral ones in memory only),
 // so the app lists them and reads them back after a restart. No network.
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
@@ -81,7 +81,7 @@ const methods = {
     const thread = { id: randomUUID(), preview: '', name: null, createdAt: now(), updatedAt: now(), cwd: p.cwd || process.cwd(), gitInfo: null, modelProvider: 'mock' };
     const t = { thread, items: [], ephemeral: !!p.ephemeral, approvalPolicy: 'untrusted', sandbox: { type: 'readOnly', networkAccess: false } }; threads.set(thread.id, t); save(t); return { thread, model: p.model || 'mock', approvalPolicy: t.approvalPolicy, sandbox: t.sandbox }; // a user's own read-only config, to be restored after YOLO
   },
-  'thread/resume': (p) => { const t = get(p.threadId); if (p.cwd && p.cwd !== t.thread.cwd) { t.thread.cwd = p.cwd; save(t); } /* Codex records a resume's folder in the thread (thread_settings_applied): its next listing is there (T-217) */
+  'thread/resume': (p) => { if (process.env.MOCK_CODEX_HELD_FILE && existsSync(process.env.MOCK_CODEX_HELD_FILE)) throw new Error(`thread ${p.threadId} already has an active writer`); /* another program holds it, as Codex 0.159 says it (T-250) */ const t = get(p.threadId); if (p.cwd && p.cwd !== t.thread.cwd) { t.thread.cwd = p.cwd; save(t); } /* Codex records a resume's folder in the thread (thread_settings_applied): its next listing is there (T-217) */
     return { thread: t.thread, model: p.model || 'mock', approvalPolicy: t.approvalPolicy, sandbox: t.sandbox }; },
   'thread/unsubscribe': (p) => { get(p.threadId); return { status: 'unsubscribed' }; },
   'thread/list': () => ({ data: [...threads.values()].filter((t) => !t.ephemeral && t.items.length).map((t) => t.thread).sort((a, b) => b.updatedAt - a.updatedAt), nextCursor: null }),
@@ -106,6 +106,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   let m; try { m = JSON.parse(line); } catch { return; }
   if (m.id === undefined || !m.method) return; // a notification (initialized), or an answer to a request of ours (there are none)
   const fn = methods[m.method];
+  if (process.env.MOCK_CODEX_LOG) { try { appendFileSync(process.env.MOCK_CODEX_LOG, `${m.method} ${m.params?.threadId ?? ''}\n`); } catch { /* the check reads what it can */ } } // what the app asked, for the checks (T-250)
   if (!fn) { out({ id: m.id, error: { code: -32601, message: `${m.method} is not in the stand-in` } }); return; }
   try { out({ id: m.id, result: fn(m.params ?? {}) }); } catch (e) { out({ id: m.id, error: { code: e.code ?? -32000, message: e.message } }); }
 }).on('close', () => process.exit(0));

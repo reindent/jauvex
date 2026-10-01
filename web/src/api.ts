@@ -22,6 +22,7 @@ export const api = {
   jauvexAppend: (entry: JauvexEntry) => call<boolean>('jauvexAppend', entry),
   jauvexHandover: (note: string, from: string, to: string) => call<boolean>('jauvexHandover', note, from, to),
   removeProject: (id: string) => call<boolean>('removeProject', id),
+  orderFolders: (ids: string[]) => call<boolean>('orderFolders', ids), // T-255: the left panel's order of the folders
   sessions: (id: string) => call<SessionInfo[]>('sessions', id),
   setSessions: (id: string, sessionIds: string[], providers: Record<string, Provider>) => call<Project>('setSessions', id, sessionIds, providers),
   messages: (id: string, sid: string, before?: number) => call<MessagesPage>('messages', id, sid, before),

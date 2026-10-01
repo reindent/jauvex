@@ -1,5 +1,5 @@
 import path from 'node:path'; import http from 'node:http'; import { execFileSync } from 'node:child_process'; import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync } from 'node:fs';
-process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR ??= path.resolve('tmp/testdata'); process.env.CVC_WHISPER_PORT = '4471'; mkdirSync(process.env.CVC_DATA_DIR, { recursive: true });
+process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR ??= path.resolve('tmp/testdata'); process.env.CVC_WHISPER_PORT = '4473'; mkdirSync(process.env.CVC_DATA_DIR, { recursive: true });
 // Whisper that cannot start says why, at once. On 2026-09-24, on a new Mac whose small model an interrupted download had left incomplete,
 // the app waited out a whole minute for a server that had died in a second, then showed only the end of its crash backtrace ("whisper-server
 // exited (null). 9 dyld ... start + 6124"), and every word said meanwhile failed with it. A port another program holds is the other way it fails.
@@ -21,9 +21,9 @@ check('...said within seconds, not after the minute a starting server gets', a.m
 await new Promise((r) => setTimeout(r, 300)); const log = (() => { try { return readFileSync(path.join(process.env.CVC_DATA_DIR!, 'voice-debug.log'), 'utf8'); } catch { return ''; } })();
 check('the flight recorder has the reason and what whisper-server printed', /\[whisper\]: ggml-small-q5_1\.bin is incomplete/.test(log) && /not all tensors loaded/.test(log));
 process.env.CVC_WHISPER_MODEL = good;
-const other = http.createServer((_q, r) => r.end('not whisper')); await new Promise<void>((r) => other.listen(4471, '127.0.0.1', () => r()));
+const other = http.createServer((_q, r) => r.end('not whisper')); await new Promise<void>((r) => other.listen(4473, '127.0.0.1', () => r()));
 a = await words();
-check('a port another program holds is named, with the program', /^port 4471 is taken by node \(pid \d+\), so Whisper cannot start/.test(a.err), a.err);
+check('a port another program holds is named, with the program', /^port 4473 is taken by node \(pid \d+\), so Whisper cannot start/.test(a.err), a.err);
 await new Promise<void>((r) => other.close(() => r()));
 a = await words();
 check('once that is fixed, the next words start Whisper', a.err === '', a.err);

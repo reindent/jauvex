@@ -52,6 +52,12 @@ export const stepTitle = (s: { name: string; note: string }): string => { if (s.
 export const workflowBase = (workflowFile: string): string => /(?:^|\/)([^/]+)\.md$/.exec(workflowFile)?.[1] ?? '';
 /** A step's instructions file as a heading may link it (relative to workflows/): a markdown file directly in the workflow's own folder, never
  *  its README, its runs or anything outside it. What the app reads and writes for a step, and nothing else. */
+/** Steps that say who does them (`## 1. Draft → Writer`, `→ you`): any `##` heading parses as a step, a rules document's sections too. */
+export const realSteps = (def: Pick<Workflow, 'steps'>): number => def.steps.filter((s) => !!s.agent.trim()).length;
+/** A file of a folder's workflows/ that is a workflow: it has steps that say who does them, or at least a `when:` line (one whose steps are
+ *  being written, or broken by a typo, stays listed). A rules document or notes kept beside the workflows has neither: it is not listed, and
+ *  never runs (T-251: a shared rules file, workflows/video-rules.md, showed as a fourth workflow; "runs" answered for it). */
+export const isWorkflow = (def: Pick<Workflow, 'steps' | 'when'>): boolean => realSteps(def) > 0 || !!def.when.trim();
 export const stepFileOk = (workflowFile: string, stepFile: string): boolean => { const base = workflowBase(workflowFile); const m = /^([^/\\]+)\/([^/\\]+\.md)$/.exec(stepFile);
   return !!base && !!m && m[1] === base && !/^readme\.md$/i.test(m[2]!) && !m[2]!.startsWith('.'); };
 

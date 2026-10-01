@@ -4,7 +4,7 @@
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { DEFAULT_TRIES, parseWorkflow, parseRun, sortWorkflows, stamp, stepFileOk, workflowBase, type Run, type WorkflowInfo } from '../shared/workflow.js';
+import { DEFAULT_TRIES, parseWorkflow, parseRun, sortWorkflows, stamp, stepFileOk, workflowBase, type Run, type WorkflowInfo, isWorkflow } from '../shared/workflow.js';
 import { BOARD_FORMAT, BOARD_MARK, boardVersion, canWrite, doneFileOf, isDoneFile, localDay, looksLikeBoard, markDone, parseBoard, reopen, setItemStatus, taskLine, toV1, type BoardInfo } from '../shared/board.js';
 import type { FolderFiles } from '../shared/types.js';
 
@@ -20,7 +20,7 @@ async function modifiedOf(wdir: string, f: string): Promise<number> {
 export async function listWorkflows(dir: string): Promise<WorkflowInfo[]> {
   const wdir = path.join(dir, 'workflows'); let names: string[] = []; try { names = (await fs.readdir(wdir)).filter((f) => f.endsWith('.md')).sort(); } catch { return []; }
   const out: WorkflowInfo[] = [];
-  for (const f of names) { const md = await fs.readFile(path.join(wdir, f), 'utf8').catch(() => ''); const def = parseWorkflow(md); const runs = await listRuns(dir, f);
+  for (const f of names) { const md = await fs.readFile(path.join(wdir, f), 'utf8').catch(() => ''); const def = parseWorkflow(md); if (!isWorkflow(def)) continue; /* notes or rules kept beside the workflows (T-251) */ const runs = await listRuns(dir, f);
     const latest = runs[0]; out.push({ file: `workflows/${f}`, name: def.name || f.replace(/\.md$/, ''), when: def.when, steps: def.steps.length, runs: runs.length, modified: await modifiedOf(wdir, f), latest: latest ? { n: latest.n, result: latest.result, took: latest.took, started: latest.started, waiting: /^running/i.test(latest.result) && Object.values(latest.steps).some((x) => /^waiting/i.test(x.result)) } : null }); }
   return sortWorkflows(out);
 }

@@ -35,3 +35,13 @@ export function matchSession<T extends { sessionId: string; summary: string; cus
   const n = ref.trim().toLowerCase(); if (!n) return undefined;
   return list.find((i) => i.sessionId === ref) ?? list.find((i) => i.sessionId.startsWith(ref)) ?? list.find((i) => (i.customTitle ?? '').toLowerCase() === n) ?? list.find((i) => i.summary.toLowerCase() === n);
 }
+
+/** The folder an order names (`--folder`): by id, by path, then by name; by name, any other folder before the app's own (its agent's) (T-254;
+ *  a server's agents, 2026-10-01: a folder named "Jauvex" lost to the app's own folder, named Jauvex too, and two agents and a board were made
+ *  there). The app's own folder is still reached by its path or id. `here`: folders to prefer by name (none in this edition). */
+export function findFolderIn<P extends { id: string; path: string; name: string; builtin?: unknown }>(projects: P[], ref: string, here: string[] = []): P | null {
+  const n = ref.trim().toLowerCase();
+  const exact = projects.find((p) => p.id === ref) ?? projects.find((p) => p.path === ref || p.path.toLowerCase() === n); if (exact) return exact;
+  const named = projects.filter((p) => p.name.toLowerCase() === n);
+  return named.find((p) => !p.builtin && here.includes(p.id)) ?? named.find((p) => !p.builtin) ?? named[0] ?? null;
+}

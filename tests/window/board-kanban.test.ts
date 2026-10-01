@@ -1,10 +1,11 @@
 // A board as its sections or as a kanban (T-180, asked for 2026-09-27: "we should have both the p0/p1/p2/etc and kanban"). The columns per
 // section stay the first view; Kanban shows a lane per status, each card tagged with its section; "Show done" adds the Done lane there too;
 // a glyph moves a card to the next lane, in the file; the view chosen is remembered.
-import { connect, sleep, check, done, V } from './lib.ts';
+import { connect, sleep, check, done, V, useWork } from './lib.ts';
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'; import path from 'node:path';
 const { js, close } = await connect(); await sleep(3000);
-const dir = path.join(process.cwd(), 'tmp/scratch/boards'); rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true }); const board = path.join(dir, 'plan.md');
+await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
+const dir = path.join(process.cwd(), 'tmp/work/boards'); rmSync(dir, { recursive: true, force: true }); mkdirSync(dir, { recursive: true }); const board = path.join(dir, 'plan.md');
 writeFileSync(board, '<!-- boards: v1 -->\n# Plan\n\n## P0 — now\n\n- [ ] **T-01 · First thing** — why.\n- [~] **T-02 · Second thing** — under way.\n\n## P1 — next\n\n- [ ] **T-04 · Fourth thing** — later.\n');
 writeFileSync(path.join(dir, 'plan-DONE.md'), '<!-- boards: v1 -->\n# Plan · Done\n\nArchive of the board\'s finished tasks, newest first.\n\n## Done\n\n- [x] **T-03 · Third thing** — shipped 2026-09-20\n');
 const until = async (f: () => Promise<boolean>, ms = 8000) => { for (let t = 0; t < ms; t += 300) { if (await f()) return true; await sleep(300); } return false; };

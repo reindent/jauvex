@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { shortTitle } from '../shared/roster.js';
+import { inSlots } from '../shared/folder-order.js';
 import path from 'node:path';
 import os from 'node:os';
 import * as debug from './debug.js';
@@ -181,6 +182,9 @@ export const backend = {
     if (!clean) throw new HttpError(400, 'path is required');
     return addProject(clean);
   },
+  /** The folders in a new order (T-255; the user, 2026-10-01: "I want to be able to rearrange the folders"): the ids given take the places they
+   *  held in the list, in the order given; the app's own folder, which the panel does not show, stays where it is. */
+  orderFolders: async (ids: string[]) => { if (!Array.isArray(ids)) throw new HttpError(400, 'ids'); const state = await loadState(); const byId = new Map(state.projects.map((p) => [p.id, p])); state.projects = inSlots(state.projects.map((p) => p.id), ids.map(String)).map((id) => byId.get(id)!); await saveState(state); return true; },
   removeProject: async (id: string) => { const state = await loadState(); state.projects = state.projects.filter((p) => p.id !== id); if (state.ui?.sel?.projectId === id) state.ui.sel = null; await saveState(state); return true; },
   sessions: async (id: string): Promise<SessionInfo[]> => {
     const { project } = await projectOr404(id);

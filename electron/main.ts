@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, shell, systemPreferences } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell, systemPreferences } from 'electron';
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -82,9 +82,12 @@ function adoptShellPath(): void {
 }
 
 async function createWindow(): Promise<void> {
+  // the window's colour before its page paints: the look it will have (T-248): the Mac's own, then the app's own choice once the settings are
+  // read. Made at once: waiting for the settings before the window was made aborted its page's load now and then (ERR_FAILED, a check's window
+  // that never came up, 2026-10-01).
   win = new BrowserWindow({
     width: 1360, height: 880, minWidth: 900, minHeight: 600, show: false,
-    backgroundColor: '#141413',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#141413' : '#ffffff',
     // macOS: the traffic lights inset in the app's own title bar. Elsewhere the system's frame, with no menu bar (the app has no menu, and
     // Alt is push-to-talk: Electron's default menu bar would take it), and the window's icon (macOS takes it from the Dock, below).
     ...(MAC ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 15 } } : { autoHideMenuBar: true, icon: path.join(ROOT, 'assets', 'icon.png') }),
@@ -102,6 +105,7 @@ async function createWindow(): Promise<void> {
   win.on('blur', () => { if (!mini?.isFocused()) showMini(); });
   win.on('focus', () => mini?.hide());
   win.on('closed', () => { mini?.destroy(); mini = null; win = null; });
+  { const w = win; void import('./backend.js').then((m) => m.backend.state()).then((st) => { const t = st.ui?.theme; if (t === 'dark' || t === 'light') w.setBackgroundColor(t === 'dark' ? '#141413' : '#ffffff'); }, () => { /* the Mac's own */ }); }
   if (DEV_URL) await win.loadURL(DEV_URL); else await win.loadFile(path.join(ROOT, 'dist', 'index.html'));
 }
 

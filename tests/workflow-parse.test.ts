@@ -125,4 +125,18 @@ check('the note to the Jauvex agent names each missed workflow, its time and how
   const order = sortWorkflows(list).map((w) => w.name);
   check('workflows waiting for a person first, then the running ones, then the rest by their last change, the newest first (not by their last run)',
     JSON.stringify(order) === JSON.stringify(['Waits for you', 'Running too', 'Running', 'Edited now', 'Edited before', 'Old, run yesterday']), JSON.stringify(order)); }
+// T-251 (a report from a server, 2026-09-30: a shared rules file, workflows/video-rules.md, was listed as a fourth workflow, and "runs"
+// answered for it): a file of workflows/ is a workflow when it has steps, or at least a `when:` line; notes and rules beside them are not
+{ const { isWorkflow: isW } = await import('../shared/workflow.ts');
+  const rules = parseWorkflow('# Rules for the video workflows (News video research, News video creation, YouTube upload)\n\nEvery step reads these first.\n\n## Voice\n\nShort sentences.\n');
+  const started = parseWorkflow('# Launch\n\nwhen: manual\n');
+  const full = parseWorkflow('# Launch\n\nwhen: manual\n\n## 1. [Draft](launch/draft.md) → Writer\n');
+  check("a rules or notes file (no `when:`, no `## N. step → agent`) is not a workflow; one with steps is, and one whose steps are not written yet but says when it runs stays one",
+    !isW(rules) && isW(full) && isW(started), JSON.stringify([isW(rules), isW(full), isW(started)])); }
+{ const { mkdirSync, rmSync, writeFileSync } = await import('node:fs'); const { listWorkflows } = await import('../electron/workfiles.ts');
+  const dir = path.resolve('tmp/testrun/workflow-parse/work'); rmSync(dir, { recursive: true, force: true }); mkdirSync(path.join(dir, 'workflows'), { recursive: true });
+  writeFileSync(path.join(dir, 'workflows', 'video-rules.md'), '# Rules for the video workflows\n\nEvery step reads these first.\n');
+  writeFileSync(path.join(dir, 'workflows', 'news.md'), '# News video creation\n\nwhen: manual\n\n## 1. [Build](news/build.md) → Video Agent\n');
+  const listed = (await listWorkflows(dir)).map((w) => w.file).join(', ');
+  check('the folder lists its workflows only: the rules file beside them is left out', listed === 'workflows/news.md', listed); }
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

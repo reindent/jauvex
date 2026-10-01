@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.3.3, for macOS and Linux (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.3.4, for macOS and Linux (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -94,6 +94,10 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   provider's mark on its rows. Tick the ones you want; they appear under the project in the sidebar.
 - **Folders fold, the sidebar resizes**: a click on a folder's name (its folder icon open or closed) folds its sessions
   away, and it stays folded after a reload. The sidebar's right edge drags to any width from 220 to 560 px, kept too.
+- **Folders move** (T-255; the user, 2026-10-01: "I want to be able to rearrange the folders. Right now I can't"): drag a folder by its
+  name onto another: over the upper half of that folder's name it goes above it, anywhere lower in it below; a line shows where. The
+  app keeps the order, through a reload or a restart (`shared/folder-order.ts`, `tests/folder-order.test.ts`,
+  `tests/window/folder-drag.test.ts`).
 - **Only a signed-in provider can be chosen**: a provider that is not signed in on this Mac is greyed out, with the reason,
   in the provider selector, in the Jauvex agent's move selector and in the default-agent setting; a new session never
   starts on one.
@@ -113,6 +117,13 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   its result when it completes), harness plumbing (reminders,
   tool results, cross-session messages) hidden unless you toggle the eye icon. Long sessions page
   from the end ("Load earlier messages").
+- **Developer mode** (T-247), the glasses at the top right, off by default and remembered. Off, each run of an agent's tool calls,
+  thoughts and system events between what it says is one row: "Working…" while it goes on, "Worked · 3 steps" after; a click opens it.
+  Pictures a tool made stay in sight. On, every tool call and thought shows as its own row, as before.
+- **A light theme** (T-248), and the app follows the Mac: by default it is light, dark or auto as the Mac's own Appearance is set, and
+  changes with it. Settings, General, Appearance can set Light or Dark for the app alone, or go back to Same as the Mac; applied at once and
+  kept. Light is "Paper": a white chat, a light grey left pane beside it, an indigo accent; a window paints in the chosen look from its first frame (it is also in the window's storage). Every colour of the stylesheet is
+  named, with a light counterpart, in the block at its end.
 - **The Jauvex agent**: one session that always exists, pinned at the top of the sidebar, with the app's own folder as
   its project and a briefing about the app itself. It is the entry point for everything about the app: restart it,
   update it (`git pull`, build, relaunch, on request), install what is missing, explain how it works, create agents and
@@ -132,10 +143,13 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   (the leaving assistant writes a handover note in a visible turn, saved as `data/jauvex-handover.md` too, and the
   next provider starts from that note: cheaper on long histories, and the note says what mattered).
 - **The app's command line** (`node scripts/jauvex.ts <command>`, in the install folder): every action in the app, for
-  agents, the Jauvex agent above all. `list` (folders, sessions, agents, ids), `add-folder`, `pick-folder` (the folder
+  agents, the Jauvex agent above all. An order's `--folder` takes a folder's id, path or name; by name the app's own folder (named
+  Jauvex) comes last, so a folder of yours named Jauvex is never taken for it (T-254); the app's own is reached by its path.
+  `list` (folders, sessions, agents, ids), `add-folder`, `pick-folder` (the folder
   dialog for the user; what they choose is added), `new-agent` (provider, folder, name, purpose, first message; unnamed,
   the provider is the Jauvex agent's own; with no first message it starts with its own introduction, since an agent exists
-  once it has had one: on 2026-09-24 one ordered without it was an empty chat that vanished), `open` (a session, or the Jauvex agent, on screen; a session not in its folder's sidebar goes in it too: shown only as an open chat,
+  once it has had one: on 2026-09-24 one ordered without it was an empty chat that vanished; the agent is of the provider named, or none:
+  the order looks at that provider's sign-in as it is now and refuses when it is signed out, T-229), `open` (a session, or the Jauvex agent, on screen; a session not in its folder's sidebar goes in it too: shown only as an open chat,
   seven sessions an agent opened dropped out one by one as other chats took the eight open places, T-152, the user, 2026-09-26), `import` (a folder's existing sessions into its sidebar without opening them,
   as its search button does; with no session named, the ones not listed yet: T-150, the user, 2026-09-26, after an agent asked to
   import sessions opened them over the chat he was in), `send` (a message into a session),
@@ -174,6 +188,9 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   state for that board's file (a board's folder is often a repository: nothing of ours is written there), and it is left out of the
   folder's list of agents. A folder reached through a symlink keeps its history too: Claude Code files a session by the real path,
   and the app looks there as well (`tests/window/board-chat.test.ts`).
+- **Only workflows are listed (T-251)**: a file of `workflows/` counts when a step says who does it (`## 1. Draft → Writer`, `→ you`) or
+  it has a `when:` line; rules or notes kept beside the workflows (a shared `video-rules.md`, listed as a workflow on 2026-09-30) are
+  left out of the list, and a file with no such step never runs (`isWorkflow`, `realSteps` in `shared/workflow.ts`).
 - **Workflows** (T-210): a workflow is a markdown file in the folder, `workflows/<name>.md`, and a folder beside it, `workflows/<name>/`,
   with one file per step: its instructions. The workflow file has a title and a line, `when:`, then the steps in order, one heading each:
   `## 1. [Script](news-video/script.md) → Video Agent`, the step's name linked to the file of its instructions, and who does it; `→ you`
@@ -202,6 +219,10 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
     the sidebar shows the app's mark turning while it runs, with a yellow dot while it waits for you. An agent may pass a gate only on your
     explicit word (`decide --workflow … --outcome …`). A run is driven by the window that started it: after a reload or a restart it is taken
     over as it stands, nothing re-sent; "Send step again" re-sends a step whose agent never answered, and Stop stops it.
+    A step ends only on the reply to its own message (T-253, 2026-10-01: an agent's answer to messages that had waited in its queue,
+    ending with an OUTCOME line, closed the next step, which it had not started). The one exception is a turn a reloaded window took
+    back, whose address it cannot know: its reply with an OUTCOME line ends the step its agent is on, unless that step's message still
+    waits in the agent's queue.
   - **Runs and versions**: each run is a markdown record, `workflows/<name>/runs/NNN.md` (started, result, took, each step's time and last
     words), and a folder for its files; the view derives the live run, the history and the averages from them. When a run starts, the
     workflow file and each step's instructions are compared with the latest version: the run takes it when nothing changed, else a new one,
