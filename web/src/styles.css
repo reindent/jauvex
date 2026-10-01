@@ -34,6 +34,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .titlebar::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: var(--side-w); background: var(--side); z-index: -1; }
 .app.no-sidebar .titlebar::before { display: none; }
 .system-frame .titlebar { padding-left: 14px; -webkit-app-region: no-drag; }
+.system-frame .tb-left { width: calc(var(--side-w) - 14px); }
 .tb-left, .tb-right { display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
 .tb-left { width: calc(var(--side-w) - 92px); flex: none; }
 .app.no-sidebar .tb-left { width: auto; margin-right: 10px; }
