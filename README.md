@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.3.3, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.3.3, for macOS and Linux (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -292,6 +292,27 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   in its own session folder: Grok writes it relative to that folder (`images/1.jpg`), which read against the project's folder
   was a broken image.
 
+## Setting up on Linux
+
+The same app, run from this folder with `npm start` (Ubuntu 24.04 and later; there is no packaged Linux app yet, and the update
+offer is for the Mac app only). What differs from the Mac, all handled by `start.sh` unless said otherwise:
+
+1. **Node**: Ubuntu's own `nodejs` cannot run TypeScript files (it is built without type stripping). `npm install` works with it;
+   the TypeScript scripts and checks then run on Electron's own Node, through `scripts/ts.sh`.
+2. **Electron's sandbox**: Ubuntu refuses Electron's usual sandbox to an app without an AppArmor profile, so its helper,
+   `node_modules/electron/dist/chrome-sandbox`, must belong to root with the setuid bit. `npm start` does it with sudo (it may ask
+   for your password), again after each new Electron.
+3. **whisper.cpp for the ears**: there is no Homebrew. Build it (github.com/ggml-org/whisper.cpp, `cmake -B build && cmake --build
+   build -j`; it needs cmake and a C++ compiler) and put `build/bin/whisper-server` on your PATH (`~/.local/bin` is looked in too).
+   The models are downloaded and checked as on the Mac.
+4. **The voice is Kokoro** (Kokoro-82M through kokoro-js, on the CPU): there is no `say`. Its package lives in `kokoro/` with a
+   lockfile of its own, installed on Linux only (the Mac install does not carry its runtime), and its model (325 MB, full precision:
+   on a CPU it renders about three times faster than the 8-bit one) is downloaded into `models/kokoro/` and checked like Whisper's. It
+   runs as a warm process of its own (`kokoro/server.mjs`), started when voice is switched on, and talks to the app in JSON lines,
+   not over a port. The default voice is `af_heart`; the voice settings list Kokoro's others, and the speed slider works as on the Mac.
+5. **The window** has the system's own frame and no menu bar (Alt is push-to-talk). Where Chromium refuses the GPU, or there is
+   none (a virtual screen), the orb is drawn by its software renderer.
+
 ## Voice
 Press the white round button in the message box. All local except the two Claude calls:
 - **The app's name, however it is heard**: speech-to-text writes it Jovex, Javex, Jauvix, Claudex, Jobex and worse; every
@@ -318,7 +339,7 @@ Press the white round button in the message box. All local except the two Claude
 - **The big model's answer stays on screen in full and is never read aloud.** A small model (Haiku by default) is the
   voice: it acknowledges and restates what you asked while the selected model thinks, and when the answer lands it
   says what happened in one to three sentences. A short plain answer is spoken as it is.
-- **Mouth**: macOS `say` (the system voice by default), rendered per utterance and played inside the app, so it can
+- **Mouth**: macOS `say` (the system voice by default; on Linux Kokoro, see above), rendered per utterance and played inside the app, so it can
   fade out instantly and the echo canceller knows what the speakers are playing.
 - **Interrupting, two channels**: start talking and the *voice* stops (playback fades in 120 ms, pending `say` renders are
   killed) and it never talks over you. The *main thread is not touched*: it keeps working, and its answer is still summed

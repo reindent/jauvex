@@ -164,7 +164,10 @@ export const clientBriefing = (voice: boolean, vocabulary?: string, steward = fa
   ...(files && (files.boards.length || files.workflows.length) ? [folderFilesNote(files)] : []),
   ...(steward ? [STEWARD_BRIEFING] : []),
   ...(voice ? [dictationNote(vocabulary)] : []),
-].join('\n\n').replaceAll('{APP}', appRoot ?? 'the app\'s install folder').replaceAll('node scripts/jauvex.ts', appRoot ? `node "${appRoot}/scripts/jauvex.ts"` : 'node scripts/jauvex.ts');
+].join('\n\n').replaceAll('{APP}', appRoot ?? 'the app\'s install folder').replaceAll('node scripts/jauvex.ts', appRoot ? jauvexCli(appRoot) : 'node scripts/jauvex.ts');
+/** The app's command line, by its full path. Off macOS through scripts/ts.sh: Ubuntu's own node runs no .ts file, and ts.sh falls back to
+ *  Electron's. (The briefing is built in the main process, where `process` is there.) */
+const jauvexCli = (appRoot: string): string => (typeof process !== 'undefined' && process.platform !== 'darwin' ? `sh "${appRoot}/scripts/ts.sh" "${appRoot}/scripts/jauvex.ts"` : `node "${appRoot}/scripts/jauvex.ts"`);
 export type PermissionDecision = 'allow' | 'always' | 'deny';
 export type ChatEvent =
   | { chatId: string; type: 'init'; sessionId: string; model?: string }
