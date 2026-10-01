@@ -310,6 +310,7 @@ offer is for the Mac app only). What differs from the Mac, all handled by `start
    on a CPU it renders about three times faster than the 8-bit one) is downloaded into `models/kokoro/` and checked like Whisper's. It
    runs as a warm process of its own (`kokoro/server.mjs`), started when voice is switched on, and talks to the app in JSON lines,
    not over a port. The default voice is `af_heart`; the voice settings list Kokoro's others, and the speed slider works as on the Mac.
+   Kokoro speaks English only (its voices are American and British English): a reply in another language is read with English sounds.
 5. **The window** has the system's own frame and no menu bar (Alt is push-to-talk). Where Chromium refuses the GPU, or there is
    none (a virtual screen), the orb is drawn by its software renderer.
 
