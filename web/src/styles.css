@@ -260,7 +260,10 @@ html.is-mini, html.is-mini body, html.is-mini #root { background: transparent; }
 .composer-wrap { display: flex; flex-direction: column; } .composer-wrap .voice-dock { order: -1; } /* the orb rides on the thread; a warning stays readable under it, above the input */
 
 /* Accounts: behind the sidebar's footer. */
-.foot-update { margin-left: 8px; font-size: 11px; color: var(--accent, #979dff); white-space: nowrap; cursor: default; } /* a newer version is out (T-165): the Jauvex agent asks about it in words */
+.foot-update { margin-left: 8px; font-size: 11px; color: var(--accent, #979dff); white-space: nowrap; cursor: pointer; } .foot-update:hover { text-decoration: underline; text-underline-offset: 3px; } /* a newer version is out (T-165): a click has the Jauvex agent ask about it in words (T-245) */
+.foot-news { margin-left: 8px; font-size: 11.5px; color: var(--muted); white-space: nowrap; cursor: pointer; } .foot-news:hover { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; } .foot-news:disabled, .foot-update:disabled { cursor: progress; opacity: .7; }
+.modal.whats-new { width: min(640px, 92vw); } .whats-new-check { margin: 0 20px 6px; padding: 8px 12px; border-radius: 9px; background: #ffffff0a; color: var(--fg-2); font-size: 13px; }
+.whats-new-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 14px; font-size: 14px; line-height: 1.5; } .whats-new-body h2 { margin: 14px 0 6px; font-size: 14.5px; } .whats-new-body ul { margin: 0; padding-left: 20px; }
 .foot-btn { color: inherit; font: inherit; cursor: pointer; padding: 2px 6px; margin-left: -6px; border-radius: 6px; } .foot-btn:hover { background: #ffffff0d; }
 .modal.accounts, .modal.settings { width: min(560px, 92vw); padding: 18px 20px 14px; gap: 10px; overflow-y: auto; } /* taller than the window, they scroll */ .modal.accounts h2, .modal.settings h2 { margin: 0 0 4px; font-size: 17px; } .modal.accounts > p, .modal.settings > p { margin: 0 0 8px; font-size: 13px; line-height: 1.45; }
 /* Jauvex settings: a bar of tabs across the top; the window keeps one size, the tab's body scrolls under the bar */

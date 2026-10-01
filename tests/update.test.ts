@@ -6,7 +6,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync, statSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { newer, shouldAsk, updateNote, justUpdated, updatedNote } from '../shared/update.ts';
+import { newer, shouldAsk, updateNote, justUpdated, updatedNote, checkLine, offersUpdate } from '../shared/update.ts';
 import { updater, appBundleOf, madeByInstaller, RUNNER } from '../electron/updater.ts';
 let failed = 0; const ok = (c: boolean, what: string, detail = '') => { console.log(`${c ? 'PASS' : 'FAIL'} ${what}${!c && detail ? ` ${detail}` : ''}`); if (!c) failed++; };
 const root = path.join(process.env.CVC_DATA_DIR ?? path.join(process.cwd(), 'tmp', 'testdata-update'), 'update-check'); rmSync(root, { recursive: true, force: true }); mkdirSync(root, { recursive: true });
@@ -50,6 +50,13 @@ for (const [what, f] of [['an answer that is not a version', answer({ latest_ver
   const g = updatedNote('1.1.0', '1.2.0', '## 1.2.0: 2026-10-01\n\n- **Timers.**');
   ok(/updated from 1\.1\.0 to Jauvex 1\.2\.0/.test(g) && /what it brings/.test(g) && /What 1\.2\.0 brings, from its changelog:\n## 1\.2\.0/.test(g) && /`list`/.test(g) && /`update --check`/.test(g), 'after an update the Jauvex agent says so, what the version brings, and checks the app', g);
   ok(!/brings/.test(updatedNote(null, '1.2.0')) && /updated to Jauvex 1\.2\.0/.test(updatedNote(null, '1.2.0')), 'no changelog: it says it is updated and checks, nothing more'); }
+
+// What's new (T-245): a click asks the site; a newer version on the copy that updates itself is an update question, anything else the notes
+// under one line that says what the check found
+{ const base = { current: '1.3.3', available: false, installed: true, reached: true };
+  ok(/^This copy runs the latest version, 1\.3\.3\.$/.test(checkLine({ ...base, latest: '1.3.3' }, '1.3.3')) && !offersUpdate({ ...base, latest: '1.3.3' }), 'the latest already: the notes, under "this copy runs the latest version"');
+  ok(/could not be reached, so this copy \(1\.3\.3\) could not check/.test(checkLine({ ...base, reached: false }, '1.3.3')) && /could not be reached/.test(checkLine(null, '1.3.3')), 'the site out of reach, or no answer at all: the notes, under a line that says so');
+  ok(offersUpdate({ ...base, latest: '9.9.0', available: true }) && !offersUpdate({ ...base, latest: '9.9.0', available: true, installed: false }) && /9\.9\.0 is out\. This copy updates the way it was made: from a clone/.test(checkLine({ ...base, latest: '9.9.0', available: true, installed: false }, '1.3.3')), 'a newer version: the update question on the installed copy; on a clone, the notes under a line that says how it updates'); }
 
 // the order
 const script = (v: string) => `#!/bin/sh\n# Jauvex Personal installer.\nset -eu\nmain() {\n  version='${v}'\n}\nmain "$@"\n`;

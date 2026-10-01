@@ -18,6 +18,18 @@ export type UpdateStatus = { current: string; latest?: string; available: boolea
 export const shouldAsk = (s: UpdateStatus | null | undefined, asked: string | undefined): boolean =>
   !!s && s.available && s.installed && !!s.latest && asked !== s.latest;
 
+/** What a click on What's new found (T-245; the user, 2026-09-30: "when you click what's new, it should check if there's a new version"): the
+ *  status after the app asked the site right then, and whether the site answered. */
+export type CheckedStatus = UpdateStatus & { reached: boolean };
+/** A click on What's new with a newer version out, on the copy that updates itself: the Jauvex agent says what it brings and asks, as the
+ *  update notice does; anything else opens the notes. */
+export const offersUpdate = (s: UpdateStatus | null | undefined): boolean => !!s && s.available && s.installed && !!s.latest;
+/** The line above the notes: what the check found. */
+export const checkLine = (s: CheckedStatus | null | undefined, current: string): string =>
+  !s || !s.reached ? `The update server could not be reached, so this copy (${current}) could not check for a newer version.`
+    : s.available && !s.installed ? `Jauvex ${s.latest} is out. This copy updates the way it was made: from a clone, with git pull and a build.`
+      : s.available ? `Jauvex ${s.latest} is out.` : `This copy runs the latest version, ${s.current}.`;
+
 /** What the app tells its own agent when a new version is out: the agent asks the user in words, never a dialog. */
 export const updateNote = (current: string, latest: string, notes = ''): string =>
   `(from the app) Jauvex ${latest} is out; this copy runs ${current}. ` +
