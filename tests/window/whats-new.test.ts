@@ -18,7 +18,7 @@ const closeBox = async () => { await js(`${box}?.querySelector('.modal-foot butt
 await until("!!document.querySelector('.foot-news')", 10000);
 await click('.foot-news');
 check('the site out of reach: the notes, under a line that says so', await until(`!!${box} && ${box}.querySelector('.whats-new-check').textContent.includes('could not be reached')`), await js(`${box}?.querySelector('.whats-new-check')?.textContent`));
-check('...the notes are this copy\'s own changelog, the newest release first', await js(`(() => { const t = ${box}?.querySelector('.whats-new-body')?.textContent ?? ''; return t.indexOf(${JSON.stringify(version)}) >= 0 && t.indexOf(${JSON.stringify(version)}) < t.indexOf('1.0.0'); })()`));
+check('...the notes are this copy\'s own changelog, the newest release first', await js(`(() => { const t = ${box}?.querySelector('.whats-new-body')?.textContent ?? ''; return t.indexOf(${JSON.stringify(version)}) >= 0 && t.indexOf(${JSON.stringify(version)}) < t.indexOf('1.3.0'); })()`));
 await closeBox();
 
 let latest = version, slow = 0; const log = '# Changelog\n\n## 9.9.0: 2026-10-02\n\n- **Timers.** Agents that wake up on their own.\n';

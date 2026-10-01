@@ -1,12 +1,17 @@
+// env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/workflow-editor/claude MOCK_DELAY_MS=5
 // A workflow edited in the window (T-167; the user, 2026-09-27: "people might want to select agents from a dropdown and be able to type
 // the instructions, not just talk to their workflows"). From the template: a step's agent picked from the list and its instructions typed,
 // all its pane asks (then: "extremely over complicated ... a step is just an agent and instructions"), kept in a file of its own in the
 // workflow's folder (T-168: the template's text, under its heading, moves there); its name edited in place, the file renamed with it; a step added after it (spliced in: the approval moves to 3, the first step now leads to the new one); the line under the title edited in
 // place; the trigger picked; the new step removed again, its file with it. Every change is in the files, which the flow is drawn from.
-import { connect, sleep, check, done, V } from './lib.ts';
+import { connect, sleep, check, done, V, useWork } from './lib.ts';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'; import path from 'node:path';
 const { cdp, js, close } = await connect(); await sleep(3000);
-const root = process.cwd(); const wdir = path.join(root, 'tmp/scratch/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(wdir, { recursive: true });
+await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
+{ const { execFileSync } = await import('node:child_process'); const ls = () => JSON.parse(execFileSync('node', ['scripts/jauvex.ts', 'list'], { encoding: 'utf8' }));
+  execFileSync('node', ['scripts/jauvex.ts', 'new-agent', '--provider', 'claude', '--folder', 'work', '--name', 'Scriptwriter', '--no-kickoff'], { encoding: 'utf8' }); // an agent of the workflow's folder, for its group in the list (the Claude stand-in)
+  for (let i = 0; i < 60 && !(ls().folders ?? []).find((f: any) => f.name === 'work')?.sessions?.some((x: any) => x.name === 'Scriptwriter' && !x.busy); i++) await sleep(250); }
+const root = process.cwd(); const wdir = path.join(root, 'tmp/work/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(wdir, { recursive: true });
 const FILE = path.join(wdir, 'news-video-creation.md'); const md = () => readFileSync(FILE, 'utf8');
 const step = (f) => { const p = path.join(wdir, 'news-video-creation', f); return existsSync(p) ? readFileSync(p, 'utf8') : null; };
 writeFileSync(FILE, '# News Video Creation\n\nWhat this workflow does, in a line.\n\nwhen: manual\n\n## 1. First step → Agent name\nWhat the agent does, in plain words.\nout: what it produces\nthen: done → Your approval · failed → stop, tell the user\n\n## 2. Your approval → you\nthen: approved → Done · changes → back to step 1 with your notes\n\ndone: what the run leaves behind\n');

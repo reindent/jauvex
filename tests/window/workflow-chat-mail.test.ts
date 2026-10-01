@@ -4,17 +4,18 @@
 // found no session. The router now hears a chat under a view, knows it by name ("<workflow> workflow", in the roster while its view is
 // open), and delivers to it there, never to a second copy of its session. (The stand-in answers a message ending in [[reply]] with the
 // words after it: here, a message block.)
-import { connect, sleep, check, done, V } from './lib.ts';
+import { connect, sleep, check, done, V, useWork } from './lib.ts';
 import { execFileSync } from 'node:child_process'; import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'; import path from 'node:path';
 const { js, close } = await connect(); await sleep(3000);
+await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
 const run = (...args) => { try { return JSON.parse(execFileSync('node', ['scripts/jauvex.ts', ...args], { encoding: 'utf8' })); } catch (e) { try { return JSON.parse(e.stdout); } catch { return { ok: false, error: String(e) }; } } };
 const until = async (f, ms = 20000) => { for (let t = 0; t < ms; t += 300) { if (await f()) return true; await sleep(300); } return false; };
 const log = () => { try { return readFileSync(path.join(process.env.CVC_DATA_DIR!, 'voice-debug.log'), 'utf8'); } catch { return ''; } };
-const scratch = () => (run('list').folders ?? []).find((f) => f.name === 'scratch')?.sessions ?? [];
-run('new-agent', '--provider', 'claude', '--folder', 'scratch', '--name', 'Helper', '--no-kickoff');
+const scratch = () => (run('list').folders ?? []).find((f) => f.name === 'work')?.sessions ?? [];
+run('new-agent', '--provider', 'claude', '--folder', 'work', '--name', 'Helper', '--no-kickoff');
 let helper; await until(() => (helper = scratch().find((s) => s.name === 'Helper')));
 check('an agent to write to, Helper, has a session', !!helper, JSON.stringify(scratch().slice(0, 4)));
-const wdir = path.join(process.cwd(), 'tmp/scratch/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(wdir, { recursive: true });
+const wdir = path.join(process.cwd(), 'tmp/work/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(wdir, { recursive: true });
 writeFileSync(path.join(wdir, 'mail-flow.md'), '# Mail flow\n\nAsks Helper.\n\nwhen: manual\n\n## 1. Your go → you\nthen: go → Done\n');
 await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(1500);
 await js("[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes('Mail flow'))?.click()");
