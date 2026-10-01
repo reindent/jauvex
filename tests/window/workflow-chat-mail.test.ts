@@ -17,7 +17,7 @@ let helper; await until(() => (helper = scratch().find((s) => s.name === 'Helper
 check('an agent to write to, Helper, has a session', !!helper, JSON.stringify(scratch().slice(0, 4)));
 const wdir = path.join(process.cwd(), 'tmp/work/workflows'); rmSync(wdir, { recursive: true, force: true }); mkdirSync(wdir, { recursive: true });
 writeFileSync(path.join(wdir, 'mail-flow.md'), '# Mail flow\n\nAsks Helper.\n\nwhen: manual\n\n## 1. Your go → you\nthen: go → Done\n');
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(1500);
+await js("window.dispatchEvent(new Event('focus'))"); await sleep(1500);
 await js("[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes('Mail flow'))?.click()");
 await until(() => js(`!!${V}?.querySelector('.wf-chat .composer textarea')`));
 const say = (t) => js(`(() => { const ta = ${V}.querySelector('.wf-chat .composer textarea'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(ta, ${JSON.stringify(t)}); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);

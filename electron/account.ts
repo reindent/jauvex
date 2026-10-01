@@ -20,7 +20,9 @@ const ROOT = process.env.CVC_ROOT || path.resolve(path.dirname(new URL(import.me
 // CVC_CLAUDE_BIN replaces the Claude CLI everywhere (sessions, the voice helper, usage, sign-in): the checks run the stand-in in
 // tests/mock/claude (and tests/mock/codex for CVC_CODEX_BIN), which answers every message with a short canned reply and no account.
 export const claudeExe = (): { pathToClaudeCodeExecutable?: string } => (process.env.CVC_CLAUDE_BIN ? { pathToClaudeCodeExecutable: process.env.CVC_CLAUDE_BIN } : {});
-const CLAUDE = process.env.CVC_CLAUDE_BIN || path.join(ROOT, 'node_modules', '@anthropic-ai', 'claude-agent-sdk-darwin-arm64', 'claude');
+// The SDK ships Claude Code as a package per system (claude-agent-sdk-darwin-arm64, claude-agent-sdk-linux-x64, ...); the SDK finds its own,
+// the account calls name the one of this machine.
+const CLAUDE = process.env.CVC_CLAUDE_BIN || path.join(ROOT, 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, 'claude');
 let emit: (e: AccountEvent) => void = () => {};
 export function setSink(fn: (e: AccountEvent) => void): void { emit = fn; }
 

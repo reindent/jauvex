@@ -18,7 +18,7 @@ writeFileSync(FILE, '# News Video Creation\n\nWhat this workflow does, in a line
 const until = async (f, ms = 8000) => { for (let t = 0; t < ms; t += 250) { if (await f()) return true; await sleep(250); } return false; };
 const setValue = (sel, value, event = 'input') => js(`(() => { const el = document.querySelector(${JSON.stringify(sel)}); const proto = Object.getPrototypeOf(el); Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event(${JSON.stringify(event)}, { bubbles: true })); return true; })()`);
 const click = (label) => js(`(() => { const b = [...document.querySelectorAll('.pane-view .wf-ed button')].find((x) => x.textContent === ${JSON.stringify(label)}); if (b) b.click(); return !!b; })()`);
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(2000);
+await js("window.dispatchEvent(new Event('focus'))"); await sleep(2000);
 await js("[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes('News Video Creation')).click()"); await sleep(2000);
 
 // a step opens to be read (the user, 2026-09-27: "the default view, when you see a step, it's the edit mode. I think we should have a button

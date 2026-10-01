@@ -10,7 +10,7 @@ const root = process.cwd(); const wdir = path.join(root, 'tmp/work/workflows'); 
 writeFileSync(path.join(wdir, 'news-video-creation.md'), '# News Video Creation\n\nA news story made into a short video, with your approval before it goes out.\n\nwhen: manual\n\n'
   + '## 1. Script → Video Agent\nWrite the script.\nthen: done → Your approval · failed → stop, tell the user\n\n'
   + '## 2. Your approval → you\nthen: approved → Done · changes → back to step 1 with your notes\n\ndone: the video, approved\n');
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(2000);
+await js("window.dispatchEvent(new Event('focus'))"); await sleep(2000);
 await js("[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes('News Video Creation')).click()"); await sleep(2500);
 const lines = await js(`[...${V}.querySelectorAll('.steps .st .body div')].filter((d) => d.textContent.startsWith('↳')).map((d) => { const r = d.getBoundingClientRect(), b = d.closest('.body').getBoundingClientRect(); return { text: d.textContent, width: Math.round(r.width), height: Math.round(r.height), left: Math.round(r.left - b.left), position: getComputedStyle(d).position }; })`);
 check('the view draws both branch lines', lines?.length === 2, JSON.stringify(lines));

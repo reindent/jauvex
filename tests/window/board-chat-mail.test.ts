@@ -15,7 +15,7 @@ let helper: any; await until(() => (helper = scratch().find((s: any) => s.name =
 check('an agent to write to, Helper, has a session', !!helper, JSON.stringify(scratch().slice(0, 4)));
 const bdir = path.join(process.cwd(), 'tmp/work/boards'); mkdirSync(bdir, { recursive: true });
 writeFileSync(path.join(bdir, 'launch.md'), '<!-- boards: v1 -->\n# Launch\n\n## P0 — now\n\n- [ ] **T-01 · Write the plan** — first.\n');
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(1500);
+await js("window.dispatchEvent(new Event('focus'))"); await sleep(1500);
 await js("[...document.querySelectorAll('.group .row')].find((r) => r.querySelector('.row-title')?.textContent === 'Launch')?.click()");
 await until(() => js(`!!${V}?.querySelector('.board-chat .composer textarea')`));
 const say = (t: string) => js(`(() => { const ta = ${V}.querySelector('.board-chat .composer textarea'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(ta, ${JSON.stringify(t)}); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);

@@ -17,7 +17,7 @@ const rec = () => { const f = path.join(wdir, 'guess/runs/001.md'); return exist
 const result = (md) => /^# Run \d+\nstarted: .*\n(?:ended: .*\n)?result: (.*)$/m.exec(md)?.[1] ?? ''; // the run's own result, not a step's
 const until = async (f, ms = 25000) => { for (let t = 0; t < ms; t += 300) { if (await f()) return true; await sleep(300); } return false; };
 const pane = () => js("document.querySelector('.pane-view')?.textContent ?? ''");
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(2000);
+await js("window.dispatchEvent(new Event('focus'))"); await sleep(2000);
 await js("[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes('Guess')).click()"); await sleep(1500);
 // opened, a workflow shows the step it is at (the user, 2026-09-27: "when clicking on a workflow item, when it opens, it should show the current
 // step it's at, if not initiated then first step, if already finished then last step")

@@ -24,7 +24,7 @@ const rec = () => { const f = path.join(wdir, 'review/runs/001.md'); return exis
 const result = () => /^# Run \d+\nstarted: .*\n(?:ended: .*\n)?result: (.*)$/m.exec(rec())?.[1] ?? '';
 check('(Builder and Reviewer are made)', !!builder && !!reviewer);
 run('open', '--session', reviewer.id); await sleep(1500); // the reviewer's chat is open when the run starts
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]')?.click()"); await sleep(1500);
+await js("window.dispatchEvent(new Event('focus'))"); await sleep(1500);
 const started = run('run', '--workflow', 'review', '--folder', 'reopened');
 check('(the run starts: step 1 goes to Builder)', started.ok === true && !!(await until(() => /## 1\. Build/.test(rec()), 15000)), JSON.stringify(started));
 // while Build works (25 s): nine new agents, each opening its chat, and the app closes the idle reviewer's to make room (it keeps eight)

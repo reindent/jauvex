@@ -9,6 +9,16 @@
 #                                  // llm (calls a real model: skipped unless CVC_TEST_LLM=1)
 cd "$(dirname "$0")/.." || exit 1; ROOT="$PWD"; mkdir -p tmp/scratch tmp/work tmp/testrun
 QUICK=""; [ "$1" = --quick ] && { QUICK=1; shift; }
+# A node that runs no .ts file (Ubuntu's, built without type stripping): the checks and what they start call `node x.ts`, so a `node` that
+# is Electron's own goes first on their PATH.
+if ! node -e 'process.exit(process.features.typescript ? 0 : 1)' 2>/dev/null && [ -x "$ROOT/node_modules/electron/dist/electron" ]; then
+  mkdir -p tmp/node-shim; printf '#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "%s" "$@"\n' "$ROOT/node_modules/electron/dist/electron" > tmp/node-shim/node
+  chmod +x tmp/node-shim/node; WPATH="$ROOT/tmp/node-shim:$PATH" # the window checks only: a backend check starts process.execPath as node
+fi
+WPATH="${WPATH:-$PATH}"
+# The app itself, started by its binary where there is one (Linux): through .bin/electron, a node script, it would inherit the shim's
+# ELECTRON_RUN_AS_NODE and start as a plain node.
+EBIN="$ROOT/node_modules/electron/dist/electron"; [ -x "$EBIN" ] || EBIN=./node_modules/.bin/electron
 fail=0; ran=0
 prep() { # prep <check>: its name, a data folder of its own (the fixture state unless "// fresh") and its env; fails when it is skipped
   t=$1; name=$(basename "$t" | sed 's/\.test\..*//')
@@ -43,8 +53,8 @@ else
     wav=$(sed -n 's|^// wav: ||p' "$t"); [ -n "$wav" ] && flags="$flags --use-file-for-fake-audio-capture=$ROOT/$wav%noloop"
     echo "== $name"; ran=$((ran+1))
     case "$t" in
-      tests/window/*) env $envs CVC_HIDDEN=1 CVC_WHISPER_PORT=4451 CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" ./node_modules/.bin/electron . --remote-debugging-port=9451 $flags > "$DATA/app.log" 2>&1 & pid=$!
-         out=$(CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" node "$t" 2>&1); ps -p $pid -o command= 2>/dev/null | grep -q electron && kill $pid; wait $pid 2>/dev/null; sleep 1 ;;
+      tests/window/*) env PATH="$WPATH" $envs CVC_HIDDEN=1 CVC_WHISPER_PORT=4451 CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" "$EBIN" . --remote-debugging-port=9451 $flags > "$DATA/app.log" 2>&1 & pid=$!
+         out=$(PATH="$WPATH" CVC_DATA_DIR="$DATA" CVC_JAUVEX_HOME="$DATA/home" sh scripts/ts.sh "$t" 2>&1); ps -p $pid -o command= 2>/dev/null | grep -q electron && kill $pid; wait $pid 2>/dev/null; sleep 1 ;;
       *) out=$(backend "$t") ;;
     esac
     judge "$name" "$out"

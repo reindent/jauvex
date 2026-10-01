@@ -3,6 +3,24 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.4.0: 2026-10-01
+
+- **Linux**: the app runs from source on Linux (Ubuntu 24.04 and later), started with `npm start` in a clone of this repository; there
+  is no packaged Linux app yet, and the update offer is for the Mac app. The window has the system's own frame. The voice speaks with
+  Kokoro, which `start.sh` installs with its model; it speaks English only. Voice recognition needs whisper.cpp built by hand (the
+  README says how). On the Mac nothing changes.
+- **The debugger's Model tab shows your agents**: every turn of a Claude, Codex or Grok agent, what was sent, each step and how it
+  ended, each line naming the agent. The same lines go to `voice-debug.log`.
+- **System events** have their own button, a lines icon between the glasses and the bug, shown in developer mode only.
+- **Reload**: the arrow at the top right reloads the window as Cmd+R does; running turns, queued messages and drafts carry on.
+- The Jauvex agent's chat shows its latest 150 messages, and "Load earlier messages" goes back through the rest and on into the agent's
+  own session.
+- The Jauvex agent's chat and the chats' notes are no longer lost when several replies are saved at once.
+- An agent's answer that mentions a rate limit, authentication, or a number from 500 to 599 is no longer shown as the provider's
+  failure.
+- A window whose page crashes loads again by itself, and the log says why.
+- After an update, the Jauvex agent's message shows in its chat on screen, without a warning that the session was active elsewhere.
+
 ## 1.3.4: 2026-10-01
 
 - **Folders move**: drag a folder by its name, in the left panel, above or below another; the order is kept.

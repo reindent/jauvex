@@ -9,7 +9,7 @@ writeFileSync(path.join(wdir, 'sched-flow.md'), `# Sched flow\n\nStarts on its o
 writeFileSync(path.join(wdir, 'after-flow.md'), '# After flow\n\nStarts when Sched flow ends.\n\nwhen: after Sched flow\n\n## 1. Check it → you\nthen: ok → Done · redo → stop, redo\n');
 const run = (...args) => { try { return JSON.parse(execFileSync('node', ['scripts/jauvex.ts', ...args], { env: { ...process.env }, encoding: 'utf8' })); } catch (e) { try { return JSON.parse(e.stdout); } catch { return { ok: false, error: String(e.stdout || e.message).slice(0, 300) }; } } };
 const rec = (name, n = 1) => { const f = path.join(wdir, name, 'runs', `${String(n).padStart(3, '0')}.md`); return existsSync(f) ? readFileSync(f, 'utf8') : ''; };
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()");
+await js("window.dispatchEvent(new Event('focus'))");
 let started = false; for (let i = 0; i < 30 && !started; i++) { await sleep(1000); started = /waiting for you/.test(rec('sched-flow')); }
 check('a workflow whose schedule slot just passed starts by itself and waits at its gate', started, rec('sched-flow'));
 await sleep(16_000);

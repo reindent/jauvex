@@ -18,7 +18,7 @@ const rec = (name, n = 1) => { const f = path.join(wdir, name, 'runs', `${String
 const scratch = (run('list').folders ?? []).find((f) => f.name === 'work');
 // the app was closed for the last hour, then opened: its last look at the folder is an hour back
 const reopen = async () => { await js(`localStorage.setItem('cvc.scheduleLooked', JSON.stringify({ ${JSON.stringify(scratch.id)}: Date.now() - 3600000 })); location.reload()`); await sleep(1500); };
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(6000); // the schedule looks once: the slot passed while it was open, so nothing is missed
+await js("window.dispatchEvent(new Event('focus'))"); await sleep(6000); // the schedule looks once: the slot passed while it was open, so nothing is missed
 check('a slot that passed while the app was open is not a missed one', !/was missed at/.test(log()) && !existsSync(path.join(wdir, 'missed-flow/runs')));
 check('the setting: ask is the default', run('settings').workflowMissed === 'alert', JSON.stringify(run('settings')));
 await reopen();

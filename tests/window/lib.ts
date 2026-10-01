@@ -35,6 +35,6 @@ export async function useWork(js?: (expression: string) => Promise<any>): Promis
   // a check that clicks rows in the sidebar: the scratch folder, the other edition's through a link, may hold a workflow or a board of the same
   // name left by its checks (board-chat opened one, 2026-10-01). Out of this check's own copy of the app's state: nothing else is touched.
   if (js) { const id = (list().folders ?? []).find((f: any) => f.name === 'scratch')?.id;
-    if (id) { await js(`window.desktop.api('removeProject', ${JSON.stringify(id)})`); await js("document.querySelector('.tb-right button[title=\"Refresh\"]')?.click()");
+    if (id) { await js(`window.desktop.api('removeProject', ${JSON.stringify(id)})`); await js('location.reload()'); await sleep(3000); // the window reads the folders again
       for (let i = 0; i < 40 && (list().folders ?? []).some((f: any) => f.name === 'scratch'); i++) await sleep(250); await sleep(500); } }
 }

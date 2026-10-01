@@ -6,7 +6,7 @@ The product name may change: say "the app" in code comments, prompts and docs, a
 
 ## What it is
 
-A macOS desktop app (Electron + React 19 + Vite + TypeScript) in which one person runs several coding agents side by
+A macOS desktop app (Electron + React 19 + Vite + TypeScript), also run from source on Linux (README, "Setting up on Linux"), in which one person runs several coding agents side by
 side, by voice or by text. Providers today: Claude (Claude Agent SDK, `electron/chat.ts`), Codex
 (`codex app-server` over JSON-RPC, `electron/codex.ts`) and Grok (`grok agent stdio`, the Agent Client Protocol, `electron/grok.ts`).
 A session belongs to one provider for life. Jev agents
@@ -212,5 +212,10 @@ debug panel.
   `thread/tokenUsage/updated`. A compact turn goes with the last turn's settings: another system prompt makes the provider write its
   whole cache again (about a million tokens). The SDK's `options.env` replaces the whole environment (spread `process.env`);
   `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` can only lower Claude Code's threshold and counts against the window less the room for the answer.
+- Linux (2026-09-30): Ubuntu's `nodejs` runs no `.ts` file (no type stripping), so every script, stand-in and window check that Node
+  runs as TypeScript goes through `scripts/ts.sh` (Electron's Node when the system's cannot); the briefing names it off macOS. The
+  spoken voice there is Kokoro (`kokoro/`, its own package and lockfile, Linux only; `KOKORO` in `voice.ts`, `tests/kokoro-speech.test.ts`;
+  `CVC_TTS=kokoro` picks it on a Mac). Find the app there by `node_modules/electron/dist/electron`, not `Electron.app`; `scripts/restart.sh`
+  uses setsid instead of launchd.
 - Third-party commands, packages and APIs: verify against the live source (registry, `--help`, generated protocol types
   via `codex app-server generate-ts --out tmp/codex-proto`) before relying on them.
