@@ -164,7 +164,10 @@ export const clientBriefing = (voice: boolean, vocabulary?: string, steward = fa
   ...(files && (files.boards.length || files.workflows.length) ? [folderFilesNote(files)] : []),
   ...(steward ? [STEWARD_BRIEFING] : []),
   ...(voice ? [dictationNote(vocabulary)] : []),
-].join('\n\n').replaceAll('{APP}', appRoot ?? 'the app\'s install folder').replaceAll('node scripts/jauvex.ts', appRoot ? `node "${appRoot}/scripts/jauvex.ts"` : 'node scripts/jauvex.ts');
+].join('\n\n').replaceAll('{APP}', appRoot ?? 'the app\'s install folder').replaceAll('node scripts/jauvex.ts', appRoot ? jauvexCli(appRoot) : 'node scripts/jauvex.ts');
+/** The app's command line, by its full path. Off macOS through scripts/ts.sh: Ubuntu's own node runs no .ts file, and ts.sh falls back to
+ *  Electron's. (The briefing is built in the main process, where `process` is there.) */
+const jauvexCli = (appRoot: string): string => (typeof process !== 'undefined' && process.platform !== 'darwin' ? `sh "${appRoot}/scripts/ts.sh" "${appRoot}/scripts/jauvex.ts"` : `node "${appRoot}/scripts/jauvex.ts"`);
 export type PermissionDecision = 'allow' | 'always' | 'deny';
 export type ChatEvent =
   | { chatId: string; type: 'init'; sessionId: string; model?: string }
@@ -193,7 +196,7 @@ export type AccountEvent = { provider: Provider } & ({ type: 'line'; text: strin
 export type BusyTriage = { action: 'queue' | 'steer' | 'stop' | 'replace'; say: string; by?: 'jev' }; // by: who decided (absent = the voice model)
 // One line of the debug panel. by: who decided or produced it. ms: how long it took.
 // detail: the full exchange behind the line (what was sent to Jev or a model, and what came back), shown in the debugger's Model tab.
-export type DebugEvent = { detail?: string; at: number; kind: 'heard' | 'speech' | 'model' | 'thought' | 'ack' | 'busy' | 'stop' | 'queue' | 'summary' | 'jev' | 'note'; text: string; by?: 'jev' | 'voice model' | 'rule' | 'whisper' | 'app'; ms?: number };
+export type DebugEvent = { detail?: string; at: number; kind: 'heard' | 'speech' | 'model' | 'thought' | 'ack' | 'busy' | 'stop' | 'queue' | 'summary' | 'jev' | 'note'; text: string; by?: 'jev' | 'voice model' | 'rule' | 'whisper' | 'app' | 'agent'; ms?: number; who?: string }; // who: the agent a line is about (by 'agent', T-260)
 // Something said that is for the app itself, not for the main thread ("create a new Codex agent in the homepage project").
 // provider null = whatever the current chat uses; projectId null = the project that is open. `say` is the voice's confirmation.
 export type AppCommand = { type: 'new-agent'; provider: Provider | 'jev' | null; projectId: string | null; name?: string; purpose?: string; kickoff?: string; detailsId?: string; say: string; by: 'jev' | 'rule' } // kickoff: the new agent's first message, written by the session's model for this order (kickoffMessage is the fallback); detailsId: the model is still reading the order, its details come later as a command:details event

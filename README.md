@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.3.4, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.4.0, for macOS and Linux (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -33,7 +33,11 @@ otherwise the app fetches the same install command, checks that it installs the 
 `~/.jauvex/personal/update/`, hands the runner to launchd and quits. The runner waits for the app to exit, runs the install command
 (it rebuilds the app on your Mac and opens it), opens the old app again if it does not finish, and removes it; its log is
 `update/update.log`. When the app opens on a newer version than the one it last ran, the Jauvex agent's chat opens and it tells you it is
-updated and what the versions since bring, from the app's own `CHANGELOG.md`, then checks that your folders and agents are all there (T-218).
+updated and what the versions since bring, from the app's own `CHANGELOG.md`, then checks that your folders and agents are all there (T-218). That message goes to the Jauvex agent's chat already in the window, whatever
+it was opened under (T-262; the user, 2026-10-01: "This session was active moments ago, possibly in another window ... is shown in the Jauvex
+agent ... after an update, and the new chat history wont show"): the window opens again on the chat that was on screen by its session, and a
+lookup by the agent's own key alone opened a second, hidden chat of the same session, which took the turn (`jauvexOpen`,
+`tests/window/jauvex-one-chat.test.ts`).
 **What's new**, at the foot of the sidebar, asks jauvex.reindent.com right then whether a newer version is out (T-245). Its notes open at
 once, the newest releases from this copy's `CHANGELOG.md`, under a line that says what the check found: the latest already, a newer one
 that this copy (a clone) updates with git, or the site out of reach. A newer version on the app the install command made opens the Jauvex
@@ -106,7 +110,10 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   paths in backticks rather than links, images as markdown images. Terminal colour codes in tool output are stripped.
 - **A provider's failure is an error, not an answer**: a turn that fails, or an answer that is the provider's own failure
   text (an organisation that disabled subscription access, an allowance run out, a network error), shows as a red card
-  in the thread, and the voice says one line about it instead of summing it up.
+  in the thread, and the voice says one line about it instead of summing it up. Claude's SDK marks those messages itself;
+  any other counts only when the provider's text starts the answer ("API Error: ...", "Credit balance is too low"). An answer
+  that talks about a rate limit or carries a number from 500 to 599 is an answer: the rule once took eleven of them in a day
+  for failures (T-270).
 - **One provider per session, for life**: a session imported from Claude continues with Claude, one imported from
   Codex continues with Codex, one from Grok with Grok (each session row carries its provider's own tiny mark, Claude's, OpenAI's or Grok's, and a Jev agent row TypeSafe's; the title bar has a chip. The marks are their owners' trademarks, used only to say whose session it is: the first three from `@lobehub/icons-static-svg`, MIT; TypeSafe's is its site icon, `assets/typesafe.png`). A new session
   lets you pick the provider in the composer until the first message is sent; the model and effort pickers follow the
@@ -115,11 +122,20 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
 - **Open a session**: the conversation loads. User messages as bubbles, Claude's replies as text,
   tool calls and thinking folded into one-line rows you can expand (a Codex call shows the moment it starts and gets
   its result when it completes), harness plumbing (reminders,
-  tool results, cross-session messages) hidden unless you toggle the eye icon. Long sessions page
-  from the end ("Load earlier messages").
+  tool results, cross-session messages) hidden unless you show system events (below). Long sessions page
+  from the end ("Load earlier messages"). The Jauvex agent's chat, which the app keeps its own copy of, shows that copy's latest 150
+  messages; "Load earlier" pages through the rest, then on into the agent's own session, so a copy cut short comes back (T-272, from the
+  other edition's fix: "There's not even a load earlier messages"). The person's words the copy recorded before its first session message
+  are not shown twice. `sessionBefore` in `backend.ts`, `tests/session-before.test.ts`, `tests/window/copy-earlier.test.ts`.
 - **Developer mode** (T-247), the glasses at the top right, off by default and remembered. Off, each run of an agent's tool calls,
   thoughts and system events between what it says is one row: "Working…" while it goes on, "Worked · 3 steps" after; a click opens it.
   Pictures a tool made stay in sight. On, every tool call and thought shows as its own row, as before.
+  In developer mode only, a lines icon beside the glasses shows the system events (T-259; the user, 2026-10-01: "The eye should only appear
+  when the goggles are active ... in between the bug and the goggles ... the system events icon makes no sense with an eye"); out of
+  developer mode they stay hidden, whatever it was set to.
+- **Reload** (T-261), the arrow at the top right: reloads the window as Cmd+R would (the user, 2026-10-01: "It should do a hard refresh on
+  the app without restarting the app"); running turns, queued messages and drafts carry on. It used to re-read the folders only, which the
+  window also does every 15 seconds and when it comes to the front.
 - **A light theme** (T-248), and the app follows the Mac: by default it is light, dark or auto as the Mac's own Appearance is set, and
   changes with it. Settings, General, Appearance can set Light or Dark for the app alone, or go back to Same as the Mac; applied at once and
   kept. Light is "Paper": a white chat, a light grey left pane beside it, an indigo accent; a window paints in the chosen look from its first frame (it is also in the window's storage). Every colour of the stylesheet is
@@ -313,6 +329,28 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   in its own session folder: Grok writes it relative to that folder (`images/1.jpg`), which read against the project's folder
   was a broken image.
 
+## Setting up on Linux
+
+The same app, run from this folder with `npm start` (Ubuntu 24.04 and later; there is no packaged Linux app yet, and the update
+offer is for the Mac app only). What differs from the Mac, all handled by `start.sh` unless said otherwise:
+
+1. **Node**: Ubuntu's own `nodejs` cannot run TypeScript files (it is built without type stripping). `npm install` works with it;
+   the TypeScript scripts and checks then run on Electron's own Node, through `scripts/ts.sh`.
+2. **Electron's sandbox**: Ubuntu refuses Electron's usual sandbox to an app without an AppArmor profile, so its helper,
+   `node_modules/electron/dist/chrome-sandbox`, must belong to root with the setuid bit. `npm start` does it with sudo (it may ask
+   for your password), again after each new Electron.
+3. **whisper.cpp for the ears**: there is no Homebrew. Build it (github.com/ggml-org/whisper.cpp, `cmake -B build && cmake --build
+   build -j`; it needs cmake and a C++ compiler) and put `build/bin/whisper-server` on your PATH (`~/.local/bin` is looked in too).
+   The models are downloaded and checked as on the Mac.
+4. **The voice is Kokoro** (Kokoro-82M through kokoro-js, on the CPU): there is no `say`. Its package lives in `kokoro/` with a
+   lockfile of its own, installed on Linux only (the Mac install does not carry its runtime), and its model (325 MB, full precision:
+   on a CPU it renders about three times faster than the 8-bit one) is downloaded into `models/kokoro/` and checked like Whisper's. It
+   runs as a warm process of its own (`kokoro/server.mjs`), started when voice is switched on, and talks to the app in JSON lines,
+   not over a port. The default voice is `af_heart`; the voice settings list Kokoro's others, and the speed slider works as on the Mac.
+   Kokoro speaks English only (its voices are American and British English): a reply in another language is read with English sounds.
+5. **The window** has the system's own frame and no menu bar (Alt is push-to-talk). Where Chromium refuses the GPU, or there is
+   none (a virtual screen), the orb is drawn by its software renderer.
+
 ## Voice
 Press the white round button in the message box. All local except the two Claude calls:
 - **The app's name, however it is heard**: speech-to-text writes it Jovex, Javex, Jauvix, Claudex, Jobex and worse; every
@@ -339,7 +377,7 @@ Press the white round button in the message box. All local except the two Claude
 - **The big model's answer stays on screen in full and is never read aloud.** A small model (Haiku by default) is the
   voice: it acknowledges and restates what you asked while the selected model thinks, and when the answer lands it
   says what happened in one to three sentences. A short plain answer is spoken as it is.
-- **Mouth**: macOS `say` (the system voice by default), rendered per utterance and played inside the app, so it can
+- **Mouth**: macOS `say` (the system voice by default; on Linux Kokoro, see above), rendered per utterance and played inside the app, so it can
   fade out instantly and the echo canceller knows what the speakers are playing.
 - **Interrupting, two channels**: start talking and the *voice* stops (playback fades in 120 ms, pending `say` renders are
   killed) and it never talks over you. The *main thread is not touched*: it keeps working, and its answer is still summed
@@ -485,9 +523,17 @@ Press the white round button in the message box. All local except the two Claude
 - **Debugger, Model tab**: every exchange with Jev and with the models, one line each (the question and Jev's choice
   with its confidence; the job and the voice model's reply; the main model's reading of an order), and a click opens
   the whole of it: the state and questions sent to Jev with its probabilities, or the message sent to the model and
-  its raw reply. That is where to see why a decision came out the way it did.
+  its raw reply. That is where to see why a decision came out the way it did. The agents' turns too, Claude, Codex and Grok alike
+  (T-260; the user, 2026-10-01: "It has only Jev. But it doesn't say anything that is going on with Claude or Codex or Grok. I want to be
+  able to see that and that should be logged as well"): each line names the agent ("Claude 3f2a1c · reindent": provider, session,
+  folder) and says what was sent (and with what model, effort, pictures), what was steered in, each thought, word, tool call and
+  result, a permission asked, a compaction, and how the turn ended (how long, what it cost, why it failed). The streamed text and
+  the context numbers make no line. `shared/agent-log.ts` makes the lines (`tests/agent-log.test.ts`); `startChat` in `chat.ts`
+  logs them for every provider; `tests/window/debugger-agents.test.ts`.
 - **What the voice did, on disk**: the debugger's events also go to `data/voice-debug.log` (rolled at 2 MB), including
-  the fate of every line that was meant to be spoken (`said`, or `NOT said` and why).
+  the fate of every line that was meant to be spoken (`said`, or `NOT said` and why). A window whose page dies, or any other
+  process of the app, is written there too, with why and the memory then; a page that crashed loads again by itself, at most
+  three times in ten minutes (T-271: a window that went black said nothing anywhere). `tests/window/window-crash.test.ts`.
 - **Steering**: what you say out loud while the agent works reaches it *right away, without interrupting it*. It is
   added to the running turn as new information: the agent keeps its whole context and what it has done, reads your
   words at its next step and carries on ("use the staging database, not production", "don't touch the footer", "also
@@ -605,7 +651,8 @@ Press the white round button in the message box. All local except the two Claude
   whether the thought was judged finished, each acknowledgment, each queue / stop / replace call, what was queued and
   sent, the spoken summary, and every time Jev gave no answer and the voice model took over. Each line says who
   decided (Jev, the voice model, a rule, the app) and how long it took; the header keeps the averages. In memory
-  only, the last 300 events (`electron/debug.ts`); never keys or audio.
+  only, the last 300 events of the voice and the last 600 of the models, each tab its own, so a busy agent never pushes the voice's
+  lines out (`electron/debug.ts`); never keys or audio.
 - **The orb** is Jauvex's own: the two strands of the mark as a slowly turning double helix inside a dark glass disc.
   The strands swell with the voice level (yours or the voice's) and turn faster while the main thread thinks. Two gray
   layers: the microphone muted grays the disc (the ears), the speaker off grays the strands (the voice), so each state

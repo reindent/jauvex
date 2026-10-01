@@ -14,7 +14,7 @@ const ROOT = process.cwd(); const A = path.join(ROOT, 'tmp/work'), B = path.join
 const CLAUDE = path.join(ROOT, 'tmp/testrun/move-workflow/claude/projects'); const group = (dir) => dir.replace(/[^a-zA-Z0-9]/g, '-');
 const added = run('add-folder', B); check('a second folder, scratch-b', added.ok === true, JSON.stringify(added));
 mkdirSync(path.join(A, 'workflows'), { recursive: true }); writeFileSync(path.join(A, 'workflows', 'move-flow.md'), '# Move flow\n\nA flow that moves.\n\nwhen: manual\n\n## 1. Your go → you\nthen: go → Done\n');
-const openFlow = async (dir) => { await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(1500);
+const openFlow = async (dir) => { await js("window.dispatchEvent(new Event('focus'))"); await sleep(1500);
   await js(`[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes('Move flow'))?.click()`);
   return until(() => js(`${V}?.getAttribute('data-base') === ${JSON.stringify(dir)} && !!${V}.querySelector('.wf-chat .composer textarea')`)); };
 const say = (t) => js(`(() => { const ta = ${V}.querySelector('.wf-chat .composer textarea'); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(ta, ${JSON.stringify(t)}); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); })()`);

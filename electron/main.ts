@@ -16,6 +16,7 @@ process.env.CVC_ROOT = ROOT;
 const DEV_URL = process.env.CVC_DEV_URL;        // set by `npm run dev` (Vite)
 const HIDDEN = process.env.CVC_HIDDEN === '1';   // UI checks without taking focus
 const MINI_CHECK = HIDDEN && process.env.CVC_MINI_CHECK === '1'; // a check reads the floating bar: it is made, never shown (tests/window/mini-countdown.test.ts)
+const MAC = process.platform === 'darwin';
 
 // Everything this app stores is in its data folder, ~/.jauvex/personal for every copy (electron/paths.ts), run from source or compiled:
 // the state, and the Chromium profile in its profile/. CVC_DATA_DIR points automated checks at a throwaway folder so they can never
@@ -43,7 +44,7 @@ function showMini(): void {
   if ((HIDDEN && !MINI_CHECK) || !voiceActive || !win) return;
   if (!mini) {
     mini = new BrowserWindow({ width: 268, height: 72, show: false, frame: false, transparent: true, resizable: false, hasShadow: false, alwaysOnTop: true, skipTaskbar: true,
-      fullscreenable: false, minimizable: false, maximizable: false, type: 'panel', webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+      fullscreenable: false, minimizable: false, maximizable: false, ...(MAC ? { type: 'panel' as const } : {}), webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     mini.setAlwaysOnTop(true, 'floating');
     // visibleOnFullScreen alone turns the whole app into a background-only app (no Dock tile, no way back to the window from
     // the Dock): skipTransformProcessType keeps it a normal app. The controller still floats above other windows.
@@ -73,22 +74,31 @@ function showMini(): void {
 // ~/.claude and listed none of a user's Claude Code sessions, while Codex's showed) and CODEX_HOME. Taken from the login shell.
 function adoptShellPath(): void {
   try {
-    const shell = process.env.SHELL || '/bin/zsh';
+    const shell = process.env.SHELL || (MAC ? '/bin/zsh' : '/bin/sh');
     const out = execFileSync(shell, ['-ilc', SHELL_VARS.map((k) => `printf "__${k}__%s__END_${k}__" "$${k}"`).join('; ')], { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] });
     const got = parseShellVars(out); if (got.PATH) process.env.PATH = got.PATH;
     for (const k of ['CLAUDE_CONFIG_DIR', 'CODEX_HOME'] as const) if (got[k] && !process.env[k]) process.env[k] = got[k];
   } catch { /* keep the inherited environment */ }
 }
 
+let quitting = false;
+let note: (text: string) => void = () => {}; // the flight recorder, once it is loaded (below): what the window's handlers say goes through it
+/** How much memory the app's processes hold now, by kind: written to the flight recorder when a process dies. */
+const memoryLine = (): string => { const mb: Record<string, number> = {}; for (const m of app.getAppMetrics()) { const k = m.type === 'Tab' ? 'window' : m.type === 'GPU' ? 'graphics' : m.type === 'Browser' ? 'app' : m.type === 'Utility' && /audio/i.test(m.serviceName ?? m.name ?? '') ? 'audio' : 'other'; mb[k] = (mb[k] ?? 0) + m.memory.workingSetSize / 1024; }
+  const all = Object.values(mb).reduce((a, b) => a + b, 0); return `${Object.entries(mb).map(([k, v]) => `${k} ${Math.round(v)} MB`).join(', ')}; all ${Math.round(all)} MB`; };
 async function createWindow(): Promise<void> {
   // the window's colour before its page paints: the look it will have (T-248): the Mac's own, then the app's own choice once the settings are
   // read. Made at once: waiting for the settings before the window was made aborted its page's load now and then (ERR_FAILED, a check's window
   // that never came up, 2026-10-01).
   win = new BrowserWindow({
     width: 1360, height: 880, minWidth: 900, minHeight: 600, show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#141413' : '#ffffff', titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 15 },
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#141413' : '#ffffff',
+    // macOS: the traffic lights inset in the app's own title bar. Elsewhere the system's frame, with no menu bar (the app has no menu, and
+    // Alt is push-to-talk: Electron's default menu bar would take it), and the window's icon (macOS takes it from the Dock, below).
+    ...(MAC ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 15 } } : { autoHideMenuBar: true, icon: path.join(ROOT, 'assets', 'icon.png') }),
     webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required', webviewTag: true /* the right pane frames pages and PDFs in a <webview> */ },
   });
+  if (!MAC) win.removeMenu();
   // The window stays muted until voice mode is switched on by the user or the welcome screen is open (and always during hidden automated checks).
   win.webContents.setAudioMuted(true);
   win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' }; });
@@ -97,6 +107,16 @@ async function createWindow(): Promise<void> {
   // Every framed page starts muted and stays so, and opens no windows of its own.
   win.webContents.on('did-attach-webview', (_e, wc) => { wc.setAudioMuted(true); wc.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' }; }); });
   if (!HIDDEN) win.once('ready-to-show', () => win?.show());
+  // The window's page dying left the window its background colour with nothing in it, and no word anywhere (T-271, from the other edition's
+  // fix: a window there "completely went black screen"). Why goes to the flight recorder, with the memory then; a page that crashed or ran
+  // out of memory loads again by itself (its chats take their turns back, as after a reload), at most three times in ten minutes.
+  let reloads: number[] = [];
+  win.webContents.on('render-process-gone', (_e, d) => {
+    note(`the window's page ended: ${d.reason} (exit code ${d.exitCode}); memory then: ${memoryLine()}`);
+    if (d.reason === 'clean-exit' || quitting) return; const now = Date.now(); reloads = reloads.filter((t) => now - t < 600_000);
+    if (reloads.length >= 3) { note("the window's page ended three times in ten minutes: it is not loaded again"); return; }
+    reloads.push(now); setTimeout(() => { if (win && !win.isDestroyed()) win.webContents.reload(); }, 1000); });
+  win.on('unresponsive', () => note(`the window stopped answering; memory: ${memoryLine()}`)); win.on('responsive', () => note('the window answers again'));
   win.on('blur', () => { if (!mini?.isFocused()) showMini(); });
   win.on('focus', () => mini?.hide());
   win.on('closed', () => { mini?.destroy(); mini = null; win = null; });
@@ -105,6 +125,9 @@ async function createWindow(): Promise<void> {
 }
 
 app.setName('Jauvex');
+// Linux: Chromium refuses WebGL on many drivers, and on a screen with no GPU (a virtual one), unless its software renderer is allowed. The orb
+// is drawn with WebGL. A GPU it accepts is still used first.
+if (!MAC) app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 app.whenReady().then(async () => {
   // Updates (T-165): the app asks jauvex.reindent.com which version is the latest, at launch and every six hours; the copy the install
   // command made, when it runs an older one, tells the window, whose Jauvex agent asks the user; on a yes the `update` order hands the
@@ -204,13 +227,13 @@ app.whenReady().then(async () => {
   ipcMain.handle('chat:steer', (_e, chatId: string, text: string, images?: Attachment[]) => chat.steerChat(chatId, text, images));
   ipcMain.handle('chat:stop', (_e, chatId: string) => chat.stopChat(chatId));
   ipcMain.handle('chat:answer', (_e, chatId: string, requestId: string, decision: PermissionDecision) => chat.answerPermission(chatId, requestId, decision));
-  const debug = await import('./debug.js');
+  const debug = await import('./debug.js'); note = (text) => debug.log('note', text, { by: 'app' });
   const voice = await import('./voice.js');
   ipcMain.handle('voice:on', async (_e, on: boolean, who: string, provider?: Provider, ackModel?: string, stt?: { model: string; vocabulary: string }) => {
     if (on && process.platform === 'darwin' && !HIDDEN) { const ok = await systemPreferences.askForMediaAccess('microphone'); if (!ok) throw new Error('Microphone access is off for this app. Allow it in System Settings > Privacy & Security > Microphone, then try again.'); }
     const key = who || 'voice'; if (on) ears.add(key); else ears.delete(key); applyMute();
     debug.log('note', `voice ${on ? 'on' : 'off'} for ${key}${provider ? ` (${provider})` : ''}; listening now: ${[...ears].join(', ') || 'nobody'}; the window is ${audible() ? 'audible' : 'muted'}`, { by: 'app' });
-    if (on) { if (stt) voice.configureStt(stt.model, stt.vocabulary); void voice.ensureWhisper(); if (provider && ackModel !== undefined) voice.warmAck(provider, ackModel); } else if (!ears.size) voice.cancelSpeech(); /* the last ears off: nothing left to render for */ return voice.status(); });
+    if (on) { if (stt) voice.configureStt(stt.model, stt.vocabulary); void voice.ensureWhisper(); voice.warmSpeech(); if (provider && ackModel !== undefined) voice.warmAck(provider, ackModel); } else if (!ears.size) voice.cancelSpeech(); /* the last ears off: nothing left to render for */ return voice.status(); });
   const jev = await import('./jev.js');
   ipcMain.handle('welcome:intent', (_e, text: string) => voice.welcomeIntent(text));
   ipcMain.on('audio:welcome', (_e, open: boolean) => { welcomeOpen = open; applyMute(); }); // the welcome screen speaks without voice mode
@@ -239,7 +262,9 @@ app.whenReady().then(async () => {
   ipcMain.on('mini:size', (_e, w: number) => { if (!mini) return; const [, h] = mini.getSize(); mini.setSize(Math.max(200, Math.round(w)), h ?? 72, true); }); // the bar grows for its typing box (animated on macOS)
   ipcMain.on('voice:cmd', (_e, cmd: string) => { if ((cmd === 'focus' || cmd === 'new') && !HIDDEN) { win?.show(); win?.focus(); } /* an automated check never comes to the front */ win?.webContents.send('voice:cmd', cmd); });
   const codex = await import('./codex.js'); const grok = await import('./grok.js');
-  app.on('before-quit', () => { chat.stopAll(); voice.shutdown(); account.shutdown(); codex.shutdown(); grok.shutdown(); });
+  // Any other process of the app that dies (the graphics, the audio, the network): said, with why and the memory then (T-271, above).
+  app.on('child-process-gone', (_e, d) => debug.log('note', `a process of the app ended (${d.type}${d.name ? `, ${d.name}` : ''}): ${d.reason} (exit code ${d.exitCode}); memory then: ${memoryLine()}`, { by: 'app' }));
+  app.on('before-quit', () => { quitting = true; chat.stopAll(); voice.shutdown(); account.shutdown(); codex.shutdown(); grok.shutdown(); });
   await createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow(); });
 });

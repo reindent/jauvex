@@ -19,8 +19,8 @@ import { claudeExe } from './account.js';
 /**
  * The voice engine. Three local pieces and one small model:
  *   ears   - whisper.cpp `whisper-server`, started once so the model stays warm in memory
- *   mouth  - macOS `say`, rendering one sentence at a time to a WAV that the window plays (so it can fade
- *            out instantly on barge-in and Chromium's echo canceller knows what the speakers are playing)
+ *   mouth  - macOS `say` (on Linux Kokoro, kokoro/server.mjs), rendering one sentence at a time to a WAV that the window plays (so it
+ *            can fade out instantly on barge-in and Chromium's echo canceller knows what the speakers are playing)
  *   voice  - a small fast model from the session's own provider (Claude or Codex) that acknowledges while the selected
  *            model thinks, and afterwards says briefly what happened. The selected model's full answer is never read aloud; it stays on screen.
  */
@@ -35,7 +35,7 @@ let whisperState: VoiceStatus['whisper'] = 'starting';
 let whisperDetail = '';
 
 function findOnPath(bin: string): string | null {
-  for (const dir of (process.env.PATH ?? '').split(':').concat(['/opt/homebrew/bin', '/usr/local/bin'])) { const p = path.join(dir, bin); if (dir && existsSync(p)) return p; }
+  for (const dir of (process.env.PATH ?? '').split(':').concat(['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin')])) { const p = path.join(dir, bin); if (dir && existsSync(p)) return p; }
   return null;
 }
 // What the user picked in the voice settings. The vocabulary is Whisper's "initial prompt": names it would otherwise
@@ -117,7 +117,7 @@ async function startWhisper(): Promise<void> {
   if (whisper && whisperState === 'starting') { await waitForServer(60_000, whisper); return; }
   if (whisper) { const hung = whisper; whisper = null; hung.removeAllListeners('exit'); hung.kill('SIGKILL'); } // one that never came up
   const bin = findOnPath('whisper-server');
-  if (!bin) { whisperState = 'missing-binary'; whisperDetail = 'whisper-server not found. Install with: brew install whisper-cpp'; return; }
+  if (!bin) { whisperState = 'missing-binary'; whisperDetail = `whisper-server not found. ${process.platform === 'darwin' ? 'Install with: brew install whisper-cpp' : 'Build whisper.cpp and put whisper-server on your PATH (see README)'}`; return; }
   const model = findModel();
   if (!model) { whisperState = 'missing-model'; whisperDetail = `No Whisper model in ${path.join(ROOT, 'models')}. See README for the one-line download.`; return; }
   whisperState = 'starting'; whisperDetail = path.basename(model); running = { ...want };
@@ -240,7 +240,52 @@ export async function transcribe(wav: ArrayBuffer, language: string, quiet = fal
 // ---------- mouth
 const renders = new Set<ChildProcess>();
 let cachedVoices: string[] | null = null;
+// macOS speaks with `say`; anywhere else with Kokoro (kokoro/server.mjs: its own package, installed and fetched by start.sh on Linux), a warm
+// process of its own that renders one sentence at a time and answers in JSON lines. CVC_TTS=kokoro picks it on a Mac too (to compare).
+const KOKORO = process.platform !== 'darwin' || process.env.CVC_TTS === 'kokoro';
+const KOKORO_DIR = path.join(ROOT, 'kokoro');
+const kokoroInstalled = () => existsSync(path.join(KOKORO_DIR, 'node_modules', 'kokoro-js')) && existsSync(path.join(ROOT, 'models', 'kokoro', 'onnx', 'model.onnx'));
+type Kokoro = { proc: ChildProcess; ready: Promise<boolean>; voices: string[]; pending: Map<number, (wav: ArrayBuffer | null) => void>; next: number };
+let kokoro: Kokoro | null = null;
+let kokoroVoices: string[] = []; // its voices, once it has loaded: the settings list them without starting it (its model is 325 MB)
+// Once it has stopped by itself (or is not installed), it is not started again at every sentence, each paying seconds of loading and a line
+// in the log: only at the next voice-on or welcome check (retry).
+let kokoroFailed = false;
+function ensureKokoro(retry = false): Kokoro | null {
+  if (kokoro) return kokoro;
+  if (kokoroFailed && !retry) return null;
+  kokoroFailed = false;
+  if (!kokoroInstalled()) { kokoroFailed = true; debug.log('note', `no spoken voice: Kokoro is not installed in ${KOKORO_DIR} (sh start.sh installs it)`, { by: 'app' }); return null; }
+  // Electron's own Node runs it (process.execPath is the Electron binary in the app, node in the backend checks).
+  const proc = spawn(process.execPath, [path.join(KOKORO_DIR, 'server.mjs'), path.join(ROOT, 'models')], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
+  let err = ''; proc.stderr?.on('data', (d: Buffer) => { err = (err + d.toString()).slice(-4000); });
+  const k: Kokoro = { proc, voices: [], pending: new Map(), next: 1, ready: Promise.resolve(false) };
+  k.ready = new Promise<boolean>((resolve) => {
+    let buf = '';
+    proc.stdout?.on('data', (d: Buffer) => {
+      buf += d.toString(); let i: number;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 1); let m: { ready?: boolean; voices?: string[]; id?: number; wav?: string; error?: string };
+        try { m = JSON.parse(line); } catch { continue; }
+        if (m.ready) { k.voices = m.voices ?? []; kokoroVoices = k.voices; resolve(true); continue; }
+        if (m.id === undefined) { if (m.error) debug.log('note', m.error, { by: 'app' }); continue; }
+        const done = k.pending.get(m.id); k.pending.delete(m.id);
+        if (m.wav) { const b = Buffer.from(m.wav, 'base64'); done?.(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer); } else done?.(null);
+      }
+    });
+    proc.on('exit', (code, signal) => {
+      resolve(false); if (kokoro === k) kokoro = null; if (!stopping) kokoroFailed = true; for (const done of k.pending.values()) done(null); k.pending.clear();
+      if (!stopping) debug.log('note', `Kokoro stopped (${signal ?? `exit ${code}`})`, { by: 'app', ...(err ? { detail: err } : {}) });
+    });
+    proc.on('error', () => resolve(false));
+  });
+  kokoro = k; return k;
+}
+let stopping = false; // set by shutdown() only, which is final: the app is quitting
+/** Kokoro takes several seconds to load: started when voice is switched on (and by the welcome's check), as Whisper is. */
+export function warmSpeech(): void { if (KOKORO) ensureKokoro(true); }
 export async function voices(): Promise<string[]> {
+  if (KOKORO) return kokoroVoices; // never started from here: the settings asking once loaded the whole model, voice on or not
   if (cachedVoices) return cachedVoices;
   const out = await new Promise<string>((resolve) => execFile('say', ['-v', '?'], (_e, stdout) => resolve(stdout ?? '')));
   cachedVoices = out.split('\n').map((l) => /^(.+?)\s{2,}([a-z]{2}_[A-Z]{2})/.exec(l)).filter((m): m is RegExpExecArray => m !== null).map((m) => `${m[1]!.trim()}|${m[2]}`);
@@ -249,6 +294,10 @@ export async function voices(): Promise<string[]> {
 /** Render one chunk of text to 22.05 kHz mono WAV with `say`. Killed immediately by cancelSpeech(). */
 export async function speak(text: string, voice: string, rate: number): Promise<ArrayBuffer | null> {
   const clean = text.trim(); if (!clean) return null;
+  if (KOKORO) { // the rate is in words per minute, as `say` takes it: 185 is Kokoro's own pace
+    const k = ensureKokoro(); if (!k || !(await k.ready)) return null; const id = k.next++;
+    return new Promise((resolve) => { k.pending.set(id, resolve); k.proc.stdin?.write(`${JSON.stringify({ id, text: clean, voice, speed: rate / 185 })}\n`); });
+  }
   const file = path.join(os.tmpdir(), `cvc-say-${randomUUID()}.wav`);
   const args = ['-o', file, '--file-format=WAVE', '--data-format=LEI16@22050', '-r', String(Math.round(rate))];
   const render = async (v: string): Promise<number | null> => { const child = spawn('say', [...args, ...(v ? ['-v', v] : []), '--', clean], { stdio: 'ignore' }); renders.add(child); const c = await new Promise<number | null>((resolve) => { child.on('exit', resolve); child.on('error', () => resolve(1)); }); renders.delete(child); return c; };
@@ -258,7 +307,9 @@ export async function speak(text: string, voice: string, rate: number): Promise<
   catch { return null; } finally { void fs.rm(file, { force: true }); }
 }
 /** Barge-in: stop every `say` that is still rendering. (Audio already playing is faded by the window.) */
-export function cancelSpeech(): void { if (renders.size) debug.log('speech', `${renders.size} render(s) cut: the user spoke`, { by: 'app' }); for (const c of renders) c.kill('SIGKILL'); renders.clear(); }
+export function cancelSpeech(): void {
+  if (kokoro?.pending.size) { debug.log('speech', `${kokoro.pending.size} render(s) cut: the user spoke`, { by: 'app' }); kokoro.proc.stdin?.write('{"cancel":true}\n'); for (const done of kokoro.pending.values()) done(null); kokoro.pending.clear(); }
+  if (renders.size) debug.log('speech', `${renders.size} render(s) cut: the user spoke`, { by: 'app' }); for (const c of renders) c.kill('SIGKILL'); renders.clear(); }
 
 // ---------- the speaking voice: one warm small-model session with two jobs
 // The selected (big) model does the work and its full answer stays on screen, untouched. This small model is
@@ -652,7 +703,10 @@ export async function summarize(asked: string, answer: string, provider: Provide
 }
 
 /** What the first-run screen needs to know, without starting a server: is `say` there, whisper-server, a model, a TypeSafe key. */
-export async function setupCheck(): Promise<SetupCheck> { if (process.env.CVC_SETUP_FAKE === 'missing') return { say: true, voice: 'basic', whisperBinary: false, models: [], jevKey: false }; /* window checks: the failing screen */ const say = !!findOnPath('say') || existsSync('/usr/bin/say'); return { say, voice: say ? await voiceQuality() : 'unknown', whisperBinary: !!findOnPath('whisper-server'), models: listModels(), jevKey: await jev.hasKey() }; }
+/** Kokoro counts once it has loaded its model and spoken a word, not when its files are there: a model that cannot load said "Kokoro is
+ *  here, so I can talk" on the welcome screen. A minute at most. */
+async function kokoroLoads(): Promise<boolean> { const k = ensureKokoro(true); if (!k) return false; let t: NodeJS.Timeout | undefined; const out = await Promise.race([k.ready, new Promise<boolean>((r) => { t = setTimeout(() => r(false), 60_000); })]); clearTimeout(t); return out; }
+export async function setupCheck(): Promise<SetupCheck> { if (process.env.CVC_SETUP_FAKE === 'missing') return { say: true, voice: 'basic', whisperBinary: false, models: [], jevKey: false }; /* window checks: the failing screen */ const say = KOKORO ? kokoroInstalled() && (await kokoroLoads()) : !!findOnPath('say') || existsSync('/usr/bin/say'); return { say, voice: !say ? 'unknown' : KOKORO ? 'natural' : await voiceQuality(), whisperBinary: !!findOnPath('whisper-server'), models: listModels(), jevKey: await jev.hasKey() }; }
 /** Is the System voice still the basic one? `say` with no voice renders the System voice (Spoken Content); on a fresh Mac that is the
  *  compact Samantha, which sounds robotic. A Siri voice cannot be named by an app (say -v falls back to Samantha), only that setting
  *  reaches it: so the check renders one word both ways and compares the bytes. Same bytes: basic. */
@@ -662,7 +716,7 @@ async function voiceQuality(): Promise<SetupCheck['voice']> {
 export async function status(): Promise<VoiceStatus> { return { jev: await jev.available(), jevKey: await jev.hasKey(), whisper: whisperState, detail: whisperDetail, voices: await voices(), models: listModels(), model: whisperDetail.endsWith('.bin') ? whisperDetail : '', voiceModels: { claude: (claudeModelCache ?? []).map(({ id, label, resolved }) => ({ id, label, ...(resolved ? { resolved } : {}) })), codex: (await codex.models().catch(() => [])).map(({ id, label }) => ({ id, label })), grok: (grok.installed() ? await grok.models().catch(() => []) : []).map(({ id, label }) => ({ id, label })) } }; }
 /** The model the voice would use now for a provider and a preference (for the settings' "in use" line). */
 export async function voiceModelInUse(provider: Provider, preferred: string): Promise<string> { if (provider === 'codex') return codex.voiceModel(preferred).catch(() => preferred); if (provider === 'grok') return grok.voiceModel(preferred).catch(() => preferred); await claudeModels().catch(() => undefined); return resolveVoiceModel('claude', preferred); }
-export function shutdown(): void { cancelSpeech(); voiceSession?.close(); voiceSession = null; if (whisper) { whisper.kill('SIGTERM'); whisper = null; } if (live) { live.kill('SIGTERM'); live = null; } }
+export function shutdown(): void { cancelSpeech(); stopping = true; kokoro?.proc.kill('SIGTERM'); kokoro = null; voiceSession?.close(); voiceSession = null; if (whisper) { whisper.kill('SIGTERM'); whisper = null; } if (live) { live.kill('SIGTERM'); live = null; } }
 
 /** What someone said to the welcome screen: start, pick Claude, pick Codex, or something else. Jev first, the words alone after.
  *  Speech-to-text writes Claude as "cloud" and Codex as "codecs"; both may come in one breath ("let's start with Codex"). */

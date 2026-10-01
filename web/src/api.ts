@@ -19,6 +19,7 @@ export const api = {
   notes: (sessionId: string) => call<{ after: string; message: ChatMessage }[]>('notes', sessionId),
   noteAppend: (sessionId: string, entries: { after: string; message: ChatMessage }[]) => call<boolean>('noteAppend', sessionId, entries),
   jauvexTranscript: () => call<JauvexEntry[]>('jauvexTranscript'),
+  sessionBefore: (id: string, sid: string, uuids: string[]) => call<{ messages: ChatMessage[]; left: number }>('sessionBefore', id, sid, uuids), // before the app's copy of the Jauvex agent's chat (T-272)
   jauvexAppend: (entry: JauvexEntry) => call<boolean>('jauvexAppend', entry),
   jauvexHandover: (note: string, from: string, to: string) => call<boolean>('jauvexHandover', note, from, to),
   removeProject: (id: string) => call<boolean>('removeProject', id),

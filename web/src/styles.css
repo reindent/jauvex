@@ -33,6 +33,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .titlebar { grid-area: tb; display: flex; align-items: center; gap: 8px; padding: 0 14px 0 92px; -webkit-app-region: drag; position: relative; z-index: 2; }
 .titlebar::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: var(--side-w); background: var(--side); z-index: -1; }
 .app.no-sidebar .titlebar::before { display: none; }
+.system-frame .titlebar { padding-left: 14px; -webkit-app-region: no-drag; }
+.system-frame .tb-left { width: calc(var(--side-w) - 14px); }
 .tb-left, .tb-right { display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
 .tb-left { width: calc(var(--side-w) - 92px); flex: none; }
 .app.no-sidebar .tb-left { width: auto; margin-right: 10px; }
@@ -175,8 +177,8 @@ html.is-mini, html.is-mini body, html.is-mini #root { background: transparent; }
 .debug { grid-area: debug; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--k-0f0f10); border-top: 1px solid var(--k-26262c); }
 .debug header { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-bottom: 1px solid var(--k-222228); font-size: 12.5px; color: var(--muted); } .debug header b { color: var(--fg); font-size: 13px; } .debug header span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .debug-list { flex: 1; overflow: auto; padding: 6px 0; font: 12px/1.45 ui-monospace, "SF Mono", Menlo, monospace; } .debug-empty { margin: 14px; color: var(--muted); font-family: inherit; }
-.debug-row { display: grid; grid-template-columns: 62px 62px 86px 64px 1fr; gap: 8px; padding: 2px 14px; color: var(--fg-2); } .debug-row:hover { background: var(--k-17171a); }
-.debug-row time { color: var(--faint); } .debug-row i { font-style: normal; color: var(--muted); } .debug-row em { font-style: normal; color: var(--muted); } .debug-row em.by-jev { color: var(--accent); } .debug-row .ms { text-align: right; color: var(--faint); } .debug-row p { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.debug-row { display: grid; grid-template-columns: 62px 62px 110px 64px 1fr; gap: 8px; padding: 2px 14px; color: var(--fg-2); } .debug-row:hover { background: var(--k-17171a); }
+.debug-row time { color: var(--faint); } .debug-row i { font-style: normal; color: var(--muted); } .debug-row em { font-style: normal; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .debug-row em.by-agent { color: var(--fg-2); } .debug-row em.by-jev { color: var(--accent); } .debug-row .ms { text-align: right; color: var(--faint); } .debug-row p { margin: 0; white-space: pre-wrap; word-break: break-word; }
 .debug-row.k-stop p, .debug-row.k-jev p { color: var(--err); } .debug-row.k-heard p { color: var(--fg); }
 
 /* renaming a session in place */

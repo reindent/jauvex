@@ -12,7 +12,7 @@ const until = async (f: () => Promise<boolean>, ms = 8000) => { for (let t = 0; 
 const cols = () => js(`[...${V}.querySelectorAll('.board .bcol h2')].map((h) => h.textContent).join(' | ')`);
 const lane = (t: string) => js(`[...(([...${V}.querySelectorAll('.board .bcol')].find((c) => c.querySelector('h2')?.textContent === '${t}'))?.querySelectorAll('.card') ?? [])].map((c) => [c.querySelector('.board-tag')?.textContent ?? '', c.querySelector('.id')?.textContent ?? ''].join(' ')).join(', ')`);
 const row = "[...document.querySelectorAll('.row')].find((r) => r.querySelector('.row-title')?.textContent === 'Plan')";
-const openPlan = async () => { await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await until(() => js(`!!${row}`)); await js(`${row}.click()`); await sleep(1200); };
+const openPlan = async () => { await js("window.dispatchEvent(new Event('focus'))"); await until(() => js(`!!${row}`)); await js(`${row}.click()`); await sleep(1200); };
 await js("try { localStorage.removeItem('cvc.board.view'); } catch {}"); await openPlan();
 check('a board opens as its sections: P0, P1', (await cols()) === 'P0 — now | P1 — next', await cols());
 await js(`[...${V}.querySelectorAll('.board-seg button')].find((b) => b.textContent === 'Kanban').click()`); await sleep(300);

@@ -10,7 +10,7 @@ const has = (f) => existsSync(path.join(root, f)); const ck = (name, ok, got = '
 put('workflows/old-flow.md', '# Old flow\n\nwhen: manual\n\n## 1. [Gather](old-flow/gather.md) → Notes agent\n'); put('workflows/old-flow/gather.md', 'Collect the notes.\n');
 put('workflows/old-flow/runs/001.md', '# Run 1\nstarted: 2026-09-20 09:00\nended: 2026-09-20 09:05\nresult: done\n');
 put('boards/old-board.md', '<!-- boards: v1 -->\n# Old board\n\n## P0 — now\n\n- [ ] **T-02 · Left** — to do.\n'); put('boards/old-board-DONE.md', '<!-- boards: v1 -->\n# Old board · Done\n\n## Done\n\n- [x] **T-01 · Gone** — shipped 2026-09-27\n');
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(2000);
+await js("window.dispatchEvent(new Event('focus'))"); await sleep(2000);
 const row = (t) => `[...document.querySelectorAll('.group .row')].find((r) => r.querySelector('.row-title')?.textContent === '${t}')`;
 const menu = (t) => js(`(() => { const r = ${row(t)}; r.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 120, clientY: 220 })); })()`);
 const item = (label) => `[...document.querySelectorAll('.menu.ctx button')].find((b) => b.textContent === '${label}')`;

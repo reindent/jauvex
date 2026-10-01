@@ -8,7 +8,7 @@ const root = process.cwd(); rmSync(path.join(root, 'tmp/work/workflows'), { recu
 writeFileSync(path.join(wdir, 'gate-flow.md'), '# Gate flow\n\nA run that starts with you.\n\nwhen: manual\n\n## 1. Your go → you\nthen: go → Deliver · not now → stop, later then\n\n## 2. Deliver → Nobody Agent\nDo the thing.\nthen: done → Done\n\ndone: delivered\n');
 const run = (...args) => { try { return JSON.parse(execFileSync('node', ['scripts/jauvex.ts', ...args], { env: { ...process.env }, encoding: 'utf8' })); } catch (e) { return { ok: false, error: String(e.stdout || e.message).slice(0, 300) }; } };
 const rec = (n) => { const f = path.join(wdir, 'gate-flow/runs', `${String(n).padStart(3, '0')}.md`); return existsSync(f) ? readFileSync(f, 'utf8') : ''; };
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(2000);
+await js("window.dispatchEvent(new Event('focus'))"); await sleep(2000);
 await js("[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes('Gate flow')).click()"); await sleep(1200);
 check('the workflow opens with a Run now button', await js(`!!${V}.querySelector('.wf-head .btn.primary')`));
 await js(`${V}.querySelector('.wf-head .btn.primary').click()`); await sleep(2500);

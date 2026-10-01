@@ -32,12 +32,12 @@ check('a card clicked shows its body', await js("!!document.querySelector('.boar
 mkdirSync(dir, { recursive: true });
 writeFileSync(path.join(dir, 'agent-made.md'), '# Agent made\n\n## P0 — now\n\n- [~] **T-01 · Written by an agent** — it shows up.\n- [ ] **T-02 · Another** — two items.\n');
 writeFileSync(path.join(dir, 'notes.md'), '# Notes\n\nJust text, no items.\n');
-await js("document.querySelector('button[title=\"Refresh\"]').click()");
+await js("window.dispatchEvent(new Event('focus'))");
 check('a board an agent writes shows up in the sidebar', await until("[...document.querySelectorAll('.row')].some((r) => r.textContent.includes('Agent made') && r.textContent.includes('0/2'))"));
 check('plain markdown is not listed as a board', !(await js("[...document.querySelectorAll('.row')].some((r) => r.textContent.includes('Notes'))")));
 check('a new board starts with the boards format line', file().startsWith('<!-- boards: v1 -->\n# Launch Plan'));
 writeFileSync(path.join(dir, 'newer.md'), '<!-- boards: v2 -->\n# Newer board\n\n## P0 — now\n\n- [ ] **T-01 · From a newer app** — its format is v2.\n');
-await js("document.querySelector('button[title=\"Refresh\"]').click()");
+await js("window.dispatchEvent(new Event('focus'))");
 await until("[...document.querySelectorAll('.row')].some((r) => r.textContent.includes('Newer board'))"); await js("[...document.querySelectorAll('.row')].find((r) => r.textContent.includes('Newer board')).click()");
 check('a board of a newer format is shown, says so, and its circles do nothing', await until(`${V}?.querySelector('.board-view h1')?.textContent === 'Newer board'`) && await js(`!!${V}.querySelector('.board-view .board-newer')`) && await js(`${V}.querySelector('.board-view .card .glyph').disabled`));
 await js(`${V}.querySelector('.board-view .card .glyph').click()`); await sleep(400);

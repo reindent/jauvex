@@ -12,7 +12,7 @@ writeFileSync(path.join(wdir, 'edit-flow.md'), flow('Edit flow', 'manual')); wri
 const run = (...args) => { try { return JSON.parse(execFileSync('node', ['scripts/jauvex.ts', ...args], { encoding: 'utf8' })); } catch (e) { try { return JSON.parse(e.stdout); } catch { return { ok: false, error: String(e) }; } } };
 const rec = (name, n = 1) => { const f = path.join(wdir, name, 'runs', `${String(n).padStart(3, '0')}.md`); return existsSync(f) ? readFileSync(f, 'utf8') : ''; };
 const rowTime = (name) => js(`[...document.querySelectorAll('.group .row')].find((r) => r.textContent.includes(${JSON.stringify(name)}))?.querySelector('.row-time')?.textContent ?? ''`);
-await js("document.querySelector('.tb-right button[title=\"Refresh\"]').click()"); await sleep(2000);
+await js("window.dispatchEvent(new Event('focus'))"); await sleep(2000);
 check('both workflows are listed as manual', (await rowTime('Edit flow')) === 'manual' && (await rowTime('Later flow')) === 'manual', `${await rowTime('Edit flow')} / ${await rowTime('Later flow')}`);
 // the files change on disk, the way an agent or an editor changes them: nothing tells the window
 const due = at(-60_000); writeFileSync(path.join(wdir, 'edit-flow.md'), flow('Edit flow', `every day at ${due}`)); writeFileSync(path.join(wdir, 'later-flow.md'), flow('Later flow', `every day at ${at(2 * 3600_000)}`));

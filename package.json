@@ -1,12 +1,12 @@
 {
   "name": "jauvex",
-  "version": "1.3.4",
+  "version": "1.4.0",
   "description": "Jauvex: your coding agents (Claude and Codex, with Jev for the fast decisions), side by side, by voice. Electron, TypeScript, no server.",
   "scripts": {
     "postinstall": "install-electron",
     "start": "sh start.sh",
-    "dev": "node scripts/bundle-electron.ts && concurrently -k -n web,app -c magenta,blue \"vite\" \"CVC_DEV_URL=http://127.0.0.1:4340 electron .\"",
-    "build": "tsc --noEmit && vite build && node scripts/bundle-electron.ts",
+    "dev": "sh scripts/ts.sh scripts/bundle-electron.ts && concurrently -k -n web,app -c magenta,blue \"vite\" \"CVC_DEV_URL=http://127.0.0.1:4340 electron .\"",
+    "build": "tsc --noEmit && vite build && sh scripts/ts.sh scripts/bundle-electron.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tools.json",
     "test": "sh tests/run.sh",
     "check": "tsc --noEmit -p tsconfig.tools.json && sh tests/run.sh --quick",

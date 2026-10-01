@@ -158,6 +158,18 @@ async function transcript(dir: string, sessionId: string): Promise<ChatMessage[]
 // ---------- the API the renderer calls over Electron IPC (see electron/main.ts + preload.ts)
 const notesFile = (sessionId: string) => path.join(path.dirname(STATE_FILE), 'notes', `${sessionId.replace(/[^\w-]/g, '')}.json`);
 let uiTurn: Promise<boolean> = Promise.resolve(true); let jxMaking: Promise<Project> | null = null;
+// The chats' own files (the Jauvex agent's transcript, a chat's notes) are saved one at a time per file, and whole (T-269, from the other
+// edition's fix: an agent's transcript there kept one message). Every save read the file, added its message and wrote it back: saves that
+// overlapped (a burst of replies, each with its tool calls) dropped each other's messages, and one that read the file while another was
+// writing it found it half written, took it for a first message, and wrote that one alone over the whole conversation.
+const saving = new Map<string, Promise<void>>();
+const oneAtATime = <T>(f: string, op: () => Promise<T>): Promise<T> => { const run = (saving.get(f) ?? Promise.resolve()).then(op); const tail = run.then(() => {}, () => {}); saving.set(f, tail); void tail.then(() => { if (saving.get(f) === tail) saving.delete(f); }); return run; };
+const writeWhole = async (f: string, text: string) => { await fs.mkdir(path.dirname(f), { recursive: true }); const tmp = `${f}.${process.pid}.tmp`; await fs.writeFile(tmp, text); await fs.rename(tmp, f); }; // a reader sees the old file or the new, never half of one
+/** A list kept in a file: none yet is empty; one that cannot be read is put aside whole, never taken for empty and written over. */
+const readList = async <T>(f: string): Promise<T[]> => { let text: string; try { text = await fs.readFile(f, 'utf8'); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return []; throw e; }
+  try { const v: unknown = JSON.parse(text); if (Array.isArray(v)) return v as T[]; } catch { /* kept aside below */ }
+  const aside = `${f.replace(/\.json$/, '')}.unreadable-${Date.now()}.json`; await fs.rename(f, aside); debug.log('note', `${path.basename(f)} could not be read: kept aside, whole, as ${path.basename(aside)}; a new one starts`); return []; };
+const appendList = <T>(f: string, items: T[], keep: number) => oneAtATime(f, async () => { const all = await readList<T>(f); all.push(...items); await writeWhole(f, JSON.stringify(all.slice(-keep))); return true; });
 export const backend = {
   state: () => loadState(),
   // One settings change at a time: each reads the whole state, merges its part and saves; two at once lost one (the Jauvex agent's cleared
@@ -167,12 +179,12 @@ export const backend = {
   // What the app answered by itself in a session (an order for the app, and its reply): kept next to the session so it survives a restart,
   // each after the message it followed (data/notes/<session>.json). The provider never sees these lines.
   notes: async (sessionId: string): Promise<{ after: string; message: ChatMessage }[]> => { try { return JSON.parse(await fs.readFile(notesFile(sessionId), 'utf8')); } catch { return []; } },
-  noteAppend: async (sessionId: string, entries: { after: string; message: ChatMessage }[]) => { const f = notesFile(sessionId); let all: { after: string; message: ChatMessage }[] = []; try { all = JSON.parse(await fs.readFile(f, 'utf8')); } catch { /* first */ } all.push(...entries); await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, JSON.stringify(all.slice(-500))); return true; },
+  noteAppend: (sessionId: string, entries: { after: string; message: ChatMessage }[]) => appendList(notesFile(sessionId), entries, 500),
   sessionExists: async (id: string, sessionId: string): Promise<boolean> => { const { project } = await projectOr404(id); if (providerOf(project, sessionId) !== 'claude') return true; return !!(await getSessionInfo(sessionId, { dir: project.path }).catch(() => undefined)); },
   /** The app's own folder as a project, for the Jauvex agent: created once, marked builtin, never listed with the others. */
   // The Jauvex agent's transcript, kept by the app (user and assistant text only): the one session that moves between providers.
   jauvexTranscript: async (): Promise<JauvexEntry[]> => { try { return JSON.parse(await fs.readFile(JAUVEX_LOG, 'utf8')) as JauvexEntry[]; } catch { return []; } },
-  jauvexAppend: async (entry: JauvexEntry) => { let all: JauvexEntry[] = []; try { all = JSON.parse(await fs.readFile(JAUVEX_LOG, 'utf8')); } catch { /* first entry */ } all.push(entry); if (all.length > 4000) all.splice(0, all.length - 4000); await fs.writeFile(JAUVEX_LOG, JSON.stringify(all)); return true; },
+  jauvexAppend: (entry: JauvexEntry) => appendList(JAUVEX_LOG, [entry], 4000),
   jauvexHandover: async (note: string, from: string, to: string) => { await fs.writeFile(path.join(path.dirname(STATE_FILE), 'jauvex-handover.md'), `# Handover note\n\nFrom ${from} to ${to}, ${new Date().toISOString()}.\n\n${note}\n`); return true; },
   /** Once at a time: two callers at start used to make two entries, and the repair then removed the one the window held. */
   jauvexProject: (): Promise<Project> => (jxMaking ??= (async () => { await ensureHome(JAUVEX_HOME, jauvexReadme()); const state = await loadState(); const have = state.projects.find((x) => x.builtin === 'jauvex'); if (have) return have;
@@ -212,6 +224,17 @@ export const backend = {
     const end = before === undefined ? all.length : Math.max(0, Math.min(all.length, before));
     const start = Math.max(0, end - Math.min(500, Math.max(1, limit)));
     return { total: all.length, start, messages: all.slice(start, end) };
+  },
+  /** The Jauvex agent's chat, which the app keeps its own copy of, past the start of that copy (T-272, from the other edition's fix; the user,
+   *  2026-10-01: "There's not even a load earlier messages"): the agent's own session's messages before the first of `uuids` it has (the
+   *  copy's earliest, or the first shown), at most `limit`, and how many come before those. None when it has none of them: the copy is not
+   *  this session's (an earlier provider's), and nothing is guessed. */
+  sessionBefore: async (id: string, sessionId: string, uuids: string[], limit = 150): Promise<{ messages: ChatMessage[]; left: number }> => {
+    const { project } = await projectOr404(id); const provider = providerOf(project, sessionId);
+    const all = provider === 'codex' ? await codex.transcript(sessionId) : provider === 'grok' ? await grok.transcript(sessionId, project.path) : await transcript(project.path, sessionId);
+    const want = new Set((Array.isArray(uuids) ? uuids : []).filter((u): u is string => typeof u === 'string').slice(0, 400)); const i = all.findIndex((m) => want.has(m.uuid));
+    if (i <= 0) return { messages: [], left: 0 }; const start = Math.max(0, i - Math.min(500, Math.max(1, Number(limit) || 150)));
+    return { messages: all.slice(start, i), left: start };
   },
   // The name is written where the provider keeps it (a custom-title entry in Claude's session file, the thread's name in Codex, the
   // session's title in Grok), so it is the same name in Claude Code, in Codex, in Grok, and here.

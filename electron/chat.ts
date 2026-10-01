@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { query, tool, createSdkMcpServer, type CanUseTool, type PermissionResult, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
 import type { AgentRequest } from '../shared/types.js';
-import { clientBriefing, providerOf, type Attachment, type ChatEvent, type ChatStart, type PermissionDecision } from '../shared/types.js';
+import { clientBriefing, providerOf, type Attachment, type ChatEvent, type ChatStart, type PermissionDecision, type Provider } from '../shared/types.js';
 import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk';
 import { normalize, projectOr404, saveContext, saveState } from './backend.js';
 import { autoCompactPct, claudeCompactEnv, claudeUsed, tooLong, type ContextUsage } from '../shared/context.js';
@@ -13,6 +13,22 @@ import { claudeExe } from './account.js';
 import { folderFiles } from './workfiles.js';
 import { claudePermissionOptions } from './claude-permissions.js';
 import { effectivePermissions } from '../shared/permissions.js';
+import * as debug from './debug.js';
+import { agentWho, eventLines, steered, turnStart, type AgentLine } from '../shared/agent-log.js';
+
+// Every turn of every provider in the debugger's Model tab and voice-debug.log (T-260): what was sent, each step and how it ended.
+const whoOf = new Map<string, string>(); // the chat's agent, for what is steered into its turn
+function logged(req: ChatStart, provider: Provider, folder: string, send: (e: ChatEvent) => void): (e: ChatEvent) => void {
+  let who = agentWho(provider, req.sessionId, folder); whoOf.set(req.chatId, who);
+  const put = (l: AgentLine) => debug.log('model', l.text, { by: 'agent', who, ms: l.ms, detail: l.detail });
+  put(turnStart({ text: req.text, model: req.model, effort: req.effort, compact: req.compact, voice: req.voice, images: req.images?.length, hidden: req.hidden }));
+  return (e) => {
+    if (e.type === 'init') { who = agentWho(provider, e.sessionId, folder); whoOf.set(req.chatId, who); }
+    try { for (const l of eventLines(e)) put(l); } catch { /* a line that cannot be made never stops the turn */ }
+    if (e.type === 'done') whoOf.delete(req.chatId);
+    send(e);
+  };
+}
 
 type Live = { push: (text: string, images?: Attachment[]) => void; q: Query; abort: AbortController; pending: Map<string, (d: PermissionDecision) => void>; always: Set<string>; projectId: string; sessionId: string | null };
 const live = new Map<string, Live>();
@@ -30,6 +46,7 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   // The session's provider decides who continues it; only a new session takes the one the UI asked for.
   const provider = req.sessionId ? providerOf(project, req.sessionId) : req.provider ?? 'claude';
   req = { ...req, permissions: effectivePermissions(provider, req.permissions, state.ui?.providerPermissions) }; // the app's setting for this provider, when there is one, wins
+  send = logged(req, provider, project.name, send);
   if (provider === 'codex') return codex.startChat(req, send);
   if (provider === 'grok') return grok.startChat(req, send);
   const abort = new AbortController();
@@ -109,8 +126,10 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
         if (m.parent_tool_use_id) continue;
         if (m.type === 'assistant') { const used = claudeUsed(m.message.usage); if (used > 0 && used !== ctx?.used) tell({ window: 0, ...ctx, used, at: Date.now(), model: m.message.model || model }); } // what this request carried (the harness's own error messages carry nothing)
         const msg = normalize({ type: m.type, uuid: m.uuid ?? randomUUID(), message: m.message, ...(m.type === 'user' && m.isSynthetic ? { isSynthetic: true } : {}) });
-        // A message that did not fit comes back as an assistant message of the harness's own: a red card, never read as an answer.
-        if (msg && m.type === 'assistant' && m.error && tooLong(null, msg.blocks.map((b) => (b.type === 'text' ? b.text : '')).join(' '))) msg.error = true;
+        // A message of the harness's own, marked by the SDK (a message that did not fit, an organisation that disabled subscription access, an
+        // allowance run out, an overload): a red card, never read as an answer (T-270: the window guessed it from the words, and took answers
+        // for failures). One cut off at the output limit still carries its answer.
+        if (msg && m.type === 'assistant' && m.error && m.error !== 'max_output_tokens') msg.error = true;
         if (msg) send({ chatId, type: 'message', message: msg });
       } else if (m.type === 'result') {
         if ((m as { queued_turn_count?: number }).queued_turn_count || inbox.length) continue; // something handed over mid-turn still has its own turn coming: this chat is not done yet
@@ -165,6 +184,7 @@ function jauvexTools(chatId: string) {
   ] });
 }
 export async function steerChat(chatId: string, text: string, images?: Attachment[]): Promise<boolean> {
+  const who = whoOf.get(chatId); if (who) { const l = steered(text, images?.length); debug.log('model', l.text, { by: 'agent', who, detail: l.detail }); }
   const entry = live.get(chatId); if (!entry) return other(chatId).steerChat(chatId, text, images);
   entry.push(text, images); return true;
 }

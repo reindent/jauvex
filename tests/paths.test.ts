@@ -8,7 +8,7 @@ import path from 'node:path';
 let failed = 0; const check = (name: string, ok: boolean, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` ${detail}` : ''}`); if (!ok) failed++; };
 
 const home = mkdtempSync(path.join(os.tmpdir(), 'jx-home-'));
-const load = (env: Record<string, string>): { DATA_DIR: string; JAUVEX_HOME: string } => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e',
+const load = (env: Record<string, string>): { DATA_DIR: string; JAUVEX_HOME: string } => JSON.parse(execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', // tsx: a Node without type stripping (Ubuntu's) loads the .ts too
   "const m = await import('./electron/paths.ts'); console.log(JSON.stringify({ DATA_DIR: m.DATA_DIR, JAUVEX_HOME: m.JAUVEX_HOME }))"], { env: { PATH: process.env.PATH ?? '', HOME: home, ...env }, encoding: 'utf8' }));
 const plain = load({});
 check('with nothing set, the home is ~/.jauvex and the data ~/.jauvex/personal', plain.JAUVEX_HOME === path.join(home, '.jauvex') && plain.DATA_DIR === path.join(home, '.jauvex', 'personal'), JSON.stringify(plain));
