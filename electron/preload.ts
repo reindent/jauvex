@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('desktop', {
   appRestart: (): Promise<boolean> => ipcRenderer.invoke('app:restart'),
   appUpdateStatus: (): Promise<unknown> => ipcRenderer.invoke('app:update:status'),
   appUpdate: (): Promise<unknown> => ipcRenderer.invoke('app:update:run'),
+  appUpdateCheck: (): Promise<unknown> => ipcRenderer.invoke('app:update:check'),
   onAppUpdate: (cb: (s: unknown) => void): (() => void) => { const h = (_e: unknown, s: unknown) => cb(s); ipcRenderer.on('app:update', h); return () => ipcRenderer.removeListener('app:update', h); },
   appReset: (): Promise<boolean> => ipcRenderer.invoke('app:reset'),
   openExternal: (url: string): Promise<boolean> => ipcRenderer.invoke('open:external', url),

@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.3.2, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.3.3, for macOS; Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -34,6 +34,10 @@ otherwise the app fetches the same install command, checks that it installs the 
 (it rebuilds the app on your Mac and opens it), opens the old app again if it does not finish, and removes it; its log is
 `update/update.log`. When the app opens on a newer version than the one it last ran, the Jauvex agent's chat opens and it tells you it is
 updated and what the versions since bring, from the app's own `CHANGELOG.md`, then checks that your folders and agents are all there (T-218).
+**What's new**, at the foot of the sidebar, asks jauvex.reindent.com right then whether a newer version is out (T-245). Its notes open at
+once, the newest releases from this copy's `CHANGELOG.md`, under a line that says what the check found: the latest already, a newer one
+that this copy (a clone) updates with git, or the site out of reach. A newer version on the app the install command made opens the Jauvex
+agent's chat instead: it says what that version brings and asks. While one is out its notice takes What's new's place and does the same.
 Only the app the install command made updates itself; a clone updates with git (T-165). To remove it, quit it and delete
 `Jauvex.app` and `~/.jauvex/personal/app`; its settings stay in `~/.jauvex/personal`. To work on the code, clone this
 repository instead: `npm start` runs it from the clone, and `npm run app` makes the same app in `tmp/mac-app/Jauvex.app`

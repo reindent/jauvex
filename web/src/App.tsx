@@ -11,8 +11,8 @@ import { Copy, EyeOff as HideIcon, Pencil, Bug, ArrowLeft, ArrowRight, ArrowUp, 
 import { localSrc, md } from './md';
 import { Pane, type PaneTarget } from './Pane';
 import { findAgents, matchSession, shortIds, shortTitle } from '../../shared/roster';
-import { justUpdated, shouldAsk, updatedNote, updateNote, type UpdateStatus } from '../../shared/update';
-import { changelogSince } from '../../shared/changelog';
+import { checkLine, justUpdated, offersUpdate, shouldAsk, updatedNote, updateNote, type CheckedStatus, type UpdateStatus } from '../../shared/update';
+import { changelogSince, recentNotes } from '../../shared/changelog';
 import { answerIs, stopSaysMore } from '../../shared/orders';
 import { ACK_MODEL_KEY, DICTATED_TAG, JAUVEX_HELLO, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
 import { ago, api, pickFolder, size } from './api';
@@ -335,6 +335,23 @@ export default function App() {
       if (up) { const notes = changelogSince(await api.changelog().catch(() => ''), up.from, u.current); open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex' });
         if (!(await reachJauvexRef.current(updatedNote(up.from, u.current, notes)))) { greeted.current = ''; return; } }
       if (ui?.lastVersion !== u.current) await api.setUi({ lastVersion: u.current }); })(); }, [update, jauvex]); // eslint-disable-line react-hooks/exhaustive-deps
+  // What's new (T-245; the user, 2026-09-30: "when you click what's new, it should check if there's a new version"): a click asks the site right
+  // then. A newer version out, on the copy that updates itself: the Jauvex agent says what it brings and asks, in its chat, as the update notice
+  // does. Otherwise the notes of the newest releases, from this copy's own CHANGELOG.md, under a line that says what the check found. The notes
+  // open at once, "checking" on top, so a slow or absent network never leaves the click unanswered (as Pro's c827f78 does); the notice of a
+  // version already known skips them.
+  const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>(null); const [checking, setChecking] = useState(false);
+  const openWhatsNew = async () => {
+    if (checking) return; setChecking(true);
+    try {
+      if (!offersUpdate(update)) setWhatsNew({ line: 'Checking for a newer version…', notes: recentNotes(await api.changelog().catch(() => '')) || 'No notes in this copy.' });
+      const s: CheckedStatus | null = await window.desktop.appUpdateCheck().catch(() => null);
+      if (s && offersUpdate(s) && jauvex) { setWhatsNew(null); offering.current = s.latest!; setUpdate(s); open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex' });
+        if (await reachJauvexRef.current(updateNote(s.current, s.latest!, s.notes))) await api.setUi({ updateAsked: s.latest }); return; }
+      if (s) setUpdate(s);
+      setWhatsNew((w) => w && { ...w, line: checkLine(s, __APP_VERSION__) }); // closed meanwhile: it stays closed
+    } finally { setChecking(false); }
+  };
   const deliverTo = async (projectId: string, sessionId: string, text: string, replyTo?: Sel): Promise<boolean> => {
     if (jauvex && projectId === jauvex.id) return reachJauvex(text, replyTo);
     const inView = embedded.current.get(sessionId); if (inView) { await inView.deliver(text, replyTo); return true; } // a workflow's chat, where it is (T-205)
@@ -556,7 +573,9 @@ export default function App() {
               <div className="side-voice-text"><button className="side-voice-name" onClick={() => { if (o) open(o); }}>{name}</button><span className="side-voice-phase">{voiceUi.micMuted ? 'Muted' : PHASE_LABEL[voiceUi.phase]}</span></div>
               <div className="side-voice-btns"><button className={`${voiceUi.micMuted ? 'muted' : ''}${voiceUi.muteIn != null ? ' counting' : ''}`} title={voiceUi.muteIn != null ? `Muting in ${voiceUi.muteIn} s` : voiceUi.micMuted ? 'Unmute microphone' : 'Mute microphone'} onClick={voiceUi.toggleMic}>{voiceUi.micMuted ? <MicOff size={15} /> : <Mic size={15} />}{voiceUi.muteIn != null && <span className="mute-count" key={voiceUi.muteIn}>{voiceUi.muteIn}</span>}</button><button className={voiceUi.speakerOff ? 'muted' : ''} title={voiceUi.speakerOff ? 'Turn the voice back on' : 'Silence the voice'} onClick={voiceUi.toggleSpeaker}>{voiceUi.speakerOff ? <VolumeX size={15} /> : <Volume2 size={15} />}</button><button title="End voice chat" onClick={voiceUi.end}><X size={15} /></button></div>
             </div>); })()}
-          <footer className="side-foot"><button className="foot-btn" title={SIGN_IN_IN_APP ? 'Accounts: who each provider is signed in as; sign out, sign in, switch' : 'Accounts: who each provider is signed in as, and how to sign in with its own command line'} onClick={() => setAccountsOpen(true)}>Jauvex <em>{__APP_VERSION__}</em></button>{update?.available && update.installed && <span className="foot-update" title={`Jauvex ${update.latest} is out. Tell the Jauvex agent “update the app”: it closes, rebuilds itself in a few minutes and opens again.`}>{update.latest} is out</span>}<button className="icon-btn sm" title="Jauvex settings" onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
+          <footer className="side-foot"><button className="foot-btn" title={SIGN_IN_IN_APP ? 'Accounts: who each provider is signed in as; sign out, sign in, switch' : 'Accounts: who each provider is signed in as, and how to sign in with its own command line'} onClick={() => setAccountsOpen(true)}>Jauvex <em>{__APP_VERSION__}</em></button>{update?.available && update.installed ? <button className="foot-update" disabled={checking} title={`Jauvex ${update.latest} is out: click and the Jauvex agent tells you what it brings and asks whether to update (it closes the app, rebuilds it in a few minutes and opens it again).`} onClick={() => void openWhatsNew()}>{update.latest} is out</button>
+            : <button className="foot-news" disabled={checking} title="What each version brings, after asking jauvex.reindent.com whether a newer one is out" onClick={() => void openWhatsNew()}>{checking ? 'Checking…' : "What's new"}</button>}{/* while a newer version is out its notice takes this place, and a click asks about it (T-245) */}<button className="icon-btn sm" title="Jauvex settings" onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
+          {whatsNew && <WhatsNew line={whatsNew.line} notes={whatsNew.notes} onClose={() => setWhatsNew(null)} />}
           {settingsOpen && <SettingsPanel autoCompact={autoCompact} onAutoCompact={changeAutoCompact} signedIn={signedIn} welcomeNext={welcomeNext} onWelcomeNext={(on) => { setWelcomeNext(on); void api.setUi({ welcomed: !on }); }} onOpenWelcome={() => { setSettingsOpen(false); setWelcomeOpen(true); }} defaultProvider={defaultProvider} onDefaultProvider={(p) => { setDefaultProvider(p); localStorage.setItem('cvc.provider', p); void api.setUi({ defaultProvider: p }); }} showJauvex={showJauvex} onShowJauvex={(on) => { setShowJauvex(on); void api.setUi({ showJauvex: on }); }} jauvexMove={jauvexMove} onJauvexMove={(m) => { setJauvexMove(m); void api.setUi({ jauvexMove: m }); }} onClose={() => setSettingsOpen(false)} />}
           {accountsOpen && <Accounts onClose={() => setAccountsOpen(false)} />}
           {welcomeOpen && <Welcome jauvexMove={jauvexMove} onJauvexMove={(m) => { setJauvexMove(m); void api.setUi({ jauvexMove: m }); }} defaultProvider={defaultProvider} onDefault={(p) => { setDefaultProvider(p); localStorage.setItem('cvc.provider', p); void api.setUi({ defaultProvider: p }); }} onDone={(start) => { setWelcomeOpen(false); setWelcomeNext(false); void api.setUi({ welcomed: true });
@@ -623,6 +642,19 @@ function RenameInput({ initial, onDone, onCancel }: { initial: string; onDone: (
 const DEFAULT_AGENT = 'Jauvex';
 /** What deleting a workflow takes away, asked before it happens. */
 const deleteWorkflowText = (w: WorkflowInfo, folder: string) => `Delete the workflow "${w.name}"?\n\n${w.file} and its folder, workflows/${workflowBase(w.file)}/ (its steps' instructions, its ${w.runs === 1 ? 'run' : `${w.runs} runs`} and its versions), are deleted from ${folder}. The app cannot undo this.`;
+function WhatsNew({ line, notes, onClose }: { line: string; notes: string; onClose: () => void }) {
+  return (
+    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal whats-new" role="dialog" aria-label="What's new in Jauvex">
+        <div className="modal-head"><div><h3>What's new in Jauvex</h3><p>From the changelog: what each version brings.</p></div><button className="icon-btn" title="Close" onClick={onClose}><X size={16} /></button></div>
+        <p className="whats-new-check">{line}</p>
+        <div className="md whats-new-body" dangerouslySetInnerHTML={{ __html: md(notes, '') }} />
+        <div className="modal-foot"><span /><button autoFocus onClick={onClose}>Close</button></div>
+      </div>
+    </div>
+  );
+}
+
 function Unseen({ n }: { n: number }) {
   return n > 0 ? <span className="row-unread" title={`${n} new ${n === 1 ? 'reply' : 'replies'}: open the agent to read ${n === 1 ? 'it' : 'them'}`}>{badgeText(n)}</span> : null;
 }

@@ -26,5 +26,17 @@ export function changelogSections(md: string): ChangelogSection[] {
 export function changelogSince(md: string, from: string | null, to: string): string {
   return changelogSections(md)
     .filter((s) => (s.version === to || newer(to, s.version)) && (from ? newer(s.version, from) : s.version === to))
-    .map((s) => `## ${s.version}${s.date ? `: ${s.date}` : ''}\n\n${s.body}`).join('\n\n');
+    .map(section).join('\n\n');
 }
+
+/** The newest `n` releases, each under its heading: what the What's new window shows (T-245). Empty when the changelog has none. */
+export const recentNotes = (md: string, n = 8): string => changelogSections(md).slice(0, n).map(section).join('\n\n');
+
+const section = (s: ChangelogSection): string => `## ${s.version}${s.date ? `: ${s.date}` : ''}\n\n${unwrap(s.body)}`;
+/** The file wraps its lines at a fixed width; shown as markdown, every wrap became a line break in mid-sentence (T-245, the What's new
+ *  window). A line that goes on the one above (not a list item, a heading or a blank) joins it. */
+const unwrap = (body: string): string => body.split('\n').reduce<string[]>((out, line) => {
+  const t = line.trim(), prev = out[out.length - 1];
+  if (t && prev !== undefined && prev.trim() && !/^([-*+]|\d+\.)\s|^#/.test(t)) out[out.length - 1] = `${prev} ${t}`; else out.push(line);
+  return out;
+}, []).join('\n');

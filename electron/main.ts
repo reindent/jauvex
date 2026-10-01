@@ -114,6 +114,9 @@ app.whenReady().then(async () => {
   else { const check = () => void updates.check().then((known) => { if (known) offerUpdate(); }); check(); setInterval(check, 6 * 3600_000).unref(); }
   ipcMain.handle('app:update:status', () => updates.status());
   ipcMain.handle('app:update:run', () => updates.run());
+  // What's new (T-245): the site is asked right then, and the window that asked takes the answer (no 'app:update' as well: the update
+  // offer would go out beside the click's own)
+  ipcMain.handle('app:update:check', async () => { const reached = await updates.check(); return { ...(await updates.status()), reached }; });
   adoptShellPath();
   if (HIDDEN) app.dock?.hide(); // an automated check must not put a second app icon in the user's Dock
   else app.dock?.setIcon(path.join(ROOT, 'assets', 'icon.png')); // launched as the stock Electron.app, so the Dock icon is set at runtime
