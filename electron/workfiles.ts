@@ -159,6 +159,12 @@ export async function listBoards(dir: string): Promise<BoardInfo[]> {
 const boardPath = (dir: string, file: string) => { if (!/^(boards\/[^/]+\.md|[A-Z]+\.md)$/.test(file) || isDoneFile(file)) throw new Error('not a board file'); return path.join(dir, file); };
 export async function readBoard(dir: string, file: string): Promise<string> { return fs.readFile(boardPath(dir, file), 'utf8'); }
 /** A board and its done file ('' when it has none). */
+/** When each board of a folder last changed, its done file counted with it (a task finished writes both): for the dashboard's refresh (T-279). */
+export async function boardTimes(dir: string): Promise<{ file: string; at: number }[]> {
+  const files: string[] = []; for (const f of BOARD_ROOTS) if (await exists(path.join(dir, f))) files.push(f);
+  try { for (const f of (await fs.readdir(path.join(dir, 'boards'))).filter((f) => f.endsWith('.md') && !isDoneFile(f))) files.push(`boards/${f}`); } catch { /* no boards folder */ }
+  return Promise.all(files.map(async (f) => { const t = await Promise.all([f, doneFileOf(f)].map((x) => fs.stat(path.join(dir, x)).then((st) => st.mtimeMs, () => 0))); return { file: f, at: Math.max(...t) }; }));
+}
 export async function readBoardFiles(dir: string, file: string): Promise<{ md: string; done: string }> { const md = await readBoard(dir, file); const done = await fs.readFile(path.join(dir, doneFileOf(file)), 'utf8').catch(() => ''); return { md, done }; }
 /** One task's status, set by rewriting the files (boards format v1): to do or doing in place; done moves it to the top of the done file with
  *  the day; a done one (where: 'done', its line in the done file) reopened goes to the top of the board's first section. The board is

@@ -7,6 +7,7 @@
 //           run --workflow file|name [--folder ..] | runs --workflow .. | decide --workflow .. --outcome ".." [--note ".."] (the user's decision at a gate, on their word) | stop-run --workflow .. | resend-run --workflow ..
 //           move-workflow --workflow file|name --to <folder> [--folder ..] (with its chat's session) | move-session --session id|title --to <folder> [--folder ..]
 //           update [--check] [--now] (the app the install command made, to the latest version: it closes, rebuilds and opens again)
+//           theme [--custom '<palette JSON>' | --set light|dark|system] (the app's colours: a palette of the user's own, or one of the app's themes)
 // Prints the JSON result; exits 1 when the app said no or did not answer (is it running? same data folder?).
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -37,6 +38,7 @@ const shapes = {
   rename: () => ({ type: 'rename', folder: flags.folder, session: flags.session, title: flags.title ?? bare.join(' ') }),
   settings: () => ({ type: 'settings', permissionProvider: flags['permission-provider'], permissionMode: flags['permission-mode'], defaultProvider: flags['default-provider'], showJauvex: bool('show-jauvex'), welcomeNext: bool('welcome-next'), jauvexMove: flags['jauvex-move'], autoCompact: flags['auto-compact'] === undefined ? undefined : /^provider$/i.test(String(flags['auto-compact'])) ? 0 : Number(String(flags['auto-compact']).replace('%', '')), workflowMissed: flags['workflow-missed'] }), // provider: the provider decides
   update: () => ({ type: 'update', check: flags.check ? true : undefined, now: flags.now ? true : undefined }), // the installed app, to the latest version
+  theme: () => ({ type: 'theme', custom: typeof flags.custom === 'string' ? flags.custom : undefined, set: flags.set }), // T-278
   welcome: () => ({ type: 'welcome' }), reload: () => ({ type: 'reload-ui' }), restart: () => ({ type: 'restart-app' }),
 };
 if (!cmd || !shapes[cmd]) { console.error(`usage: node scripts/jauvex.ts <${Object.keys(shapes).join('|')}> [--flag value ...]`); process.exit(2); }

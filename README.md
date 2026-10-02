@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.4.1, for macOS and Linux (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.5.0, for macOS and Linux (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -138,8 +138,33 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   window also does every 15 seconds and when it comes to the front.
 - **A light theme** (T-248), and the app follows the Mac: by default it is light, dark or auto as the Mac's own Appearance is set, and
   changes with it. Settings, General, Appearance can set Light or Dark for the app alone, or go back to Same as the Mac; applied at once and
-  kept. Light is "Paper": a white chat, a light grey left pane beside it, an indigo accent; a window paints in the chosen look from its first frame (it is also in the window's storage). Every colour of the stylesheet is
+  kept. Light is "Paper": a white chat, an off-white left pane beside it, pure greys with no tint and near-black text, and the blue accent the one colour (the user, 2026-10-01: "come a bit closer for the other colors to this [TypeSafe] ... we definitely should have a bit of blue because it's our color"); a window paints in the chosen look from its first frame (it is also in the window's storage). Every colour of the stylesheet is
   named, with a light counterpart, in the block at its end.
+- **Custom colours, with the Jauvex agent** (T-278; the user, 2026-10-01: "one more that says Custom. And when you do custom ... You're
+  going to talk with the Jauvex agent ... it will give you three ideas ... of colors. And then once you select one, You will be able to ...
+  modify ... to the colors that you want"). Settings, General, Appearance has a fourth choice, Custom: Settings close, the Jauvex agent's
+  chat opens, and the agent asks what you feel like, offers three palettes, puts on the one you pick and changes it as you say. A palette
+  is a base (the light or the dark theme, whose other colours it keeps) and the colours it changes (the chat, the left pane, text, the
+  accent ...), put on at once with `node scripts/jauvex.ts theme --custom '<JSON>'` and kept, a new window painting in it from its first
+  frame; one whose text would be hard to read (body text under 4.5:1 on its background, quiet text or the accent under 3:1) is refused,
+  with why. `theme` says the look on now, `theme --set light|dark|system` goes back. `shared/palette.ts` (`tests/palette.test.ts`),
+  `tests/window/custom-theme.test.ts`.
+- **The dashboard** (T-276; the user, 2026-10-01: "a little dashboard, a half screen or one third of a screen on top, with the top three or
+  top five tasks that you need to do ... and some important things, notes", "people can customize their dashboards", and on the Jauvex
+  agent in this edition: "this should be available ... for ... the main Jauvex agent in the personal"). The Jauvex agent's chat opens with
+  it on top: a greeting with the day and the counts; Needs you: what the app knows waits on you (a workflow step waiting for you, an agent
+  asking for permission, new replies, each with Open), then what the agent's `DASHBOARD.md` says waits on you; Today: the workflows' runs;
+  Working now: your agents at work; Pinned: the agent's notes. The agent keeps `DASHBOARD.md` in its own folder (`~/.jauvex`), a `## You`
+  section and `## Pinned` (`shared/dashboard.ts`, briefed in its instructions); the window reads it while the chat is on screen, every 30
+  seconds and when it comes forward. Yours to arrange, kept on this computer: one third of the view, half, or folded to one line (three
+  line icons, in the folders' style), and the cards you keep (`⋯`, which shows whole over the chat even folded). `web/src/Dashboard.tsx`;
+  `tests/dashboard.test.ts`, `tests/window/dashboard-window.test.ts`. The agent keeps it current (T-279; the user, 2026-10-01: "on
+  initialization ... it should rebuild this dashboard ... Or by Jauvex in the case of the personal version", "smart ... not too abuse of
+  the workspace agent"): while you look at it, the app asks the agent to bring it up to date when it is due (no file yet, a board of your
+  folders changed since, or six hours old), never twice within half an hour, three hours before asking again when it was not done, and
+  only once the agent has been idle for 20 seconds and you are not talking to it by voice (opened, its chat ran the request at once, and
+  your first words went into that turn); the agent decides what matters most (`dashboardDue`, `dashboardNote`). It can be turned off: the
+  `⋯` menu, or Settings, General, Dashboard; off, it is neither shown nor read, and asks nothing. `tests/window/dashboard-refresh.test.ts`.
 - **The Jauvex agent**: one session that always exists, pinned at the top of the sidebar, with the app's own folder as
   its project and a briefing about the app itself. It is the entry point for everything about the app: restart it,
   update it (`git pull`, build, relaunch, on request), install what is missing, explain how it works, create agents and
