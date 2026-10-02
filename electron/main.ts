@@ -120,7 +120,7 @@ async function createWindow(): Promise<void> {
   win.on('blur', () => { if (!mini?.isFocused()) showMini(); });
   win.on('focus', () => mini?.hide());
   win.on('closed', () => { mini?.destroy(); mini = null; win = null; });
-  { const w = win; void import('./backend.js').then((m) => m.backend.state()).then((st) => { const t = st.ui?.theme; if (t === 'dark' || t === 'light') w.setBackgroundColor(t === 'dark' ? '#141413' : '#ffffff'); }, () => { /* the Mac's own */ }); }
+  { const w = win; void import('./backend.js').then((m) => m.backend.state()).then((st) => { const t = st.ui?.theme; const c = t === 'custom' ? st.ui?.customTheme : undefined; /* T-278: the user's own colours */ const bg = c ? (c.colors.bg ?? (c.base === 'dark' ? '#141413' : '#ffffff')) : t === 'dark' ? '#141413' : t === 'light' ? '#ffffff' : null; if (bg) w.setBackgroundColor(bg); }, () => { /* the Mac's own */ }); }
   if (DEV_URL) await win.loadURL(DEV_URL); else await win.loadFile(path.join(ROOT, 'dist', 'index.html'));
 }
 
@@ -148,7 +148,8 @@ app.whenReady().then(async () => {
   if (HIDDEN) app.dock?.hide(); // an automated check must not put a second app icon in the user's Dock
   else app.dock?.setIcon(path.join(ROOT, 'assets', 'icon.png')); // launched as the stock Electron.app, so the Dock icon is set at runtime
   // No server: the renderer talks to this process over IPC. One channel, a dispatch table.
-  const { backend } = await import('./backend.js');
+  const { backend, onDashboardDue } = await import('./backend.js');
+  onDashboardDue((d) => { if (win && !win.isDestroyed()) win.webContents.send('dashboard:due', d); }); // the window asks the Jauvex agent to bring its dashboard up to date (T-279)
   ipcMain.handle('api', async (_e, method: string, ...args: unknown[]) => {
     const fn = (backend as Record<string, (...a: unknown[]) => Promise<unknown>>)[method];
     if (typeof fn !== 'function') throw new Error(`unknown method: ${method}`);

@@ -20,7 +20,7 @@ check('nothing chosen, a dark Mac: the window is dark', (await until("document.d
 await mac('light');
 check('...the Mac turns light (or Auto turns it at dusk): the window follows at once', !!(await until("document.documentElement.dataset.theme === 'light'")) && bright(await js(bg)).every((x) => x > 200), `${await theme()} ${await js(bg)}`);
 await js("document.querySelector('button[title=\"Jauvex settings\"]').click()"); await until("!!document.querySelector('.theme-pick')");
-check('Settings say so: Same as the Mac is the choice, the first of the three', (await js("[...document.querySelectorAll('.theme-pick')].map((b) => b.textContent + (b.classList.contains('on') ? '*' : '')).join(', ')")) === 'Same as the Mac*, Light, Dark', await js("[...document.querySelectorAll('.theme-pick')].map((b) => b.textContent + (b.classList.contains('on') ? '*' : '')).join(', ')"));
+check('Settings say so: Same as the Mac is the choice, the first of the four (Custom: T-278)', (await js("[...document.querySelectorAll('.theme-pick')].map((b) => b.textContent + (b.classList.contains('on') ? '*' : '')).join(', ')")) === 'Same as the Mac*, Light, Dark, Custom', await js("[...document.querySelectorAll('.theme-pick')].map((b) => b.textContent + (b.classList.contains('on') ? '*' : '')).join(', ')"));
 check('...its text dark', /rgb\((\d{1,2}), (\d{1,2}), (\d{1,2})\)/.test(await js("getComputedStyle(document.querySelector('.modal.settings h2')).color")), await js("getComputedStyle(document.querySelector('.modal.settings h2')).color"));
 await shot('settings');
 await pick('dark');

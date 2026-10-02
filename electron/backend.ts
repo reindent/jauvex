@@ -13,8 +13,9 @@ import * as codex from './codex.js';
 import * as grok from './grok.js';
 import type { ContextUsage } from '../shared/context.js';
 import * as jev from './jev.js';
-import { listBoards, readBoardFiles, setBoardStatus, newBoard, deleteBoard, listWorkflows, readWorkflow, saveWorkflow, saveWorkflowStep, removeWorkflowStep, deleteWorkflow, workflowVersions, restoreVersion, readVersion, newWorkflow, readRun, newRun, saveRun, workflowChat, setWorkflowChat, moveWorkflow as moveWorkflowFiles } from './workfiles.js';
+import { listBoards, readBoardFiles, setBoardStatus, newBoard, deleteBoard, listWorkflows, readWorkflow, saveWorkflow, saveWorkflowStep, removeWorkflowStep, deleteWorkflow, workflowVersions, restoreVersion, readVersion, newWorkflow, readRun, newRun, saveRun, workflowChat, setWorkflowChat, moveWorkflow as moveWorkflowFiles, boardTimes } from './workfiles.js';
 import { moveClaudeSession } from './move.js';
+import { DASHBOARD_FILE, dashboardDue, type DashboardDue } from '../shared/dashboard.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 // CVC_ROOT is set by the Electron main process (its bundle lives in dist-electron/).
@@ -170,6 +171,21 @@ const readList = async <T>(f: string): Promise<T[]> => { let text: string; try {
   try { const v: unknown = JSON.parse(text); if (Array.isArray(v)) return v as T[]; } catch { /* kept aside below */ }
   const aside = `${f.replace(/\.json$/, '')}.unreadable-${Date.now()}.json`; await fs.rename(f, aside); debug.log('note', `${path.basename(f)} could not be read: kept aside, whole, as ${path.basename(aside)}; a new one starts`); return []; };
 const appendList = <T>(f: string, items: T[], keep: number) => oneAtATime(f, async () => { const all = await readList<T>(f); all.push(...items); await writeWhole(f, JSON.stringify(all.slice(-keep))); return true; });
+// The dashboard kept current by the Jauvex agent (T-279): the window reads the file while it shows it; when it is due (shared/dashboard.ts) the
+// window is told, and asks the agent. When the agent was last asked, in memory; one check at a time (two reads at once asked twice).
+let dashAsked: number | null = null; let dashChecking = false;
+let dashSink: (d: DashboardDue) => void = () => {};
+export const onDashboardDue = (fn: typeof dashSink): void => { dashSink = fn; };
+async function dashboardCheck(file: string): Promise<void> {
+  if (dashChecking) return; dashChecking = true;
+  try {
+    const state = await loadState(); const fileAt = (await fs.stat(file).catch(() => null))?.mtimeMs ?? null;
+    const times = (await Promise.all(state.projects.filter((p) => !p.builtin).map(async (p) => (await boardTimes(p.path).catch(() => [])).map((t) => ({ name: `${p.name}/${t.file}`, at: t.at }))))).flat();
+    const now = Date.now(); const due = dashboardDue(now, { fileAt, boardsAt: Math.max(0, ...times.map((t) => t.at)), askedAt: dashAsked });
+    if (!due.length) return; dashAsked = now;
+    dashSink({ due, boards: [...new Set(times.filter((t) => fileAt == null || t.at > fileAt).map((t) => t.name))].slice(0, 6), hours: fileAt ? Math.round((now - fileAt) / 3_600_000) : 0 });
+  } finally { dashChecking = false; }
+}
 export const backend = {
   state: () => loadState(),
   // One settings change at a time: each reads the whole state, merges its part and saves; two at once lost one (the Jauvex agent's cleared
@@ -229,6 +245,9 @@ export const backend = {
    *  2026-10-01: "There's not even a load earlier messages"): the agent's own session's messages before the first of `uuids` it has (the
    *  copy's earliest, or the first shown), at most `limit`, and how many come before those. None when it has none of them: the copy is not
    *  this session's (an earlier provider's), and nothing is guessed. */
+  /** The Jauvex agent's dashboard file, kept by the agent in its own folder (T-276): '' when it has none yet, or one too big to be a dashboard.
+   *  Read for the view, it also checks whether the agent should bring it up to date (T-279). */
+  dashboard: async (): Promise<string> => { const f = path.join(JAUVEX_HOME, DASHBOARD_FILE); void dashboardCheck(f).catch(() => {}); /* due for an update? (T-279) */ try { if ((await fs.stat(f)).size > 256_000) return ''; return await fs.readFile(f, 'utf8'); } catch { return ''; } },
   sessionBefore: async (id: string, sessionId: string, uuids: string[], limit = 150): Promise<{ messages: ChatMessage[]; left: number }> => {
     const { project } = await projectOr404(id); const provider = providerOf(project, sessionId);
     const all = provider === 'codex' ? await codex.transcript(sessionId) : provider === 'grok' ? await grok.transcript(sessionId, project.path) : await transcript(project.path, sessionId);

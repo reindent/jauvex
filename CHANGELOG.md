@@ -3,6 +3,18 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.5.0: 2026-10-01
+
+- **A dashboard on the Jauvex agent's chat**: what needs you (a workflow step waiting for you, an agent asking for permission, new
+  replies, each with Open, then what the Jauvex agent lists for you), today's runs, who is working, and the agent's pinned notes. One
+  third of the view, half, or folded to a line, with the cards you choose. The Jauvex agent keeps it current: when it is due (none yet, a
+  board changed, or hours old), the app asks it, never too often and only while it is idle. The ⋯ menu or Settings, General turns it off.
+- **Custom colours, made with the Jauvex agent**: Settings, General, Appearance has a fourth choice. The Jauvex agent asks what you feel
+  like, offers three palettes, puts on the one you pick and changes it as you say; text that would be hard to read is refused.
+- **The light theme is neutral**: an off-white left pane, pure greys, near-black text, and the blue accent as its one colour.
+- The Jauvex agent's chat keeps your draft and your waiting messages across a reload, and a message handed to it while it works stays in
+  its conversation.
+
 ## 1.4.1: 2026-10-01
 
 - **Sonnet 5.5** is in Claude's model list: the app's Claude SDK is updated (0.3.287), and with it the Claude Code it runs.

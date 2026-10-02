@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { pickTranscript, suspicious, wordsOf } from '../../shared/transcript';
 import { failureText } from '../../shared/failure';
+import { customThemeNote, readPalette } from '../../shared/palette';
+import { dashboardNote, parseDashboard, type DashboardFile } from '../../shared/dashboard';
+import { Dashboard, type DashboardProps, type DashEvent, type DashNeed, type DashWorker } from './Dashboard';
 import { keep } from '../../shared/agent-log';
 import { ProviderIcon } from './ProviderIcon';
 import { UsageBattery } from './UsageBattery';
@@ -98,6 +101,8 @@ export default function App() {
   const [nameBox, setNameBox] = useState<{ title: string; hint?: string; placeholder?: string; then: (name: string | null) => void } | null>(null);
   const askName = (title: string, hint?: string, placeholder?: string) => new Promise<string | null>((then) => setNameBox({ title, hint, placeholder, then }));
   const [showMeta, setShowMeta] = useState(false); const [dev, setDev] = useState(false); // dev: developer mode (T-247), off by default
+  const [dashEnabled, setDashEnabled] = useState(true); // the dashboard on this computer (T-279: "An option to disable this dashboard ... maybe some people don't want it")
+  const dashSet = (on: boolean) => { setDashEnabled(on); void api.setUi({ dashboard: on }); };
   const metaOn = dev && showMeta; // system events show in developer mode only, where their button is (T-259)
   const [error, setError] = useState<string | null>(null);
   const [renameAt, setRenameAt] = useState<'title' | 'row'>('row'); // one input at a time: in the title bar or in the sidebar row
@@ -217,6 +222,14 @@ export default function App() {
           const busy = roster().filter((a) => a.busy && a.sessionId !== jauvexSession).map((a) => a.name); // the Jauvex agent's own turn ends with its order
           if (busy.length && !c.now && s.installed && s.available) return { ok: false, error: `${busy.join(', ')} ${busy.length > 1 ? 'are' : 'is'} working, and the update would stop ${busy.length > 1 ? 'them' : 'it'}: update when they finish, or with --now on the user's word.`, busy };
           return await window.desktop.appUpdate(); }
+        case 'theme': { // T-278: the app's colours; a palette of the user's own (the Jauvex agent's), or one of the app's themes
+          const ui = (await api.state()).ui;
+          if (c.set !== undefined) { if (!['light', 'dark', 'system'].includes(String(c.set))) return { ok: false, error: '--set light, dark or system (the Mac\'s own)' };
+            applyTheme(c.set); await api.setUi({ theme: c.set as 'light' | 'dark' | 'system' }); window.dispatchEvent(new CustomEvent('app-theme', { detail: c.set })); return { ok: true, theme: c.set }; }
+          if (c.custom !== undefined) { const r = readPalette(c.custom); if (!r.ok) return { ok: false, error: r.error };
+            applyTheme('custom', r.palette); await api.setUi({ theme: 'custom', customTheme: r.palette }); window.dispatchEvent(new CustomEvent('app-theme', { detail: 'custom' })); return { ok: true, theme: 'custom', palette: r.palette }; }
+          return { ok: true, theme: ui?.theme ?? 'system', palette: ui?.customTheme ?? null };
+        }
         case 'welcome': setWelcomeOpen(true); return { ok: true };
         case 'reload-ui': setTimeout(() => void window.desktop.appReload(), 500); return { ok: true };
         case 'restart-app': setTimeout(() => void window.desktop.appRestart(), 500); return { ok: true };
@@ -284,7 +297,7 @@ export default function App() {
   useEffect(() => { void (async () => {
     await refresh();
     if (restored.current) return; restored.current = true;
-    try { const s = await api.state(); const u = s.ui; if (u?.sidebar === false) setSidebar(false); if (u?.showMeta) setShowMeta(true); if (u?.developer) setDev(true); applyTheme(u?.theme); setAutoCompact(autoCompactPct(u)); if (!u?.welcomed) setWelcomeOpen(true); setWelcomeNext(!u?.welcomed); setJauvexSession(u?.jauvexSession ?? null); setJauvexProvider(u?.jauvexProvider ?? null); setJauvexMove(u?.jauvexMove ?? 'unified'); setShowJauvex(u?.showJauvex !== false); if (u?.defaultProvider) { setDefaultProvider(u.defaultProvider); localStorage.setItem('cvc.provider', u.defaultProvider); }
+    try { const s = await api.state(); const u = s.ui; if (u?.sidebar === false) setSidebar(false); if (u?.showMeta) setShowMeta(true); if (u?.developer) setDev(true); if (u?.dashboard === false) setDashEnabled(false); applyTheme(u?.theme, u?.customTheme ?? null); setAutoCompact(autoCompactPct(u)); if (!u?.welcomed) setWelcomeOpen(true); setWelcomeNext(!u?.welcomed); setJauvexSession(u?.jauvexSession ?? null); setJauvexProvider(u?.jauvexProvider ?? null); setJauvexMove(u?.jauvexMove ?? 'unified'); setShowJauvex(u?.showJauvex !== false); if (u?.defaultProvider) { setDefaultProvider(u.defaultProvider); localStorage.setItem('cvc.provider', u.defaultProvider); }
       void api.jauvexProject().then((j) => { setJauvex(j); setProjects((ps) => (ps.some((x) => x.id === j.id) ? ps : [...ps, j])); }).catch(() => {}); // the first time it is created after the state was loaded: the chat needs it in the list
       const p = u?.sel && s.projects.find((x) => x.id === u.sel!.projectId);
       // Turns still running in the main process (the window was reloaded, not the app): their sessions are mounted with the running
@@ -301,6 +314,7 @@ export default function App() {
   // Every chat that was opened stays mounted (hidden) so that leaving a session never stops or loses its running turn.
   const [opened, setOpened] = useState<Sel[]>([]);
   const [busy, setBusy] = useState<Record<string, boolean>>({});   // by chat key: a turn is running there
+  const [asking, setAsking] = useState<Record<string, number>>({}); // by chat key: the permissions it asks for now (the dashboard, T-276)
   const [listening, setListening] = useState<string | null>(null); // the one chat whose microphone is on: it keeps listening while other sessions are looked at or typed into
   const [voiceUi, setVoiceUi] = useState<SideVoice | null>(null);
   // ---------- agents talking to agents. An agent writes a ```message-agent <name>``` block; when its turn ends the app delivers the text
@@ -367,6 +381,10 @@ export default function App() {
   // does. Otherwise the notes of the newest releases, from this copy's own CHANGELOG.md, under a line that says what the check found. The notes
   // open at once, "checking" on top, so a slow or absent network never leaves the click unanswered (as Pro's c827f78 does); the notice of a
   // version already known skips them.
+  // Custom colours (T-278; the user, 2026-10-01: "when you do custom ... You're going to talk with the Jauvex agent ... it will give you three
+  // ideas ... of colors"): Settings close, the Jauvex agent's chat opens, and it is told, with the palette on now, to ask and propose.
+  const customTheme = async () => { setSettingsOpen(false); if (!jauvex) return; open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex' });
+    const ui = (await api.state()).ui; await reachJauvexRef.current(customThemeNote(ui?.customTheme ?? null)); };
   const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>(null); const [checking, setChecking] = useState(false);
   const openWhatsNew = async () => {
     if (checking) return; setChecking(true);
@@ -440,6 +458,40 @@ export default function App() {
   // a second copy under the session's own key made two chats for one session, and a message from another agent went to the hidden
   // one while the one on screen showed nothing until the window was reloaded.
   const openedRef = useRef(opened); openedRef.current = opened;
+  // ---- the Jauvex agent's dashboard (T-276), on top of its chat: its DASHBOARD.md, read while that chat is on screen (and every 30 s, and when
+  // the window comes forward), and what the app knows by itself
+  const [dashFile, setDashFile] = useState<DashboardFile | null>(null);
+  const dashOn = dashEnabled && !!sel && !!jauvex && sel.projectId === jauvex.id && !sel.kind; // on screen, and wanted
+  useEffect(() => { if (!dashOn) return; const load = () => void api.dashboard().then((t) => setDashFile(parseDashboard(t))).catch(() => {}); load();
+    const t = window.setInterval(load, 30_000); window.addEventListener('focus', load); return () => { window.clearInterval(t); window.removeEventListener('focus', load); }; }, [dashOn]);
+  // The dashboard kept current by the Jauvex agent (T-279): the main process says when it is due (shared/dashboard.ts: a reason, never too
+  // often), and the agent is asked here, in its chat. A listener set once: the window's state through refs.
+  // The lowest of the app's words to the agent: it waits until the agent has been idle for 20 seconds and you are not talking to it by voice
+  // (opened, its chat ran that update at once: your first words, typed or said, went into that turn, and a provider could not be changed).
+  const listeningRef = useRef(listening); listeningRef.current = listening;
+  useEffect(() => window.desktop.onDashboardDue((d) => { void (async () => {
+    for (let idle = 0, i = 0; idle < 20 && i < 600; i++) { const k = jauvexOpen()?.key; const free = !k || (!busyRef.current[k] && listeningRef.current !== k); idle = free ? idle + 1 : 0; await new Promise((r) => setTimeout(r, 1000)); }
+    const k = jauvexOpen()?.key; if (k && (busyRef.current[k] || listeningRef.current === k)) { window.desktop.debugPush('note', 'dashboard: not asked, the Jauvex agent stayed busy'); return; }
+    const ok = await reachJauvexRef.current(dashboardNote(d));
+    window.desktop.debugPush('note', ok ? `dashboard: the Jauvex agent asked to bring it up to date (${d.due.join(', ')})` : 'dashboard: the Jauvex agent could not be reached');
+  })(); }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const dashOf = (): DashboardProps => {
+    const folders = projects.filter((p) => !p.builtin);
+    const agentOf = (sid: string) => { for (const f of folders) { const i = infos[f.id]?.find((x) => x.sessionId === sid); if (i || f.sessions.includes(sid)) return { f, name: i?.customTitle || shortTitle(i?.summary ?? '') || `Session ${sid.slice(0, 6)}`, provider: i?.provider ?? providerOf(f, sid) }; } return null; };
+    const openFlow = (pid: string, wf: WorkflowInfo) => () => open({ projectId: pid, sessionId: null, key: `${pid}:wf:${wf.file}`, kind: 'workflow', file: wf.file, name: wf.name });
+    const auto: DashNeed[] = []; // what waits on you that the app knows by itself
+    for (const f of folders) for (const wf of workflows[f.id] ?? []) if (wf.latest?.waiting) auto.push({ kind: 'gate', text: `${wf.name}: run #${wf.latest.n} waits for you`, note: f.name, open: openFlow(f.id, wf) });
+    for (const o of opened) if ((asking[o.key] ?? 0) > 0 && o.sessionId && folders.some((f) => f.id === o.projectId)) { const a = agentOf(o.sessionId); auto.push({ kind: 'ask', text: `${a?.name ?? o.name ?? 'An agent'} asks for your permission`, note: a?.f.name, open: () => open(o) }); }
+    for (const [sid, n] of Object.entries(unread)) if (n > 0) { const a = agentOf(sid); if (a) auto.push({ kind: 'reply', text: `${a.name} replied${n > 1 ? ` (${n})` : ''}`, note: a.f.name, open: () => open({ projectId: a.f.id, sessionId: sid, key: `${a.f.id}:${sid}` }) }); }
+    const d = new Date(); const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; const today: DashEvent[] = [];
+    for (const f of folders) for (const wf of workflows[f.id] ?? []) { const l = wf.latest; if (!l?.started?.startsWith(ymd)) continue; const at = new Date(l.started.replace(' ', 'T')).getTime();
+      const state: DashEvent['state'] = l.waiting ? 'waiting' : /^done/i.test(l.result) ? 'done' : /^(failed|stopped)/i.test(l.result) ? 'failed' : 'running';
+      today.push({ at: Number.isFinite(at) ? at : Date.now(), state, text: `${wf.name}: ${state === 'waiting' ? 'waits for you' : state === 'running' ? 'running' : l.result.split(':')[0]}`, open: openFlow(f.id, wf) }); }
+    today.sort((a, b) => b.at - a.at);
+    const working: DashWorker[] = [];
+    for (const o of opened) if (busy[o.key] && o.sessionId && folders.some((f) => f.id === o.projectId)) { const a = agentOf(o.sessionId); working.push({ name: a?.name ?? o.name ?? 'An agent', provider: a?.provider ?? 'claude', open: () => open(o) }); }
+    return { file: dashFile, auto, today: today.slice(0, 10), working };
+  };
   const open = useCallback((wanted: Sel, push = true) => {
     const same = wanted.sessionId ? openedRef.current.find((x) => x.key !== wanted.key && x.sessionId === wanted.sessionId && x.projectId === wanted.projectId && x.kind === wanted.kind) : undefined;
     const next = same ? { ...same, ...(wanted.voice ? { voice: true } : {}) } : wanted;
@@ -614,7 +666,7 @@ export default function App() {
           <footer className="side-foot"><button className="foot-btn" title={SIGN_IN_IN_APP ? 'Accounts: who each provider is signed in as; sign out, sign in, switch' : 'Accounts: who each provider is signed in as, and how to sign in with its own command line'} onClick={() => setAccountsOpen(true)}>Jauvex <em>{__APP_VERSION__}</em></button>{update?.available && update.installed ? <button className="foot-update" disabled={checking} title={`Jauvex ${update.latest} is out: click and the Jauvex agent tells you what it brings and asks whether to update (it closes the app, rebuilds it in a few minutes and opens it again).`} onClick={() => void openWhatsNew()}>{update.latest} is out</button>
             : <button className="foot-news" disabled={checking} title="What each version brings, after asking jauvex.reindent.com whether a newer one is out" onClick={() => void openWhatsNew()}>{checking ? 'Checking…' : "What's new"}</button>}{/* while a newer version is out its notice takes this place, and a click asks about it (T-245) */}<button className="icon-btn sm" title="Jauvex settings" onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
           {whatsNew && <WhatsNew line={whatsNew.line} notes={whatsNew.notes} onClose={() => setWhatsNew(null)} />}
-          {settingsOpen && <SettingsPanel autoCompact={autoCompact} onAutoCompact={changeAutoCompact} signedIn={signedIn} welcomeNext={welcomeNext} onWelcomeNext={(on) => { setWelcomeNext(on); void api.setUi({ welcomed: !on }); }} onOpenWelcome={() => { setSettingsOpen(false); setWelcomeOpen(true); }} defaultProvider={defaultProvider} onDefaultProvider={(p) => { setDefaultProvider(p); localStorage.setItem('cvc.provider', p); void api.setUi({ defaultProvider: p }); }} showJauvex={showJauvex} onShowJauvex={(on) => { setShowJauvex(on); void api.setUi({ showJauvex: on }); }} jauvexMove={jauvexMove} onJauvexMove={(m) => { setJauvexMove(m); void api.setUi({ jauvexMove: m }); }} onClose={() => setSettingsOpen(false)} />}
+          {settingsOpen && <SettingsPanel dashOn={dashEnabled} onDashOn={dashSet} onCustomTheme={() => void customTheme()} autoCompact={autoCompact} onAutoCompact={changeAutoCompact} signedIn={signedIn} welcomeNext={welcomeNext} onWelcomeNext={(on) => { setWelcomeNext(on); void api.setUi({ welcomed: !on }); }} onOpenWelcome={() => { setSettingsOpen(false); setWelcomeOpen(true); }} defaultProvider={defaultProvider} onDefaultProvider={(p) => { setDefaultProvider(p); localStorage.setItem('cvc.provider', p); void api.setUi({ defaultProvider: p }); }} showJauvex={showJauvex} onShowJauvex={(on) => { setShowJauvex(on); void api.setUi({ showJauvex: on }); }} jauvexMove={jauvexMove} onJauvexMove={(m) => { setJauvexMove(m); void api.setUi({ jauvexMove: m }); }} onClose={() => setSettingsOpen(false)} />}
           {accountsOpen && <Accounts onClose={() => setAccountsOpen(false)} />}
           {welcomeOpen && <Welcome jauvexMove={jauvexMove} onJauvexMove={(m) => { setJauvexMove(m); void api.setUi({ jauvexMove: m }); }} defaultProvider={defaultProvider} onDefault={(p) => { setDefaultProvider(p); localStorage.setItem('cvc.provider', p); void api.setUi({ defaultProvider: p }); }} onDone={(start) => { setWelcomeOpen(false); setWelcomeNext(false); void api.setUi({ welcomed: true });
             if (start && jauvex) { const key = `${jauvex.id}:jauvex`; open({ projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex', voice: true, ...(jauvexSession ? {} : { kickoff: JAUVEX_HELLO }) }); } /* Start: the first conversation is with the Jauvex agent, voice on; the very first time it introduces itself */ }} />}
@@ -628,7 +680,7 @@ export default function App() {
           if (o.kind === 'board' && o.file) return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}><BoardView project={proj} file={o.file} mail={mail} onChanged={() => void loadBoards(proj)} active={active} showMeta={metaOn} chatProvider={jauvexProvider ?? defaultProvider ?? 'claude'} /></div>;
           if (o.kind === 'jev') { const agent = proj.jev?.find((a) => a.id === o.sessionId); return agent ? <div key={o.key} className="chat-host" style={{ display: active ? 'contents' : 'none' }}><JevPad project={proj} agent={agent} active={active} showMeta={metaOn} onChanged={() => void refresh()} /></div> : null; }
           return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}>
-            <Chat storeKey={o.key} signedIn={signedIn} jev={jevKey && !o.sessionId ? () => void newJev(proj.id, o.key) : undefined} startVoice={o.voice} kickoff={o.kickoff} startProvider={o.provider} nameOnStart={o.name} adopt={o.adopt} onNamed={() => void refresh()} folders={projects.map((x) => ({ id: x.id, name: x.name, path: x.path }))} onCommand={(cmd, fallback) => runCommand(cmd, proj.id, fallback)} project={proj} sessionId={o.sessionId} active={active} info={infos[o.projectId]?.find((x) => x.sessionId === o.sessionId) ?? null} showMeta={metaOn}
+            <Chat top={proj.builtin === 'jauvex' && dashEnabled ? <Dashboard {...dashOf()} onHide={() => dashSet(false)} /> : undefined} onAsks={(n) => setAsking((a) => ((a[o.key] ?? 0) === n ? a : { ...a, [o.key]: n }))} storeKey={proj.builtin === 'jauvex' ? `${proj.id}:jauvex` : o.key} /* the Jauvex agent is one chat: its draft and queue under one name, whatever it was opened under (a reload opens it by its session) */ signedIn={signedIn} jev={jevKey && !o.sessionId ? () => void newJev(proj.id, o.key) : undefined} startVoice={o.voice} kickoff={o.kickoff} startProvider={o.provider} nameOnStart={o.name} adopt={o.adopt} onNamed={() => void refresh()} folders={projects.map((x) => ({ id: x.id, name: x.name, path: x.path }))} onCommand={(cmd, fallback) => runCommand(cmd, proj.id, fallback)} project={proj} sessionId={o.sessionId} active={active} info={infos[o.projectId]?.find((x) => x.sessionId === o.sessionId) ?? null} showMeta={metaOn}
               onBusy={(on) => setBusy((b) => (Boolean(b[o.key]) === on ? b : { ...b, [o.key]: on }))} onListening={(on) => setListening((cur) => (on ? o.key : cur === o.key ? null : cur))} onVoiceUi={(st) => setVoiceUi(st)} mic={listening === null ? 'none' : listening === o.key ? 'here' : 'elsewhere'}
               onSession={(sid, prov) => { const named = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: sid } : x); setSel((cur) => (cur ? named(cur) : cur)); setOpened((all) => all.map(named)); setHistory((h) => h.map(named)); if (proj.builtin === 'jauvex') { setJauvexSession(sid); setJauvexProvider(prov ?? null); void api.setUi({ jauvexSession: sid, ...(prov ? { jauvexProvider: prov } : {}) }); } void refresh(); }}
               hybrid={proj.builtin === 'jauvex' ? { provider: jauvexProvider ?? defaultProvider ?? 'claude', mode: jauvexMove, onProvider: (p) => { setJauvexProvider(p); setJauvexSession(null); void api.setUi({ jauvexProvider: p, jauvexSession: null }); const unbind = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: null } : x); setOpened((all) => all.map(unbind)); setSel((cur) => (cur ? unbind(cur) : cur)); setHistory((h) => h.map(unbind)); },
@@ -809,7 +861,7 @@ function SessionPicker({ project, all, onClose, onSave }: { project: Project; al
 
 /** embed: the chat lives inside something else (a Jev agent's trainer panel): fixed provider, context sent along with every message, replies handed back. */
 export type ChatEmbed = { provider: Provider; context: () => string; onReply: (text: string) => void; bridge: { send?: (text: string) => void }; hint?: string /* the empty chat's greeting */ };
-export function Chat({ embed, jev, startVoice, kickoff, startProvider, nameOnStart, onNamed, onListening, onVoiceUi, mic, onReply, onBridge, adopt, folders, onCommand, project, sessionId, active, info, showMeta, onBusy, onSession, onTurnEnd, onNew, hybrid, signedIn, storeKey }: { storeKey?: string; signedIn?: Record<Provider, boolean>; hybrid?: { provider: Provider; mode: 'unified' | 'handoff'; onProvider: (p: Provider) => void ; onLost?: () => void }; /* the Jauvex agent: the app keeps its transcript, the session moves between providers with it */ embed?: ChatEmbed; jev?: () => void; startVoice?: boolean; kickoff?: string; startProvider?: Provider /* a new agent's, named by an order (T-229) */; nameOnStart?: string; onNamed?: () => void; onListening?: (on: boolean) => void; onVoiceUi?: (st: SideVoice | null) => void; mic?: 'none' | 'here' | 'elsewhere'; onReply?: (text: string, replyTo?: Sel, takenBack?: { queued: string[] } /* the turn was one a reloaded window took back: whom it answered is not known here; queued: the runs whose step's message still waits in this chat's queue (T-253) */) => void; onBridge?: (b: ChatBridge | null) => void; adopt?: string; folders?: { id: string; name: string; path?: string }[]; onCommand?: (cmd: AppCommand, fallback: Provider) => void; project: Project; sessionId: string | null; active: boolean; info: SessionInfo | null; showMeta: boolean; onBusy: (running: boolean) => void; onSession: (sid: string, provider?: Provider) => void; onTurnEnd: () => void; onNew: () => void }) {
+export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvider, nameOnStart, onNamed, onListening, onVoiceUi, mic, onReply, onBridge, adopt, folders, onCommand, project, sessionId, active, info, showMeta, onBusy, onSession, onTurnEnd, onNew, hybrid, signedIn, storeKey }: { top?: React.ReactNode /* the Jauvex agent's dashboard, above the conversation (T-276) */; onAsks?: (n: number) => void /* how many permissions it asks for now */; storeKey?: string; signedIn?: Record<Provider, boolean>; hybrid?: { provider: Provider; mode: 'unified' | 'handoff'; onProvider: (p: Provider) => void ; onLost?: () => void }; /* the Jauvex agent: the app keeps its transcript, the session moves between providers with it */ embed?: ChatEmbed; jev?: () => void; startVoice?: boolean; kickoff?: string; startProvider?: Provider /* a new agent's, named by an order (T-229) */; nameOnStart?: string; onNamed?: () => void; onListening?: (on: boolean) => void; onVoiceUi?: (st: SideVoice | null) => void; mic?: 'none' | 'here' | 'elsewhere'; onReply?: (text: string, replyTo?: Sel, takenBack?: { queued: string[] } /* the turn was one a reloaded window took back: whom it answered is not known here; queued: the runs whose step's message still waits in this chat's queue (T-253) */) => void; onBridge?: (b: ChatBridge | null) => void; adopt?: string; folders?: { id: string; name: string; path?: string }[]; onCommand?: (cmd: AppCommand, fallback: Provider) => void; project: Project; sessionId: string | null; active: boolean; info: SessionInfo | null; showMeta: boolean; onBusy: (running: boolean) => void; onSession: (sid: string, provider?: Provider) => void; onTurnEnd: () => void; onNew: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // The last of the conversation, for the voice to acknowledge like someone who has been following: the last two things the user
   // said and the last answer, trimmed. Read from a ref so the speculative acknowledgment (made during a pause) sees it too.
@@ -852,6 +904,7 @@ export function Chat({ embed, jev, startVoice, kickoff, startProvider, nameOnSta
   const [liveText, setLiveText] = useState('');
   const [statusLine, setStatusLine] = useState(''); // what the provider waits for before the turn can start (a Codex session another program holds, T-250); gone at the turn's first word
   const [asks, setAsks] = useState<{ requestId: string; toolName: string; input: unknown }[]>([]);
+  useEffect(() => { onAsks?.(asks.length); }, [asks.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [note, setNote] = useState('');
   // How full this session's context is (T-74): the numbers kept for it, then every request's. It is compacted by the meter's button or a typed
   // /compact, between turns once it passes the auto-compact setting, and at once when a message did not fit (that message then goes again).
@@ -874,7 +927,7 @@ export function Chat({ embed, jev, startVoice, kickoff, startProvider, nameOnSta
   const onReplyRef = useRef(onReply); onReplyRef.current = onReply;
   // A message from another agent (or from the app) lands here: into the running turn if there is one, as a new turn otherwise.
   const onBridgeRef = useRef(onBridge); onBridgeRef.current = onBridge; const pendingReplyTo = useRef<Sel | undefined>(undefined); const takenBack = useRef(!!adopt); // the turn under way was taken back after a reload: this window does not know whom it answers (T-253)
-  useEffect(() => { onBridgeRef.current?.({ deliver: async (text, replyTo) => { if (v.current.running && replyTo && ownTurn(replyTo, pendingReplyTo.current)) { enqueueForMain(text, undefined, false, replyTo); return; } /* it wants its own answer: a turn of its own (T-228) */ const was = pendingReplyTo.current; if (replyTo) pendingReplyTo.current = replyTo; if (v.current.running) { const ok = !compactTurn.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${text}` : text).catch(() => false); if (ok) { turnSteers.current.push({ text, images: [], shown: true }); setMessages((m) => [...m, { uuid: `local-${Date.now()}`, role: 'user', blocks: [{ type: 'text', text }], meta: false, steered: true }]); toBottom(); return; } pendingReplyTo.current = was; enqueueForMain(text, undefined, false, replyTo); return; } await sendRef.current(text, false); } }); return () => onBridgeRef.current?.(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onBridgeRef.current?.({ deliver: async (text, replyTo) => { if (v.current.running && replyTo && ownTurn(replyTo, pendingReplyTo.current)) { enqueueForMain(text, undefined, false, replyTo); return; } /* it wants its own answer: a turn of its own (T-228) */ const was = pendingReplyTo.current; if (replyTo) pendingReplyTo.current = replyTo; if (v.current.running) { const ok = !compactTurn.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${text}` : text).catch(() => false); if (ok) { turnSteers.current.push({ text, images: [], shown: true }); setMessages((m) => [...m, { uuid: `local-${Date.now()}`, role: 'user', blocks: [{ type: 'text', text }], meta: false, steered: true }]); record('user', text, { steered: true }); /* the Jauvex agent's own copy keeps it (an app's word handed to a running turn) */ toBottom(); return; } pendingReplyTo.current = was; enqueueForMain(text, undefined, false, replyTo); return; } await sendRef.current(text, false); } }); return () => onBridgeRef.current?.(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [turns, setTurns] = useState(0); // a finished turn has used some of the plan: the battery looks again
   const mountedAt = useRef(Date.now()); const ownWrite = useRef(0); // the session file's writes that are this chat's own (its turns) are not "another window"
   const emptyInterims = useRef(0); // live-word passes in a row that found no words in the sound being heard
@@ -1068,7 +1121,7 @@ export function Chat({ embed, jev, startVoice, kickoff, startProvider, nameOnSta
   // Steering: the running turn gets this now, at its next step, and keeps working. If the turn cannot take it (it just ended, or it has not started), it waits in the queue like everything else.
   const steer = async (text: string, images?: Attachment[], dictated = false) => {
     const said = dictated ? `${DICTATED_TAG}${text}` : text; /* the model is told, every time, which words were dictated (T-76) */
-    const ok = v.current.running && !compactTurn.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${said}` : said, images).catch(() => false); // a compaction takes nothing in: it waits in the queue if (ok) record('user', text + (images?.length ? ` [${images.length} image${images.length > 1 ? 's' : ''} attached]` : ''), { steered: true });
+    const ok = v.current.running && !compactTurn.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${said}` : said, images).catch(() => false); /* a compaction takes nothing in: it waits in the queue */ if (ok) record('user', text + (images?.length ? ` [${images.length} image${images.length > 1 ? 's' : ''} attached]` : ''), { steered: true }); /* in the Jauvex agent's own copy too: this record sat inside the comment before it, and a message handed to a running turn was missing from that chat after a reload */
     if (!ok) { enqueueForMain(text, undefined, dictated); if (v.current.running && !(await window.desktop.chatRunning(chatId.current).catch(() => true))) staleTurnEnded(); return false; }
     setDraft(null);
     turnSteers.current.push({ text, images: images ?? [], ...(dictated ? { spoken: true } : {}), shown: true });
@@ -1341,6 +1394,7 @@ export function Chat({ embed, jev, startVoice, kickoff, startProvider, nameOnSta
 
   return (
     <>
+      {top}
       {state === 'loading' ? <div className="empty"><Mark busy /><p>Loading conversation…</p></div>
         : state === 'error' ? <div className="empty"><h2>Could not load this session</h2><p>{err}</p></div>
         : <div className={voiceOn ? 'scroll under-orb' : 'scroll'} ref={scroller} onScroll={(e) => { const el = e.currentTarget; const gap = el.scrollHeight - el.scrollTop - el.clientHeight; const up = el.scrollTop < lastTop.current - 2; lastTop.current = el.scrollTop; if (gap < 80) pinned.current = true; else if (up) pinned.current = false; /* content growing under a pinned view is not the user leaving the bottom */ }}>
@@ -1418,12 +1472,13 @@ function WorkFold({ b, results }: { b: Block; results: Map<string, Extract<Block
 }
 
 /** The app's look (T-248): the Mac's own (the default: light, dark or auto as the Mac is set), or light or dark for this app; applied at once. */
-function ThemeSetting() {
+function ThemeSetting({ onCustom }: { onCustom: () => void }) {
   const [t, setT] = useState<Theme>(() => { try { return themeOf(localStorage.getItem('cvc.theme')); } catch { return 'system'; } });
-  useEffect(() => { void api.state().then((st) => setT(themeOf(st.ui?.theme))).catch(() => {}); }, []);
-  const pick = (v: Theme) => { setT(v); applyTheme(v); void api.setUi({ theme: v }); };
+  useEffect(() => { void api.state().then((st) => setT(themeOf(st.ui?.theme))).catch(() => {}); const on = (e: Event) => setT(themeOf((e as CustomEvent).detail)); window.addEventListener('app-theme', on); return () => window.removeEventListener('app-theme', on); }, []);
+  // Custom (T-278): the user's own colours, made in words with the Jauvex agent; its chat opens and it asks what they feel like
+  const pick = (v: Theme) => { setT(v); applyTheme(v); void api.setUi({ theme: v }); if (v === 'custom') onCustom(); };
   return <section className="settings-group theme-setting"><strong>Appearance</strong>
-    <div className="theme-picks">{([['system', 'Same as the Mac'], ['light', 'Light'], ['dark', 'Dark']] as const).map(([k, label]) => <button key={k} type="button" className={`theme-pick ${k}${t === k ? ' on' : ''}`} onClick={() => pick(k)}><i />{label}</button>)}</div>
+    <div className="theme-picks">{([['system', 'Same as the Mac'], ['light', 'Light'], ['dark', 'Dark'], ['custom', 'Custom']] as const).map(([k, label]) => <button key={k} type="button" className={`theme-pick ${k}${t === k ? ' on' : ''}`} onClick={() => pick(k)}><i />{label}</button>)}</div>
   </section>;
 }
 
@@ -1648,7 +1703,7 @@ function WorkflowTriesSetting() {
     <label><span className="lhead">Tries per step in a new workflow<em>{n}</em></span><input type="range" min={1} max={20} step={1} value={n} onChange={(e) => { const v = Number(e.target.value); setN(v); void api.setUi({ workflowTries: v }); }} /></label>
     <p className="muted">How many times a step may come round with no decision of yours: past that, a loop between agents stops the run. Your decisions start the count again, so a loop through you has no limit. Each workflow keeps its own number (its <code>tries:</code> line), and a step can say its own in its instructions.</p></section>;
 }
-function SettingsPanel({ signedIn, welcomeNext, onWelcomeNext, onOpenWelcome, defaultProvider, onDefaultProvider, showJauvex, onShowJauvex, jauvexMove, onJauvexMove, autoCompact, onAutoCompact, onClose }: { autoCompact: number; onAutoCompact: (pct: number) => void; signedIn: Record<Provider, boolean>; welcomeNext: boolean; onWelcomeNext: (on: boolean) => void; onOpenWelcome: () => void; defaultProvider: Provider | null; onDefaultProvider: (p: Provider) => void; showJauvex: boolean; onShowJauvex: (on: boolean) => void; jauvexMove: 'unified' | 'handoff'; onJauvexMove: (m: 'unified' | 'handoff') => void; onClose: () => void }) {
+function SettingsPanel({ dashOn, onDashOn, onCustomTheme, signedIn, welcomeNext, onWelcomeNext, onOpenWelcome, defaultProvider, onDefaultProvider, showJauvex, onShowJauvex, jauvexMove, onJauvexMove, autoCompact, onAutoCompact, onClose }: { dashOn: boolean; onDashOn: (on: boolean) => void; onCustomTheme: () => void; autoCompact: number; onAutoCompact: (pct: number) => void; signedIn: Record<Provider, boolean>; welcomeNext: boolean; onWelcomeNext: (on: boolean) => void; onOpenWelcome: () => void; defaultProvider: Provider | null; onDefaultProvider: (p: Provider) => void; showJauvex: boolean; onShowJauvex: (on: boolean) => void; jauvexMove: 'unified' | 'handoff'; onJauvexMove: (m: 'unified' | 'handoff') => void; onClose: () => void }) {
   // One tab per kind of setting, a bar across the top (the user, 2026-09-24: the settings were "a freaking mess because there are no tabs").
   // The window keeps its size from tab to tab; a long tab scrolls under the bar.
   const [tab, setTab] = useState<SettingsTab>('general');
@@ -1660,7 +1715,11 @@ function SettingsPanel({ signedIn, welcomeNext, onWelcomeNext, onOpenWelcome, de
         <div className="settings-body" role="tabpanel">
         {tab === 'general' && <>
           <p className="muted">Accounts are in the Jauvex button below the sidebar. The voice settings are here and under the orb of any session: one set for the whole app.</p>
-          <ThemeSetting />
+          <ThemeSetting onCustom={onCustomTheme} />
+          <section className="settings-group">
+            <strong>Dashboard</strong>
+            <label className="check"><input type="checkbox" checked={dashOn} onChange={(e) => onDashOn(e.target.checked)} />Show the dashboard above the Jauvex agent's chat: what needs you, today, who is working, pinned notes. The Jauvex agent keeps it up to date.</label>
+          </section>
           <section className="settings-group">
             <strong>Default agent</strong>
             <label className="check">New sessions and the Jauvex agent start with<select className="model" value={defaultProvider ?? ''} onChange={(e) => onDefaultProvider(e.target.value as Provider)}><option value="" disabled>Not chosen yet</option>{PROVIDERS.map((p) => <option key={p} value={p} disabled={signedIn?.[p] === false}>{PROVIDER_LABEL[p]}{signedIn?.[p] === false ? ' (not signed in)' : ''}</option>)}</select></label>
