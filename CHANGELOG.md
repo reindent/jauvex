@@ -3,6 +3,13 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.4.1: 2026-10-01
+
+- **Sonnet 5.5** is in Claude's model list: the app's Claude SDK is updated (0.3.287), and with it the Claude Code it runs.
+- The Jauvex agent's chat takes over the right pane you were looking at: open the Jauvex agent beside a file and go on with it there,
+  instead of the pane closing.
+- The welcome screen can move the window by its top edge, as the title bar does.
+
 ## 1.4.0: 2026-10-01
 
 - **Linux**: the app runs from source on Linux (Ubuntu 24.04 and later), started with `npm start` in a clone of this repository; there
