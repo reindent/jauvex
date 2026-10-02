@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.4.0, for macOS and Linux (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.4.1, for macOS and Linux (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -181,7 +181,9 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   button (the Mac for files, the browser for pages), a close button, and a draggable width that is remembered. A navigation
   the app did not catch (a link in a place it does not watch) is stopped in the main process and sent to the pane too.
   Later the same pane takes terminals and browsers. Relative paths resolve against the session's folder; a link inside a file the
-  pane shows resolves against that file's folder, and opens in the pane too (T-183).
+  pane shows resolves against that file's folder, and opens in the pane too (T-183). Each session keeps its own pane; the Jauvex agent's chat, when it has
+  none of its own, takes over the one you were looking at, so you go on with it through the app's own agent (the user, 2026-10-01:
+  "If you go to Jauvex, the right panel closes ... Keep interacting with the right panel through Jauvex"; `tests/window/pane-jauvex.test.ts`).
 - **Boards** (T-171): a folder's to-do lists, plain markdown in the folder (`PROJECT.md`, `MARKETING.md`, `BOARD.md`, `ROADMAP.md`,
   `boards/*.md`): `## Section` headings (P0, P1, P2), items as `- [ ] **T-01 · Title** — body` with `[ ]` to do, `[~]` doing. A done
   task leaves the board, in the same edit, for the top of its done file beside it (`PROJECT-DONE.md`, `boards/x-DONE.md`), ending

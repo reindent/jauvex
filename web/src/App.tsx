@@ -234,6 +234,13 @@ export default function App() {
   const paneKey = sel?.key ?? ''; const pane = panes[paneKey] ?? null;
   const setPane = (t: PaneTarget | null) => setPanes((all) => { const next = { ...all }; if (t) next[paneKey] = t; else delete next[paneKey]; return next; });
   const showPane = (title: string, node: React.ReactNode, key?: string) => setPane({ kind: 'view', title, node, key }); // a workflow's step, its runs, its versions
+  // The Jauvex agent's chat takes over the pane that was on screen when it has none of its own (the user, 2026-10-01: "Let's say you are on an
+  // agent chat and it opens the right [panel] ... If you go to Jauvex, the right panel closes for some reason. Keep interacting with the right
+  // panel through Jauvex"): you go on with what you were looking at, through the app's own agent. Every other session keeps its own pane.
+  const shownPane = useRef<{ key: string; pane: PaneTarget | null }>({ key: '', pane: null });
+  useEffect(() => { const before = shownPane.current;
+    if (before.key !== paneKey && !pane && before.pane && jauvex && sel?.projectId === jauvex.id && !sel.kind) { const carried = before.pane; setPanes((all) => (all[paneKey] ? all : { ...all, [paneKey]: carried })); return; }
+    shownPane.current = { key: paneKey, pane }; }, [paneKey, pane]); // eslint-disable-line react-hooks/exhaustive-deps
   const openLink = (href: string, base: string) => { const h = href.trim(); if (!h || h.startsWith('#')) return;
     if (/^https?:\/\//i.test(h)) { setPane({ kind: 'url', url: h }); return; }
     if (/^[a-z][a-z0-9+.-]*:/i.test(h) && !/^file:/i.test(h)) { void window.desktop.openExternal(h); return; } /* mailto and the like: the Mac */

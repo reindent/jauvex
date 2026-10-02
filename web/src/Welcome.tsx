@@ -116,6 +116,7 @@ export function Welcome({ onDone, defaultProvider, onDefault, jauvexMove, onJauv
   const allDone = rows.every((r) => r.state !== 'wait'); const ready = allDone && rows.filter((r) => r.state === 'no').every((r) => r.id === 'codex' || r.id === 'claude') && rows.some((r) => (r.id === 'claude' || r.id === 'codex') && r.state === 'ok') && rows.find((r) => r.id === 'whisper')?.state === 'ok';
   return (
     <div className={`welcome ${phase} stage-${stage}`} role="dialog" aria-label="Welcome" style={{ '--orb-dy': `${dy}px` } as CSSProperties}>
+      <div className="welcome-drag" aria-hidden="true" /> {/* the window moves by its top edge, as by its title bar, which the welcome covers (the user, 2026-10-01: "It doesn't seem like it's draggable") */}
       <button className="welcome-close" title="Close" onClick={() => { stopped.current = true; onDone(); }}>Skip</button>
       <div className="welcome-orb" ref={orbEl}><Orb size={168} level={level} phase={phase} /></div>
       <h1 className="welcome-text">Welcome to Jauvex</h1>

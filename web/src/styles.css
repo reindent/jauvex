@@ -325,7 +325,8 @@ html.is-mini, html.is-mini body, html.is-mini #root { background: transparent; }
 .welcome-pick { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg-2); } .welcome-pick button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 9px; border: 1px solid var(--k-2c2c36); background: var(--k-17171d); color: var(--fg); font-size: 13px; cursor: pointer; } .welcome-pick button.on { border-color: var(--accent); background: var(--k-1d1d2c); } .welcome-pick em { font-style: normal; font-size: 11.5px; color: var(--muted); margin-left: 4px; }
 .welcome-go:disabled { opacity: .45; cursor: default; }
 .welcome-foot { margin-top: 2px; min-height: 36px; } .welcome-go { padding: 8px 22px; border-radius: 10px; background: var(--accent); color: var(--k-0b0b12); font-weight: 600; font-size: 14px; cursor: pointer; } .welcome-go:hover { filter: brightness(1.08); }
-.welcome-close { position: absolute; top: 14px; right: 18px; padding: 4px 10px; border-radius: 8px; color: var(--muted); font-size: 13px; cursor: pointer; } .welcome-close:hover { color: var(--fg); background: var(--k-ffffff0d); }
+.welcome-drag { position: fixed; top: 0; left: 0; right: 0; height: var(--tb, 44px); -webkit-app-region: drag; z-index: 1; } .system-frame .welcome-drag { display: none; } /* the system's frame moves it */
+.welcome-close { -webkit-app-region: no-drag; z-index: 2; position: absolute; top: 14px; right: 18px; padding: 4px 10px; border-radius: 8px; color: var(--muted); font-size: 13px; cursor: pointer; } .welcome-close:hover { color: var(--fg); background: var(--k-ffffff0d); }
 
 /* auto-mute: the countdown flashes on the microphone button */
 .pill button.counting, .side-voice-btns button.counting { position: relative; color: var(--warn, #e8c46a); }
