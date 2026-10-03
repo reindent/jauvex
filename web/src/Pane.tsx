@@ -2,6 +2,7 @@ import { createElement, useEffect, useRef, useState } from 'react';
 import { X, ExternalLink } from 'lucide-react';
 import type { FileView } from '../../shared/types';
 import { md } from './md';
+import { t } from '../../shared/i18n';
 
 // The right pane: where a file or a link an agent shows is opened, instead of the whole window sailing off to it (a
 // handoff link once took the window over, with no way back). Files come through the main process (text, markdown,
@@ -21,7 +22,7 @@ export function Pane({ target, onClose, onClickCapture }: { target: PaneTarget; 
   let body: React.ReactNode; let frame = false;
   if (target.kind === 'view') body = <div className="pane-view">{target.node}</div>;
   else if (target.kind === 'url') { frame = true; body = createElement('webview', { src: target.url, className: 'pane-web', title: target.url }); }
-  else if (!view) body = <p className="pane-note">Opening…</p>;
+  else if (!view) body = <p className="pane-note">{t('misc.pane.opening')}</p>;
   else if (!view.ok) body = <p className="pane-note err">{view.error}</p>;
   else if (view.kind === 'image') body = <img className="pane-img" src={`data:${view.mediaType};base64,${view.data ?? ''}`} alt={view.name} />;
   else if (view.kind === 'markdown') body = <div className="md pane-md" dangerouslySetInnerHTML={{ __html: md(view.text ?? '', dirOf(view.path)) }} />;
@@ -29,10 +30,10 @@ export function Pane({ target, onClose, onClickCapture }: { target: PaneTarget; 
   else body = <pre className="pane-text">{view.text ?? ''}</pre>;
   return (
     <aside className="pane" onClickCapture={onClickCapture}>
-      <div ref={grip} className="pane-grip" onPointerDown={onGrip} title="Drag to resize" />
+      <div ref={grip} className="pane-grip" onPointerDown={onGrip} title={t('misc.pane.dragToResize')} />
       <div className="pane-head"><span className="pane-title" title={target.kind === 'view' ? target.title : target.kind === 'url' ? target.url : target.path}>{title}</span>
-        {target.kind !== 'view' && <button className="icon-btn sm" title={target.kind === 'url' ? 'Open in the browser' : 'Open with the Mac'} onClick={outside}><ExternalLink size={14} /></button>}
-        <button className="icon-btn sm" title="Close" onClick={onClose}><X size={14} /></button></div>
+        {target.kind !== 'view' && <button className="icon-btn sm" title={target.kind === 'url' ? t('misc.pane.openInBrowser') : t('misc.pane.openWithMac')} onClick={outside}><ExternalLink size={14} /></button>}
+        <button className="icon-btn sm" title={t('misc.pane.close')} onClick={onClose}><X size={14} /></button></div>
       <div className={`pane-body${frame ? ' frame' : ''}`}>{body}</div>
     </aside>
   );

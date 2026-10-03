@@ -356,6 +356,21 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   in its own session folder: Grok writes it relative to that folder (`images/1.jpg`), which read against the project's folder
   was a broken image.
 
+## Languages
+
+The app speaks English and Spanish (neutral Latin American, with tú). By default it follows the system's language (English when the system
+speaks another); Settings, General, Language picks one, and the window is drawn again in it at once. Only the app's own words change:
+what the agents write, the prompts the app sends them and the logs stay as they are, so an agent answers in the language you write to it in.
+The welcome screen speaks its lines in the chosen language too; on Linux the voice (Kokoro) is English only, so Spanish there is read with an
+English accent, and the welcome still listens for "start", "Claude" and "Codex".
+
+Every string lives in `shared/i18n/en.ts`, by key (`app.sidebar.addFolder`), English being the source and the fallback, and `es.ts` has the
+same keys (the typecheck refuses one missing). The code asks for a string with `t('key', { vars })`; a plural is a `.one` and an `.other`
+key, chosen by the language's own rules. A third language is one file: copy `es.ts` to `<code>.ts`, translate the values, and add it to
+`LANGUAGES` and `TABLES` in `shared/i18n/index.ts`. `tests/i18n-keys.test.ts` checks every language for missing, extra or empty keys and
+changed `{placeholders}`, and that every key the code names exists. The app's words in Spanish are fixed in `shared/i18n/GLOSSARY.md`,
+shared with Jauvex Pro.
+
 ## Setting up on Linux
 
 The same app, run from this folder with `npm start` (Ubuntu 24.04 and later; there is no packaged Linux app yet, and the update

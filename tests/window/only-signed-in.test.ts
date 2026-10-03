@@ -8,6 +8,6 @@ const opts = await js(`[...${sel}.options].map((o) => o.value + (o.disabled ? ':
 check('the other provider is disabled in the provider selector', Array.isArray(opts) && opts.some((o) => o.endsWith(':off')) && opts.some((o) => o.endsWith(':on')), JSON.stringify(opts));
 check('the disabled one says why', await js(`[...${sel}.options].some((o) => o.disabled && o.textContent.includes('not signed in'))`));
 await js("document.querySelector('button[title=\"Jauvex settings\"]').click()"); await sleep(300);
-const def = await js("[...document.querySelector('.modal.settings select').options].filter((o) => o.value).map((o) => o.value + (o.disabled ? ':off' : ':on'))");
+const def = await js("[...[...document.querySelectorAll('.modal.settings select')].find((x) => [...x.options].some((o) => o.value === 'codex')).options].filter((o) => o.value).map((o) => o.value + (o.disabled ? ':off' : ':on'))");
 check('the default-agent choice disables both here (nobody is signed in)', Array.isArray(def) && def.every((o) => o.endsWith(':off')), JSON.stringify(def));
 done(close);

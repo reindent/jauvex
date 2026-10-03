@@ -4,6 +4,7 @@ import { BOARD_FORMAT, doneFileOf, parseBoard, type Board, type BoardItem, type 
 import { BOARDS_FORMAT_TEXT, PROVIDER_LABEL, type Project, type Provider } from '../../shared/types';
 import type { EmbeddedMail } from './WorkflowView';
 import { Chat, type ChatEmbed } from './App';
+import { t } from '../../shared/i18n';
 
 // A board (T-171), drawn from its markdown files, always the same way: one column per section, one card per task, the glyph as its status.
 // Clicking a glyph moves the task on (to do → doing → done) by rewriting the files: done, it leaves the board for the top of its done file
@@ -39,14 +40,14 @@ export function BoardView({ project, file, onChanged, chatProvider = 'claude', a
   const toggleDone = (v: boolean) => { setShowDone(v); try { localStorage.setItem(`cvc.board.done.${project.id}:${file}`, v ? '1' : '0'); } catch { /* nothing */ } };
   const card = ({ item, where, tag }: Card) => { const sh = item.status === 'done' ? shipped(item.body) : { body: item.body, date: '', refs: '' }; const key = `${where}:${item.line}`; return (
     <article key={key} className={`card ${item.status}${openKey === key ? ' open' : ''}`} onClick={() => setOpenKey((k) => (k === key ? null : key))}>
-      <div className="head">{tag && <span className={`board-tag ${prio(tag)}`}>{shortTitle(tag)}</span>}<button className="glyph" disabled={newer} title={newer ? 'A newer boards format: update Jauvex to change it here' : item.status === 'done' ? 'done: click to reopen it' : `${item.status === 'todo' ? 'to do' : item.status}: click to move it on`} onClick={(e) => { e.stopPropagation(); void move(item, where); }} />{item.id && <span className="id">{item.id}</span>}<span className="ttl">{item.title}</span>{sh.date && <span className="when">{sh.date}</span>}</div>
+      <div className="head">{tag && <span className={`board-tag ${prio(tag)}`}>{shortTitle(tag)}</span>}<button className="glyph" disabled={newer} title={newer ? t('board.card.glyph.newer') : item.status === 'done' ? t('board.card.glyph.done') : item.status === 'todo' ? t('board.card.glyph.todo') : t('board.card.glyph.doing')} onClick={(e) => { e.stopPropagation(); void move(item, where); }} />{item.id && <span className="id">{item.id}</span>}<span className="ttl">{item.title}</span>{sh.date && <span className="when">{sh.date}</span>}</div>
       {openKey === key && sh.body && <p className="body">{inline(sh.body)}{sh.refs && <span className="refs"> ({sh.refs})</span>}</p>}
     </article>); };
   const lane = (status: BoardItem['status']): Card[] => board.sections.filter((s) => !isDone(s) || status === 'done').flatMap((s) => s.items.filter((i) => i.status === status).map((item): Card => ({ item, where: 'board', tag: s })));
   const doneCards: Card[] = shippedItems.map((item) => ({ item, where: 'done' }));
-  const doneCol = { title: 'Done', note: '', cls: 'done done-file', count: String(doneCards.length + (view === 'kanban' ? lane('done').length : 0)), cards: view === 'kanban' ? [...lane('done'), ...doneCards] : doneCards };
+  const doneCol = { title: t('board.col.done'), note: '', cls: 'done done-file', count: String(doneCards.length + (view === 'kanban' ? lane('done').length : 0)), cards: view === 'kanban' ? [...lane('done'), ...doneCards] : doneCards };
   const cols = view === 'kanban'
-    ? [{ title: 'To do', note: '', cls: 'lane-todo', count: String(lane('todo').length), cards: lane('todo') }, { title: 'Doing', note: '', cls: 'lane-doing', count: String(lane('doing').length), cards: lane('doing') }, ...(showDone ? [doneCol] : [])]
+    ? [{ title: t('board.col.todo'), note: '', cls: 'lane-todo', count: String(lane('todo').length), cards: lane('todo') }, { title: t('board.col.doing'), note: '', cls: 'lane-doing', count: String(lane('doing').length), cards: lane('doing') }, ...(showDone ? [doneCol] : [])]
     : [...board.sections.filter((s) => showDone || !isDone(s)).map((s) => ({ title: s.title, note: s.note, cls: prio(s), count: `${s.items.filter((i) => i.status === 'done').length}/${s.items.length}`, cards: s.items.map((item): Card => ({ item, where: 'board' })) })), ...(showDone ? [doneCol] : [])];
   // The chat under the board (T-199): a session of its own in the folder, told on every message what the board is now; it edits the board's
   // files and the board redraws from them. Its session is kept in the app's state for this board, never written into the folder.
@@ -56,7 +57,7 @@ export function BoardView({ project, file, onChanged, chatProvider = 'claude', a
   const provider: Provider = chat?.provider ?? chatProvider;
   const redraw = () => { void load(); changed.current?.(); };
   const embed: ChatEmbed = useMemo(() => ({ provider, bridge: bridge.current,
-    hint: `Tell ${PROVIDER_LABEL[provider]} what to change on this board, by text or by voice: it adds, takes, moves and finishes items in the board's files, and the board redraws from them. It sees the board on every message.`,
+    hint: t('board.chat.hint', { provider: PROVIDER_LABEL[provider] }),
     // the board goes along, unless it is long: then the chat is told to read the file (it has it), not sent a hundred kilobytes a message
     context: () => { const md = live.current.md; const now = md.length <= 30_000 ? `The board now (${file}):\n\`\`\`md\n${md}\n\`\`\`` : `The board is long (${Math.round(md.length / 1000)} KB): read ${file} before you answer.`;
       return `<board-context>\nYou are the assistant of one board of this folder (${project.path}): the file ${file}, its finished items in ${doneFileOf(file)}. The user talks to you about it, by text or by voice: to add work, take it, move it on, finish or reopen it, or plan from it. Change the board by editing its files directly: the view draws the board from them as you save. ${BOARDS_FORMAT_TEXT}\n${now}\n</board-context>\n\n`; },
@@ -67,23 +68,23 @@ export function BoardView({ project, file, onChanged, chatProvider = 'claude', a
   const chatName = `${(board.title || file.replace(/^boards\//, '').replace(/\.md$/, '')).replace(/\s+board$/i, '')} board`;
   useEffect(() => { const sid = chat?.sessionId; if (!mail || !sid) return;
     return mail.register(project.id, sid, chatName, provider, async (t, r) => { for (let i = 0; i < 40 && !inView.current; i++) await new Promise((res) => setTimeout(res, 100)); await inView.current?.(t, r as never); }); }, [mail, chat?.sessionId, project.id, chatName, provider]);
-  if (!loaded) return <div className="board-view"><p className="muted" style={{ padding: 28 }}>Opening…</p></div>;
+  if (!loaded) return <div className="board-view"><p className="muted" style={{ padding: 28 }}>{t('board.opening')}</p></div>;
   return (
     <div className="board-wrap">
     <div className="board-view">
-      <div className="board-head"><div><h1>{board.title}</h1><p>{total} tasks · {done} done · {file}{files.done ? ` · ${doneFileOf(file)}` : ''}</p></div><span className="sp" /><div className="bar" title={`${done} of ${total} done`}><i style={{ width: `${total ? Math.round((done / total) * 100) : 0}%` }} /></div><span className="board-seg" role="tablist">{(['sections', 'kanban'] as const).map((v) => <button key={v} role="tab" aria-selected={view === v} className={view === v ? 'on' : ''} title={v === 'sections' ? 'A column per section: P0, P1, P2...' : 'A lane per status: to do, doing, done'} onClick={() => pick(v)}>{v === 'sections' ? 'Sections' : 'Kanban'}</button>)}</span><label className="check"><input type="checkbox" checked={showDone} onChange={(e) => toggleDone(e.target.checked)} /> Show done</label></div>
-      {newer && <p className="board-newer">This board uses boards format v{Math.max(board.version, doneBoard.version)}, newer than this app knows (v{BOARD_FORMAT}): it is shown as it is, and nothing here changes it. Update Jauvex to work on it here.</p>}
+      <div className="board-head"><div><h1>{board.title}</h1><p>{t('board.head.counts', { count: total, done })} · {file}{files.done ? ` · ${doneFileOf(file)}` : ''}</p></div><span className="sp" /><div className="bar" title={t('board.head.bar', { done, total })}><i style={{ width: `${total ? Math.round((done / total) * 100) : 0}%` }} /></div><span className="board-seg" role="tablist">{(['sections', 'kanban'] as const).map((v) => <button key={v} role="tab" aria-selected={view === v} className={view === v ? 'on' : ''} title={v === 'sections' ? t('board.view.sectionsTitle') : t('board.view.kanbanTitle')} onClick={() => pick(v)}>{v === 'sections' ? t('board.view.sections') : t('board.view.kanban')}</button>)}</span><label className="check"><input type="checkbox" checked={showDone} onChange={(e) => toggleDone(e.target.checked)} /> {t('board.showDone')}</label></div>
+      {newer && <p className="board-newer">{t('board.newer', { version: Math.max(board.version, doneBoard.version), known: BOARD_FORMAT })}</p>}
       {note && <p className="board-newer">{note}</p>}
       <div className="board">
         {cols.map((c, ci) => (
           <section key={`${view}:${ci}`} className={`bcol ${c.cls}`}>
             <header><h2>{c.title}</h2><span className="count">{c.count}</span></header>
             {c.note && <p className="note">{inline(c.note)}</p>}
-            <div className="cards">{c.cards.length === 0 && <p className="empty">{c.title === 'Done' ? 'Nothing done yet.' : 'Nothing here.'}</p>}{c.cards.map(card)}</div>
+            <div className="cards">{c.cards.length === 0 && <p className="empty">{c.cls === doneCol.cls || c.title === 'Done' ? t('board.col.emptyDone') : t('board.col.empty')}</p>}{c.cards.map(card)}</div>
           </section>))}
       </div>
     </div>
-    {chat && <div className="jev-chat board-chat"><header><b>Talk to this board</b><span>{PROVIDER_LABEL[provider]} · sees the board on every message: adds, moves and finishes items in its files · text or voice</span></header>
+    {chat && <div className="jev-chat board-chat"><header><b>{t('board.chat.title')}</b><span>{t('board.chat.sub', { provider: PROVIDER_LABEL[provider] })}</span></header>
       <Chat embed={embed} project={project} sessionId={chat.provider === provider ? chat.sessionId ?? null : null} active={active} info={null} showMeta={showMeta} onBusy={() => {}} onTurnEnd={redraw} onNew={() => {}}
         onBridge={(b) => { inView.current = b ? (t, r) => b.deliver(t, r) : null; }} onReply={(text, replyTo) => { const sid = chatSid.current; if (sid && mail) mail.reply(project.id, sid, chatName, text, replyTo); }}
         onSession={(sid) => { const next = { provider, sessionId: sid }; setChat(next); void api.setBoardChat(project.id, file, next); }} /></div>}

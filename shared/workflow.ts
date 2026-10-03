@@ -12,6 +12,8 @@
 //                   A decision of the user's starts the count again: a loop that goes through them has no limit; one between agents alone does.
 // A run record:     # Run N, `started:` `result:` `took:` lines, then `## N. Step` sections with `took:` `started:` `result:` `said:`.
 
+import { t as ui, type TKey } from './i18n/index.js';
+
 /** file: the step's instructions file as its heading links it (relative to workflows/), '' for one written under its heading; prompt: its
  *  instructions, with their lines; note: the same on one line. */
 export type WorkflowStep = { name: string; agent: string; gate: boolean; file: string; prompt: string; note: string; in: string; out: string; then: string; branches: string[]; tries: number | null /* a `tries:` line in its instructions (T-197) */ };
@@ -37,7 +39,7 @@ export function sortWorkflows<T extends WorkflowInfo>(list: T[]): T[] {
   const tier = (w: T) => (live(w) && w.latest!.waiting ? 0 : live(w) ? 1 : 2);
   return [...list].sort((a, b) => tier(a) - tier(b) || (b.modified ?? 0) - (a.modified ?? 0) || a.name.localeCompare(b.name));
 }
-export type WorkflowState = { runs: Run[]; latest: Run | null; live: boolean; st: Record<number, StepState>; last: Record<number, string>; said: Record<number, [string, string]>; avg: number | null; stepAvg: (number | null)[]; finished: number; text: string; sel: number };
+export type WorkflowState = { runs: Run[]; latest: Run | null; live: boolean; st: Record<number, StepState>; last: Record<number, string>; said: Record<number, [string, string]>; avg: number | null; stepAvg: (number | null)[]; finished: number; text: string /* for the workflow's chat, English */; line: string /* the same, shown in the window */; sel: number };
 
 const ARROW = /\s*(?:→|->)\s*/;
 /** A step's name in its heading, linked to the file of its instructions: `[Script](news-video/script.md)`. */
@@ -109,15 +111,16 @@ export function stateFor(def: Workflow, runsIn: Run[]): WorkflowState {
   const stepAvg = def.steps.map((_, i) => { const xs = runs.map((r) => r.steps[i + 1]?.took).filter((x): x is number => x != null); return xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null; });
   const live = !!latest && /^running/i.test(latest.result);
   if (latest) for (let i = 1; i <= total; i++) { const x = latest.steps[i]; if (x?.said) said[i] = [x.started || latest.started.slice(-5), x.said];
-    if (!x) { if (live && st[i - 1] && st[i - 1]![0] === 'run') st[i] = ['', 'next']; continue; }
-    if (x.took != null) { if (live) st[i] = ['ok', `done · ${fmt(x.took)}`]; } else if (/^waiting/i.test(x.result)) { if (live) st[i] = ['wait', x.result]; } else if (/fail/i.test(x.result)) st[i] = ['er', 'failed']; else if (x.result) st[i] = ['er', x.result]; else if (x.started) { st[i] = ['run', 'running']; last[i] = x.said; } }
-  if (!live) for (let i = 1; i <= total; i++) if (!st[i] && stepAvg[i - 1] != null) st[i] = ['', `avg ${fmt(stepAvg[i - 1])}`];
+    if (!x) { if (live && st[i - 1] && st[i - 1]![0] === 'run') st[i] = ['', ui('workflow.state.next')]; continue; }
+    if (x.took != null) { if (live) st[i] = ['ok', ui('workflow.state.done', { took: fmt(x.took) })]; } else if (/^waiting/i.test(x.result)) { if (live) st[i] = ['wait', x.result]; } else if (/fail/i.test(x.result)) st[i] = ['er', ui('workflow.state.failed')]; else if (x.result) st[i] = ['er', x.result]; else if (x.started) { st[i] = ['run', ui('workflow.state.running')]; last[i] = x.said; } }
+  if (!live) for (let i = 1; i <= total; i++) if (!st[i] && stepAvg[i - 1] != null) st[i] = ['', ui('workflow.state.avg', { took: fmt(stepAvg[i - 1]) })];
   const k = live ? Number(Object.keys(st).find((i) => st[Number(i)]![0] === 'run' || st[Number(i)]![0] === 'wait') ?? 0) : 0;
-  const text = !latest ? 'Never run' : live ? `Run #${latest.n} · step ${k || '?'} of ${total} · started ${latest.started.slice(-5)}` : `${FINISHED.test(latest.result) ? 'Idle' : 'Stopped'} · last run #${latest.n}: ${latest.result}${latest.took != null ? ` · ${fmt(latest.took)}` : ''}${avg != null ? ` · average ${fmt(avg)} over ${finished.length} run${finished.length > 1 ? 's' : ''}` : ''}`;
+  const text = !latest ? 'Never run' : live ? `Run #${latest.n} · step ${k || '?'} of ${total} · started ${latest.started.slice(-5)}` : `${FINISHED.test(latest.result) ? 'Idle' : 'Stopped'} · last run #${latest.n}: ${latest.result}${latest.took != null ? ` · ${fmt(latest.took)}` : ''}${avg != null ? ` · average ${fmt(avg)} over ${finished.length} run${finished.length > 1 ? 's' : ''}` : ''}`; /* told to the workflow's chat: English */
+  const line = !latest ? ui('workflow.line.never') : live ? ui('workflow.line.live', { n: latest.n, step: k || '?', total, at: latest.started.slice(-5) }) : [ui(FINISHED.test(latest.result) ? 'workflow.line.idle' : 'workflow.line.stopped', { n: latest.n, result: latest.result }), latest.took != null ? fmt(latest.took) : '', avg != null ? ui('workflow.line.average', { avg: fmt(avg), count: finished.length }) : ''].filter(Boolean).join(' · '); /* the same, shown in the window */
   // the step the workflow is at (the user, 2026-09-27: "the current step it's at, if not initiated then first step, if already finished then last
   // step"): the live run's, else the last one the latest run reached, else the first
   const reached = latest ? Math.max(0, ...Object.keys(latest.steps).map(Number).filter((i) => i >= 1 && i <= total)) : 0;
-  return { runs, latest, live, st, last, said, avg, stepAvg, finished: finished.length, text, sel: k || reached || 1 };
+  return { runs, latest, live, st, last, said, avg, stepAvg, finished: finished.length, text, line, sel: k || reached || 1 };
 }
 
 /** A run record as markdown, the shape parseRun reads: the runner rewrites the whole file at every change. */
@@ -276,7 +279,7 @@ export const missedNote = (items: Missed[], now = new Date()): string => {
 };
 /** An event trigger that names this workflow (by its title or its file name, case and punctuation aside). */
 export const firesAfter = (tr: Trigger, def: { name: string; file?: string }): boolean => { if (tr.kind !== 'after') return false; const sq = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ''); const want = sq(tr.workflow); return !!want && (want === sq(def.name) || want === sq((def.file ?? '').replace(/^workflows\//, '').replace(/\.md$/, ''))); };
-export const describeTrigger = (tr: Trigger, now = new Date()): string => { const n = nextSlot(tr, now); const at = (d: Date) => `${d.toDateString() === now.toDateString() ? 'today' : DAYS[d.getDay()]!.replace(/^./, (c) => c.toUpperCase())} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+export const describeTrigger = (tr: Trigger, now = new Date()): string => { const n = nextSlot(tr, now); const at = (d: Date) => `${d.toDateString() === now.toDateString() ? ui('workflow.trigger.today') : ui(`workflow.trigger.day.${d.getDay()}` as TKey)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const hm = (x: number) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
-  if (tr.kind === 'window') return `once, at a random time between ${hm(tr.from)} and ${hm(tr.to)}${n ? ` · next window ${at(n).replace(/ \d\d:\d\d$/, '')}` : ''}`;
-  return tr.kind === 'manual' ? 'by hand' : tr.kind === 'after' ? `after "${tr.workflow}" finishes` : n ? `next ${at(n)}` : ''; };
+  if (tr.kind === 'window') return n ? ui('workflow.trigger.windowNext', { from: hm(tr.from), to: hm(tr.to), day: at(n).replace(/ \d\d:\d\d$/, '') }) : ui('workflow.trigger.window', { from: hm(tr.from), to: hm(tr.to) });
+  return tr.kind === 'manual' ? ui('workflow.trigger.byHand') : tr.kind === 'after' ? ui('workflow.trigger.after', { workflow: tr.workflow }) : n ? ui('workflow.trigger.next', { at: at(n) }) : ''; }; /* shown in the window only */

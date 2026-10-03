@@ -34,6 +34,9 @@ import { threadUnits, toolImage, type WorkPart } from '../../shared/thread';
 import { applyTheme, themeOf, type Theme } from './theme';
 import { badgeText, counted, seen, countOf, unreadFrom, type Unread } from '../../shared/unread';
 import { inSlots, moveFolder } from '../../shared/folder-order';
+import { t, LANGUAGES, resolveLanguage, type Lang, type LangSetting } from '../../shared/i18n';
+import { chooseLanguage, langSettingOf, savedLanguageSetting, syncLanguage } from './language';
+const tr = t; // t() inside code where a local named t (a transcript, a timer) hides it
 
 
 // One mounted chat, as the app's agent router sees it: it can be handed a message (steered into a running turn, or sent as a new one).
@@ -61,7 +64,7 @@ const CLAUDE_DEFAULT_MODEL = 'claude-opus-5-5'; // a new Claude session with no 
 const modelKey = (p: Provider) => (p === 'claude' ? 'cvc.model' : `cvc.model.${p}`);
 const effortKey = (p: Provider) => (p === 'claude' ? 'cvc.effort' : `cvc.effort.${p}`);
 const CLAUDE_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
-const EFFORT_LABEL: Record<string, string> = { minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max', ultra: 'Ultra' };
+const EFFORT_LABEL = (): Record<string, string> => ({ minimal: t('app.effort.minimal'), low: t('app.effort.low'), medium: t('app.effort.medium'), high: t('app.effort.high'), xhigh: t('app.effort.xhigh'), max: t('app.effort.max'), ultra: t('app.effort.ultra') });
 
 /** Jauvex's own mark: two strands that cross, one over the other (two providers, one app). The strands flow while a turn runs. */
 export function Mark({ busy = false }: { busy?: boolean }) {
@@ -120,7 +123,7 @@ export default function App() {
   const newJev = async (projectId: string, replaceKey?: string, name?: string) => {
     try { const agent = await api.jevCreate(projectId); if (name) await api.jevSave(projectId, agent.id, { name }); await refresh(); if (replaceKey) setOpened((o) => o.filter((x) => x.key !== replaceKey)); openJev(projectId, agent.id); } catch (e) { setError((e as Error).message); } };
   const deleteJev = async (projectId: string, agentId: string) => {
-    if (!window.confirm('Delete this Jev agent and its runs? This cannot be undone.')) return;
+    if (!window.confirm(t('app.jev.confirmDelete'))) return;
     try { await api.jevDelete(projectId, agentId); setOpened((o) => o.filter((x) => x.sessionId !== agentId)); if (sel?.sessionId === agentId) setSel(null); await refresh(); } catch (e) { setError((e as Error).message); } };
   // Spoken to the app itself: "create a new Codex agent in the homepage project". The voice has already said what it is doing.
   const runCommand = (cmd: AppCommand, fromProjectId: string, fallback: Provider) => {
@@ -297,7 +300,7 @@ export default function App() {
   useEffect(() => { void (async () => {
     await refresh();
     if (restored.current) return; restored.current = true;
-    try { const s = await api.state(); const u = s.ui; if (u?.sidebar === false) setSidebar(false); if (u?.showMeta) setShowMeta(true); if (u?.developer) setDev(true); if (u?.dashboard === false) setDashEnabled(false); applyTheme(u?.theme, u?.customTheme ?? null); setAutoCompact(autoCompactPct(u)); if (!u?.welcomed) setWelcomeOpen(true); setWelcomeNext(!u?.welcomed); setJauvexSession(u?.jauvexSession ?? null); setJauvexProvider(u?.jauvexProvider ?? null); setJauvexMove(u?.jauvexMove ?? 'unified'); setShowJauvex(u?.showJauvex !== false); if (u?.defaultProvider) { setDefaultProvider(u.defaultProvider); localStorage.setItem('cvc.provider', u.defaultProvider); }
+    try { const s = await api.state(); const u = s.ui; syncLanguage(u?.language); if (u?.sidebar === false) setSidebar(false); if (u?.showMeta) setShowMeta(true); if (u?.developer) setDev(true); if (u?.dashboard === false) setDashEnabled(false); applyTheme(u?.theme, u?.customTheme ?? null); setAutoCompact(autoCompactPct(u)); if (!u?.welcomed) setWelcomeOpen(true); setWelcomeNext(!u?.welcomed); setJauvexSession(u?.jauvexSession ?? null); setJauvexProvider(u?.jauvexProvider ?? null); setJauvexMove(u?.jauvexMove ?? 'unified'); setShowJauvex(u?.showJauvex !== false); if (u?.defaultProvider) { setDefaultProvider(u.defaultProvider); localStorage.setItem('cvc.provider', u.defaultProvider); }
       void api.jauvexProject().then((j) => { setJauvex(j); setProjects((ps) => (ps.some((x) => x.id === j.id) ? ps : [...ps, j])); }).catch(() => {}); // the first time it is created after the state was loaded: the chat needs it in the list
       const p = u?.sel && s.projects.find((x) => x.id === u.sel!.projectId);
       // Turns still running in the main process (the window was reloaded, not the app): their sessions are mounted with the running
@@ -389,7 +392,7 @@ export default function App() {
   const openWhatsNew = async () => {
     if (checking) return; setChecking(true);
     try {
-      if (!offersUpdate(update)) setWhatsNew({ line: 'Checking for a newer version…', notes: recentNotes(await api.changelog().catch(() => '')) || 'No notes in this copy.' });
+      if (!offersUpdate(update)) setWhatsNew({ line: t('app.update.checking'), notes: recentNotes(await api.changelog().catch(() => '')) || t('app.update.noNotes') });
       const s: CheckedStatus | null = await window.desktop.appUpdateCheck().catch(() => null);
       if (s && offersUpdate(s) && jauvex) { setWhatsNew(null); offering.current = s.latest!; setUpdate(s); open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex' });
         if (await reachJauvexRef.current(updateNote(s.current, s.latest!, s.notes))) await api.setUi({ updateAsked: s.latest }); return; }
@@ -477,19 +480,19 @@ export default function App() {
   })(); }), []); // eslint-disable-line react-hooks/exhaustive-deps
   const dashOf = (): DashboardProps => {
     const folders = projects.filter((p) => !p.builtin);
-    const agentOf = (sid: string) => { for (const f of folders) { const i = infos[f.id]?.find((x) => x.sessionId === sid); if (i || f.sessions.includes(sid)) return { f, name: i?.customTitle || shortTitle(i?.summary ?? '') || `Session ${sid.slice(0, 6)}`, provider: i?.provider ?? providerOf(f, sid) }; } return null; };
+    const agentOf = (sid: string) => { for (const f of folders) { const i = infos[f.id]?.find((x) => x.sessionId === sid); if (i || f.sessions.includes(sid)) return { f, name: i?.customTitle || shortTitle(i?.summary ?? '') || t('app.sessionN', { id: sid.slice(0, 6) }), provider: i?.provider ?? providerOf(f, sid) }; } return null; };
     const openFlow = (pid: string, wf: WorkflowInfo) => () => open({ projectId: pid, sessionId: null, key: `${pid}:wf:${wf.file}`, kind: 'workflow', file: wf.file, name: wf.name });
     const auto: DashNeed[] = []; // what waits on you that the app knows by itself
-    for (const f of folders) for (const wf of workflows[f.id] ?? []) if (wf.latest?.waiting) auto.push({ kind: 'gate', text: `${wf.name}: run #${wf.latest.n} waits for you`, note: f.name, open: openFlow(f.id, wf) });
-    for (const o of opened) if ((asking[o.key] ?? 0) > 0 && o.sessionId && folders.some((f) => f.id === o.projectId)) { const a = agentOf(o.sessionId); auto.push({ kind: 'ask', text: `${a?.name ?? o.name ?? 'An agent'} asks for your permission`, note: a?.f.name, open: () => open(o) }); }
-    for (const [sid, n] of Object.entries(unread)) if (n > 0) { const a = agentOf(sid); if (a) auto.push({ kind: 'reply', text: `${a.name} replied${n > 1 ? ` (${n})` : ''}`, note: a.f.name, open: () => open({ projectId: a.f.id, sessionId: sid, key: `${a.f.id}:${sid}` }) }); }
+    for (const f of folders) for (const wf of workflows[f.id] ?? []) if (wf.latest?.waiting) auto.push({ kind: 'gate', text: t('app.dash.runWaits', { name: wf.name, n: wf.latest.n }), note: f.name, open: openFlow(f.id, wf) });
+    for (const o of opened) if ((asking[o.key] ?? 0) > 0 && o.sessionId && folders.some((f) => f.id === o.projectId)) { const a = agentOf(o.sessionId); auto.push({ kind: 'ask', text: t('app.dash.asksPermission', { name: a?.name ?? o.name ?? t('app.dash.anAgent') }), note: a?.f.name, open: () => open(o) }); }
+    for (const [sid, n] of Object.entries(unread)) if (n > 0) { const a = agentOf(sid); if (a) auto.push({ kind: 'reply', text: n > 1 ? t('app.dash.repliedCount', { name: a.name, n }) : t('app.dash.replied', { name: a.name }), note: a.f.name, open: () => open({ projectId: a.f.id, sessionId: sid, key: `${a.f.id}:${sid}` }) }); }
     const d = new Date(); const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; const today: DashEvent[] = [];
     for (const f of folders) for (const wf of workflows[f.id] ?? []) { const l = wf.latest; if (!l?.started?.startsWith(ymd)) continue; const at = new Date(l.started.replace(' ', 'T')).getTime();
       const state: DashEvent['state'] = l.waiting ? 'waiting' : /^done/i.test(l.result) ? 'done' : /^(failed|stopped)/i.test(l.result) ? 'failed' : 'running';
-      today.push({ at: Number.isFinite(at) ? at : Date.now(), state, text: `${wf.name}: ${state === 'waiting' ? 'waits for you' : state === 'running' ? 'running' : l.result.split(':')[0]}`, open: openFlow(f.id, wf) }); }
+      today.push({ at: Number.isFinite(at) ? at : Date.now(), state, text: `${wf.name}: ${state === 'waiting' ? t('app.dash.waitsForYou') : state === 'running' ? t('app.dash.running') : l.result.split(':')[0]}`, open: openFlow(f.id, wf) }); }
     today.sort((a, b) => b.at - a.at);
     const working: DashWorker[] = [];
-    for (const o of opened) if (busy[o.key] && o.sessionId && folders.some((f) => f.id === o.projectId)) { const a = agentOf(o.sessionId); working.push({ name: a?.name ?? o.name ?? 'An agent', provider: a?.provider ?? 'claude', open: () => open(o) }); }
+    for (const o of opened) if (busy[o.key] && o.sessionId && folders.some((f) => f.id === o.projectId)) { const a = agentOf(o.sessionId); working.push({ name: a?.name ?? o.name ?? t('app.dash.anAgent'), provider: a?.provider ?? 'claude', open: () => open(o) }); }
     return { file: dashFile, auto, today: today.slice(0, 10), working };
   };
   const open = useCallback((wanted: Sel, push = true) => {
@@ -523,13 +526,13 @@ export default function App() {
   const makeRunner = (p: Project, file: string, md: string, prompts: Record<string, string> | undefined, run: Run): Runner => {
     const key = runKey(p, file); const def = parseWorkflow(md, file, prompts); const folder = run.file.replace(/\.md$/, '/');
     const r = new Runner(def, run, folder, { deliver: (agent, text, step) => deliverToAgentRef.current({ projectId: p.id, sessionId: null, key: `run:${key}`, kind: 'run', file, step, name: def.name }, agent, text), /* the app as it is at each step, not as it was when the run started (T-252) */ save: (m) => api.saveRun(p.id, run.file, m).then(() => {}), log: (t) => window.desktop.debugPush('note', t),
-      onGate: (n, name) => { void loadWorkflows(p); /* the sidebar marks it: it waits for you */ try { new Notification(`${def.name} waits for you`, { body: `Step ${n}, ${name}: open the workflow in ${p.name} to decide.`, silent: true }); } catch { /* no notifications */ } }, // silent: a banner, never a sound
+      onGate: (n, name) => { void loadWorkflows(p); /* the sidebar marks it: it waits for you */ try { new Notification(t('app.run.gateTitle', { name: def.name }), { body: t('app.run.gateBody', { n, step: name, folder: p.name }), silent: true }); } catch { /* no notifications */ } }, // silent: a banner, never a sound
       onFinish: (result) => { runners.current.delete(key); void loadWorkflows(p); if (/^done/i.test(result)) void runAfter(p, def); } });
     r.root = p.path; runners.current.set(key, r); return r;
   };
   /** Event triggers: a run that ends done starts the workflows of the same folder whose when line names it ("after News video"). */
   const runAfter = async (p: Project, def: { name: string; file?: string }) => { for (const w of (await api.workflows(p.id).catch(() => null)) ?? workflowsRef.current[p.id] ?? []) { /* the folder as it is now: one written since the window loaded its list counts too */ if (w.file === def.file || !firesAfter(parseTrigger(w.when), def)) continue; window.desktop.debugPush('note', `workflow "${w.name}" starts: "${def.name}" finished done`); await startRun(p, w.file, `"${def.name}" finishing`).catch((e: Error) => window.desktop.debugPush('note', `workflow "${w.name}" did not start after "${def.name}": ${e.message}`)); } };
-  const startRun = async (p: Project, file: string, by?: string /* what started it when not a person: kept in its record */) => { if (runners.current.has(runKey(p, file))) throw new Error('a run of this workflow is live: stop it first'); const { md, runs, prompts } = await api.workflow(p.id, file); if (!realSteps(parseWorkflow(md, file))) throw new Error('not a workflow yet: no step says who does it (## 1. Step → agent)'); /* T-251 */ const live = runs.find((r) => /^running/i.test(r.result)); if (live) throw new Error(`run #${live.n} is still running: stop it first`); const { n, file: rec, version } = await api.newRun(p.id, file); const r = makeRunner(p, file, md, prompts, parseRun(`# Run ${n}\nstarted: ${stamp()}\n${by ? `by: ${by}\n` : ''}result: running\n${version ? `version: ${version}\n` : ''}`, rec)); try { await r.start(); } finally { void loadWorkflows(p); } };
+  const startRun = async (p: Project, file: string, by?: string /* what started it when not a person: kept in its record */) => { if (runners.current.has(runKey(p, file))) throw new Error(t('app.run.errLive')); const { md, runs, prompts } = await api.workflow(p.id, file); if (!realSteps(parseWorkflow(md, file))) throw new Error(t('app.run.errNoSteps')); /* T-251 */ const live = runs.find((r) => /^running/i.test(r.result)); if (live) throw new Error(t('app.run.errStillRunning', { n: live.n })); const { n, file: rec, version } = await api.newRun(p.id, file); const r = makeRunner(p, file, md, prompts, parseRun(`# Run ${n}\nstarted: ${stamp()}\n${by ? `by: ${by}\n` : ''}result: running\n${version ? `version: ${version}\n` : ''}`, rec)); try { await r.start(); } finally { void loadWorkflows(p); } };
   /** A live run with nobody driving it (the window reloaded, the app restarted): taken over as it stands, nothing re-sent. */
   const attaching = useRef(new Set<string>());
   const attachRun = async (p: Project, file: string): Promise<boolean> => { const key = runKey(p, file); if (runners.current.has(key)) return true; if (attaching.current.has(key)) return false; attaching.current.add(key);
@@ -541,7 +544,7 @@ export default function App() {
   // secondary-click menu, asked first in words that name what goes; a workflow that runs is stopped first, never deleted under its run.
   const workflowRuns = (p: Project, w: WorkflowInfo) => runners.current.has(runKey(p, w.file)) || /^running/i.test(w.latest?.result ?? '');
   const deleteWorkflowFile = async (p: Project, w: WorkflowInfo) => {
-    if (workflowRuns(p, w)) { setError(`"${w.name}" is running: stop its run first, then delete it.`); return; }
+    if (workflowRuns(p, w)) { setError(t('app.workflow.deleteRunning', { name: w.name })); return; }
     if (!window.confirm(deleteWorkflowText(w, p.name))) return;
     try { await api.deleteWorkflow(p.id, w.file); const key = `${p.id}:wf:${w.file}`; setOpened((o) => o.filter((x) => x.key !== key)); setSel((cur) => (cur?.key === key ? null : cur)); await loadWorkflows(p); } catch (e) { setError((e as Error).message); } };
   const decideRun = async (p: Project, file: string, step: number, outcome: string, note?: string) => { const key = runKey(p, file); if (!runners.current.has(key)) await attachRun(p, file); const r = runners.current.get(key); if (!r) return false; const ok = await r.decide(step, outcome, note); tidyRun(key); void loadWorkflows(p); return ok; };
@@ -586,7 +589,7 @@ export default function App() {
     const text = missedNote(missed.map((m) => ({ name: m.w.name, file: m.w.file, folder: m.p.name, when: m.w.when, slot: m.slot })));
     const ok = await reachJauvexRef.current(text);
     window.desktop.debugPush('note', ok ? `missed workflows: the Jauvex agent asks the user about ${missed.map((m) => `"${m.w.name}"`).join(', ')}` : 'missed workflows: the Jauvex agent could not be reached');
-    try { new Notification(missed.length > 1 ? `${missed.length} workflows missed their schedule` : `${missed[0]!.w.name} missed its schedule`, { body: `The app was closed at ${missed.map((m) => `${hm(m.slot)} (${m.w.name})`).join(', ')}: the Jauvex agent asks whether to run ${missed.length > 1 ? 'them' : 'it'} now.`, silent: true }); } catch { /* no notifications */ } };
+    try { new Notification(missed.length > 1 ? t('app.missed.titleMany', { count: missed.length }) : t('app.missed.titleOne', { name: missed[0]!.w.name }), { body: t(missed.length > 1 ? 'app.missed.bodyMany' : 'app.missed.bodyOne', { times: missed.map((m) => `${hm(m.slot)} (${m.w.name})`).join(', ') }), silent: true }); } catch { /* no notifications */ } };
   useEffect(() => { const first = setTimeout(() => void scheduleTick.current(), 4000); const t = setInterval(() => void scheduleTick.current(), SCHEDULE_TICK_MS); return () => { clearTimeout(first); clearInterval(t); }; }, []);
   /** A workflow of the folder by its file or its name; one an agent has just written is not in the list the window loaded yet: the folder is
    *  read again (an order naming it said "no workflow" until a refresh or the next schedule check). */
@@ -604,10 +607,10 @@ export default function App() {
   // Deleting a board (asked for 2026-09-27, "with confirmation"): from its row's secondary click, after a yes; its done file goes with it,
   // and its view closes.
   const deleteBoardFile = async (p: Project, b: BoardInfo) => {
-    if (!window.confirm(`Delete the board "${b.title}"?\n\n${b.file} is deleted from ${p.name}, with its done file (${doneFileOf(b.file)}) when it has one. The app cannot undo this.`)) return;
+    if (!window.confirm(t('app.board.confirmDelete', { title: b.title, file: b.file, folder: p.name, done: doneFileOf(b.file) }))) return;
     try { await api.deleteBoard(p.id, b.file); const key = `${p.id}:board:${b.file}`; setOpened((o) => o.filter((x) => x.key !== key)); setSel((cur) => (cur?.key === key ? null : cur)); await loadBoards(p); } catch (e) { setError((e as Error).message); } };
   const removeProject = async (p: Project) => {
-    if (!window.confirm(`Remove "${p.name}" from the sidebar? Nothing is deleted on disk.`)) return;
+    if (!window.confirm(t('app.sidebar.confirmRemoveFolder', { name: p.name }))) return;
     await api.removeProject(p.id); if (sel?.projectId === p.id) setSel(null); setOpened((o) => o.filter((x) => x.projectId !== p.id)); await refresh();
   };
 
@@ -620,51 +623,51 @@ export default function App() {
     <div className={`app${sidebar ? '' : ' no-sidebar'}${debugOpen ? ' with-debug' : ''}${pane ? ' with-pane' : ''}`}>
       <header className="titlebar">
         <div className="tb-left">
-          <button className="icon-btn" title="Toggle sidebar" onClick={() => setSidebar((v) => !v)}><PanelLeft size={17} /></button>
-          <button className="icon-btn" title="Back" disabled={cursor <= 0} onClick={() => go(-1)}><ArrowLeft size={17} /></button>
-          <button className="icon-btn" title="Forward" disabled={cursor >= history.length - 1} onClick={() => go(1)}><ArrowRight size={17} /></button>
+          <button className="icon-btn" title={t('app.titlebar.toggleSidebar')} onClick={() => setSidebar((v) => !v)}><PanelLeft size={17} /></button>
+          <button className="icon-btn" title={t('app.titlebar.back')} disabled={cursor <= 0} onClick={() => go(-1)}><ArrowLeft size={17} /></button>
+          <button className="icon-btn" title={t('app.titlebar.forward')} disabled={cursor >= history.length - 1} onClick={() => go(1)}><ArrowRight size={17} /></button>
         </div>
         <div className="tb-title">
           {sel && <><Laptop size={17} />{sel.sessionId && renameAt === 'title' && renaming === `${sel.projectId}:${sel.sessionId}`
             ? <RenameInput initial={info?.customTitle || info?.summary || ''} onDone={(t) => void rename(sel.projectId, sel.sessionId!, t)} onCancel={() => setRenaming(null)} />
-            : <><span className="tb-name" title={sel.sessionId ? 'Double-click to rename' : undefined} onDoubleClick={() => { if (sel.sessionId) { setRenameAt('title'); setRenaming(`${sel.projectId}:${sel.sessionId}`); } }}>{info?.customTitle || sel.name || info?.summary || (sel.sessionId ? 'Session' : 'New session')}</span>
-              {sel.sessionId && <button className="icon-btn sm tb-rename" title="Rename this session" onClick={() => { setRenameAt('title'); setRenaming(`${sel.projectId}:${sel.sessionId}`); }}><Pencil size={13} /></button>}</>}<span className="chip">{project?.name}</span>{project && sel.sessionId && <span className="chip">{selAgent ? 'Jev' : PROVIDER_LABEL[info?.provider ?? providerOf(project, sel.sessionId)]}</span>}</>}
+            : <><span className="tb-name" title={sel.sessionId ? t('app.titlebar.doubleClickRename') : undefined} onDoubleClick={() => { if (sel.sessionId) { setRenameAt('title'); setRenaming(`${sel.projectId}:${sel.sessionId}`); } }}>{info?.customTitle || sel.name || info?.summary || (sel.sessionId ? t('app.session') : t('app.newSession'))}</span>
+              {sel.sessionId && <button className="icon-btn sm tb-rename" title={t('app.titlebar.renameSession')} onClick={() => { setRenameAt('title'); setRenaming(`${sel.projectId}:${sel.sessionId}`); }}><Pencil size={13} /></button>}</>}<span className="chip">{project?.name}</span>{project && sel.sessionId && <span className="chip">{selAgent ? 'Jev' : PROVIDER_LABEL[info?.provider ?? providerOf(project, sel.sessionId)]}</span>}</>}
         </div>
         <div className="tb-right">
-          <button className={`icon-btn dev-btn${dev ? ' lit' : ''}`} title={dev ? 'Developer mode is on: every tool call and thought shows. Click to show them as Working' : 'Developer mode: show every tool call and thought (now each run of them shows as Working)'} onClick={() => setDev((v) => !v)}><Glasses size={17} /></button>
-          {dev && <button className={`icon-btn meta-btn${showMeta ? ' lit' : ''}`} title={showMeta ? 'System events are shown: click to hide them' : 'Show system events'} onClick={() => setShowMeta((v) => !v)}><Logs size={17} /></button>}{/* a developer's (T-259; the user, 2026-10-01: "The eye should only appear when the goggles are active ... in between the bug and the goggles ... the system events icon makes no sense with an eye") */}
-          <button className={`icon-btn${debugOpen ? ' lit' : ''}`} title="Debugger: Voice (what was heard, who decided what, how long it took) and Model (every exchange with Jev, the models and the agents)" onClick={() => setDebugOpen((v) => { localStorage.setItem('cvc.debug', v ? '0' : '1'); return !v; })}><Bug size={16} /></button>
-          <button className="icon-btn reload-btn" title="Reload the window, like Cmd+R: running turns, queued messages and drafts carry on" onClick={() => void window.desktop.appReload()}><RotateCw size={16} /></button>{/* T-261; the user, 2026-10-01: "It should do a hard refresh on the app without restarting the app. So basically like doing command R" */}
+          <button className={`icon-btn dev-btn${dev ? ' lit' : ''}`} title={dev ? t('app.titlebar.devOn') : t('app.titlebar.devOff')} onClick={() => setDev((v) => !v)}><Glasses size={17} /></button>
+          {dev && <button className={`icon-btn meta-btn${showMeta ? ' lit' : ''}`} title={showMeta ? t('app.titlebar.metaShown') : t('app.titlebar.metaShow')} onClick={() => setShowMeta((v) => !v)}><Logs size={17} /></button>}{/* a developer's (T-259; the user, 2026-10-01: "The eye should only appear when the goggles are active ... in between the bug and the goggles ... the system events icon makes no sense with an eye") */}
+          <button className={`icon-btn${debugOpen ? ' lit' : ''}`} title={t('app.titlebar.debugger')} onClick={() => setDebugOpen((v) => { localStorage.setItem('cvc.debug', v ? '0' : '1'); return !v; })}><Bug size={16} /></button>
+          <button className="icon-btn reload-btn" title={t('app.titlebar.reload')} onClick={() => void window.desktop.appReload()}><RotateCw size={16} /></button>{/* T-261; the user, 2026-10-01: "It should do a hard refresh on the app without restarting the app. So basically like doing command R" */}
         </div>
       </header>
 
       {sidebar && (
         <aside className="sidebar">
-          <div className="side-grip" title="Drag to resize" onPointerDown={onSideGrip} />
+          <div className="side-grip" title={t('app.sidebar.dragResize')} onPointerDown={onSideGrip} />
           <nav className="side-nav">
-            <button className="nav-item" onClick={() => void addFolder()}><span className="nav-ico"><FolderPlus size={16} /></span>Add folder</button>
+            <button className="nav-item" onClick={() => void addFolder()}><span className="nav-ico"><FolderPlus size={16} /></span>{t('app.sidebar.addFolder')}</button>
           </nav>
           <div className="side-scroll">
             {jauvex && showJauvex && (() => { const key = `${jauvex.id}:jauvex`; const on = sel?.key === key; return (
-              <button className={`row jauvex-row${on ? ' on' : ''}${jauvexSession && busy[key] ? ' working' : ''}`} title="The Jauvex agent: the entry point for everything about this app (restart, update, install, agents, folders, how it works, developing it)" onClick={() => open({ projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' })}>
-                <Mark /><span className="row-title">Jauvex</span><Unseen n={countOf(unread, jauvexSession)} /><small>agent</small></button>); })()}
-            {projects.filter((p) => !p.builtin).length === 0 && <p className="side-empty">Add a folder to see the Claude, Codex and Grok sessions that exist for it.</p>}
+              <button className={`row jauvex-row${on ? ' on' : ''}${jauvexSession && busy[key] ? ' working' : ''}`} title={t('app.sidebar.jauvexRow')} onClick={() => open({ projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' })}>
+                <Mark /><span className="row-title">Jauvex</span><Unseen n={countOf(unread, jauvexSession)} /><small>{t('app.sidebar.agentTag')}</small></button>); })()}
+            {projects.filter((p) => !p.builtin).length === 0 && <p className="side-empty">{t('app.sidebar.empty')}</p>}
             {projects.filter((p) => !p.builtin).map((p) => (
               <ProjectGroup key={p.id} project={p} infos={infos[p.id]} sel={sel} unread={unread} onMoveHere={(id, where) => void moveFolderTo(id, p.id, where)} renaming={renameAt === 'row' && renaming?.startsWith(`${p.id}:`) ? renaming.slice(p.id.length + 1) : null} onRenaming={(sid) => { setRenameAt('row'); setRenaming(sid ? `${p.id}:${sid}` : null); }} onRename={(sid, t) => void rename(p.id, sid, t)} onHide={(sid) => void hideSession(p, sid)} onOpenJev={(aid) => openJev(p.id, aid)} onDeleteJev={(aid) => void deleteJev(p.id, aid)} working={new Set(opened.filter((o) => o.projectId === p.id && busy[o.key] && o.sessionId).map((o) => o.sessionId!))} listening={opened.find((o) => o.key === listening && o.projectId === p.id)?.sessionId ?? null} onOpen={(sid) => open({ projectId: p.id, sessionId: sid, key: `${p.id}:${sid}` })} onNew={() => open({ projectId: p.id, sessionId: null, key: `${p.id}:new:${Date.now()}` })} onAdd={() => setPicker(p)} onRemove={() => void removeProject(p)}
                 workflows={workflows[p.id] ?? []} onOpenWorkflow={(file, name) => open({ projectId: p.id, sessionId: null, key: `${p.id}:wf:${file}`, kind: 'workflow', file, name })} onDeleteWorkflow={(w) => void deleteWorkflowFile(p, w)}
-                onNewWorkflow={() => void askName('New workflow', `A workflow in ${p.name}: workflows/<name>.md, its steps in order and who does each, with a file per step beside it. It starts as a Hello World that runs as it is, and opens here.`, 'News video').then(async (name) => { if (!name?.trim()) return; try { const file = await api.newWorkflow(p.id, name.trim(), DEFAULT_AGENT); await loadWorkflows(p); open({ projectId: p.id, sessionId: null, key: `${p.id}:wf:${file}`, kind: 'workflow', file, name: name.trim() }); } catch (e) { setError((e as Error).message); } })}
+                onNewWorkflow={() => void askName(t('app.sidebar.newWorkflow'), t('app.sidebar.newWorkflowHint', { folder: p.name }), t('app.sidebar.newWorkflowPlaceholder')).then(async (name) => { if (!name?.trim()) return; try { const file = await api.newWorkflow(p.id, name.trim(), DEFAULT_AGENT); await loadWorkflows(p); open({ projectId: p.id, sessionId: null, key: `${p.id}:wf:${file}`, kind: 'workflow', file, name: name.trim() }); } catch (e) { setError((e as Error).message); } })}
                 boards={boards[p.id] ?? []} onDeleteBoard={(b) => void deleteBoardFile(p, b)} onOpenBoard={(file, title) => open({ projectId: p.id, sessionId: null, key: `${p.id}:board:${file}`, kind: 'board', file, name: title })}
-                onNewBoard={() => void askName('New board', `A to-do board in ${p.name}: boards/<name>.md, a markdown file its agents keep. It opens here.`, 'Launch').then(async (name) => { if (!name) return; try { const file = await api.newBoard(p.id, name); await loadBoards(p); open({ projectId: p.id, sessionId: null, key: `${p.id}:board:${file}`, kind: 'board', file, name }); } catch (e) { setError((e as Error).message); } })} />
+                onNewBoard={() => void askName(t('app.sidebar.newBoard'), t('app.sidebar.newBoardHint', { folder: p.name }), t('app.sidebar.newBoardPlaceholder')).then(async (name) => { if (!name) return; try { const file = await api.newBoard(p.id, name); await loadBoards(p); open({ projectId: p.id, sessionId: null, key: `${p.id}:board:${file}`, kind: 'board', file, name }); } catch (e) { setError((e as Error).message); } })} />
             ))}
           </div>
-          {voiceUi && listening && sel?.key !== listening && (() => { const o = opened.find((x) => x.key === listening); const name = o?.sessionId ? infos[o.projectId]?.find((i) => i.sessionId === o.sessionId)?.customTitle || infos[o.projectId]?.find((i) => i.sessionId === o.sessionId)?.summary || 'Session' : o?.name || 'New session'; return (
-            <div className="side-voice" title="Voice is on in this session. Click the name to go back to it.">
-              <button className="side-orb" title="Tap to make it stop talking" onClick={voiceUi.hush}><Orb size={54} level={voiceUi.level} phase={voiceUi.phase} mute={voiceUi.micMuted} silent={voiceUi.speakerOff} /></button>
-              <div className="side-voice-text"><button className="side-voice-name" onClick={() => { if (o) open(o); }}>{name}</button><span className="side-voice-phase">{voiceUi.micMuted ? 'Muted' : PHASE_LABEL[voiceUi.phase]}</span></div>
-              <div className="side-voice-btns"><button className={`${voiceUi.micMuted ? 'muted' : ''}${voiceUi.muteIn != null ? ' counting' : ''}`} title={voiceUi.muteIn != null ? `Muting in ${voiceUi.muteIn} s` : voiceUi.micMuted ? 'Unmute microphone' : 'Mute microphone'} onClick={voiceUi.toggleMic}>{voiceUi.micMuted ? <MicOff size={15} /> : <Mic size={15} />}{voiceUi.muteIn != null && <span className="mute-count" key={voiceUi.muteIn}>{voiceUi.muteIn}</span>}</button><button className={voiceUi.speakerOff ? 'muted' : ''} title={voiceUi.speakerOff ? 'Turn the voice back on' : 'Silence the voice'} onClick={voiceUi.toggleSpeaker}>{voiceUi.speakerOff ? <VolumeX size={15} /> : <Volume2 size={15} />}</button><button title="End voice chat" onClick={voiceUi.end}><X size={15} /></button></div>
+          {voiceUi && listening && sel?.key !== listening && (() => { const o = opened.find((x) => x.key === listening); const name = o?.sessionId ? infos[o.projectId]?.find((i) => i.sessionId === o.sessionId)?.customTitle || infos[o.projectId]?.find((i) => i.sessionId === o.sessionId)?.summary || t('app.session') : o?.name || t('app.newSession'); return (
+            <div className="side-voice" title={t('app.voice.sideTitle')}>
+              <button className="side-orb" title={t('app.voice.tapToHush')} onClick={voiceUi.hush}><Orb size={54} level={voiceUi.level} phase={voiceUi.phase} mute={voiceUi.micMuted} silent={voiceUi.speakerOff} /></button>
+              <div className="side-voice-text"><button className="side-voice-name" onClick={() => { if (o) open(o); }}>{name}</button><span className="side-voice-phase">{voiceUi.micMuted ? t('app.voice.muted') : PHASE_LABEL()[voiceUi.phase]}</span></div>
+              <div className="side-voice-btns"><button className={`${voiceUi.micMuted ? 'muted' : ''}${voiceUi.muteIn != null ? ' counting' : ''}`} title={voiceUi.muteIn != null ? t('app.voice.mutingIn', { s: voiceUi.muteIn }) : voiceUi.micMuted ? t('app.voice.unmuteMic') : t('app.voice.muteMic')} onClick={voiceUi.toggleMic}>{voiceUi.micMuted ? <MicOff size={15} /> : <Mic size={15} />}{voiceUi.muteIn != null && <span className="mute-count" key={voiceUi.muteIn}>{voiceUi.muteIn}</span>}</button><button className={voiceUi.speakerOff ? 'muted' : ''} title={voiceUi.speakerOff ? t('app.voice.speakerOn') : t('app.voice.speakerOff')} onClick={voiceUi.toggleSpeaker}>{voiceUi.speakerOff ? <VolumeX size={15} /> : <Volume2 size={15} />}</button><button title={t('app.voice.end')} onClick={voiceUi.end}><X size={15} /></button></div>
             </div>); })()}
-          <footer className="side-foot"><button className="foot-btn" title={SIGN_IN_IN_APP ? 'Accounts: who each provider is signed in as; sign out, sign in, switch' : 'Accounts: who each provider is signed in as, and how to sign in with its own command line'} onClick={() => setAccountsOpen(true)}>Jauvex <em>{__APP_VERSION__}</em></button>{update?.available && update.installed ? <button className="foot-update" disabled={checking} title={`Jauvex ${update.latest} is out: click and the Jauvex agent tells you what it brings and asks whether to update (it closes the app, rebuilds it in a few minutes and opens it again).`} onClick={() => void openWhatsNew()}>{update.latest} is out</button>
-            : <button className="foot-news" disabled={checking} title="What each version brings, after asking jauvex.reindent.com whether a newer one is out" onClick={() => void openWhatsNew()}>{checking ? 'Checking…' : "What's new"}</button>}{/* while a newer version is out its notice takes this place, and a click asks about it (T-245) */}<button className="icon-btn sm" title="Jauvex settings" onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
+          <footer className="side-foot"><button className="foot-btn" title={SIGN_IN_IN_APP ? t('app.footer.accountsInApp') : t('app.footer.accountsCli')} onClick={() => setAccountsOpen(true)}>Jauvex <em>{__APP_VERSION__}</em></button>{update?.available && update.installed ? <button className="foot-update" disabled={checking} title={t('app.footer.updateOutTitle', { version: update.latest ?? '' })} onClick={() => void openWhatsNew()}>{t('app.footer.updateOut', { version: update.latest ?? '' })}</button>
+            : <button className="foot-news" disabled={checking} title={t('app.footer.whatsNewTitle')} onClick={() => void openWhatsNew()}>{checking ? t('app.footer.checking') : t('app.footer.whatsNew')}</button>}{/* while a newer version is out its notice takes this place, and a click asks about it (T-245) */}<button className="icon-btn sm" title={t('app.footer.settings')} onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
           {whatsNew && <WhatsNew line={whatsNew.line} notes={whatsNew.notes} onClose={() => setWhatsNew(null)} />}
           {settingsOpen && <SettingsPanel dashOn={dashEnabled} onDashOn={dashSet} onCustomTheme={() => void customTheme()} autoCompact={autoCompact} onAutoCompact={changeAutoCompact} signedIn={signedIn} welcomeNext={welcomeNext} onWelcomeNext={(on) => { setWelcomeNext(on); void api.setUi({ welcomed: !on }); }} onOpenWelcome={() => { setSettingsOpen(false); setWelcomeOpen(true); }} defaultProvider={defaultProvider} onDefaultProvider={(p) => { setDefaultProvider(p); localStorage.setItem('cvc.provider', p); void api.setUi({ defaultProvider: p }); }} showJauvex={showJauvex} onShowJauvex={(on) => { setShowJauvex(on); void api.setUi({ showJauvex: on }); }} jauvexMove={jauvexMove} onJauvexMove={(m) => { setJauvexMove(m); void api.setUi({ jauvexMove: m }); }} onClose={() => setSettingsOpen(false)} />}
           {accountsOpen && <Accounts onClose={() => setAccountsOpen(false)} />}
@@ -687,7 +690,7 @@ export default function App() {
                 onLost: () => { setJauvexSession(null); void api.setUi({ jauvexSession: null }); const unbind = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: null } : x); setOpened((all) => all.map(unbind)); setSel((cur) => (cur ? unbind(cur) : cur)); setHistory((h) => h.map(unbind)); } } : undefined}
               onTurnEnd={() => void refresh()} onReply={(text, replyTo, takenBack) => { const sid = opened.find((x) => x.key === o.key)?.sessionId ?? o.sessionId; setUnread((u) => counted(u, sid, !!sid && selNow.current?.sessionId === sid)); /* a new reply on its agent, unless it is on screen (T-226) */ void routeAgentBlocks(o, text); if (replyTo?.kind === 'run') void onRunReply(replyTo, text); else { if (replyTo) void returnReply(o, replyTo, text); if (takenBack) void routeToWaitingRun(o, text, takenBack.queued); } }} onBridge={(b) => { if (b) bridges.current.set(o.key, b); else bridges.current.delete(o.key); }} onNew={() => open({ projectId: proj.id, sessionId: null, key: `${proj.id}:new:${Date.now()}` })} /></div>; })}
         {sel && project ? null
-          : <div className="empty"><Mark /><h2>Pick a session</h2><p>Add a folder, choose which of its Claude, Codex and Grok sessions to keep in the sidebar, then open one and keep talking, or start a new one with either.</p></div>}
+          : <div className="empty"><Mark /><h2>{t('app.empty.title')}</h2><p>{t('app.empty.body')}</p></div>}
       </main>
       {pane && <Pane target={pane} onClose={() => setPane(null)} onClickCapture={catchLinks} /* the pane sits outside <main>: its links are caught here too */ />}
       {nameBox && <NameBox title={nameBox.title} hint={nameBox.hint} placeholder={nameBox.placeholder} onDone={(name) => { const then = nameBox.then; setNameBox(null); then(name); }} />}
@@ -707,13 +710,13 @@ function DebugPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => { void window.desktop.debugList().then(setEvents); return window.desktop.onDebug((e) => setEvents((all) => keep(all, e))); }, []); // each tab its own last ones (T-260)
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [events]);
   const jev = events.filter((e) => e.by === 'jev' && e.ms != null && e.kind !== 'jev'); const model = events.filter((e) => e.by === 'voice model' && e.ms != null);
-  const avg = (xs: DebugEvent[]) => (xs.length ? `${Math.round(xs.reduce((a, e) => a + (e.ms ?? 0), 0) / xs.length)} ms` : 'none yet');
+  const avg = (xs: DebugEvent[]) => (xs.length ? `${Math.round(xs.reduce((a, e) => a + (e.ms ?? 0), 0) / xs.length)} ms` : t('app.debug.noneYet'));
   return (
     <aside className="debug">
-      <header><b>Debugger</b><nav className="debug-tabs"><button className={tab === 'voice' ? 'on' : ''} onClick={() => { setTab('voice'); localStorage.setItem('cvc.debug.tab', 'voice'); }}>Voice</button><button className={tab === 'model' ? 'on' : ''} onClick={() => { setTab('model'); localStorage.setItem('cvc.debug.tab', 'model'); }}>Model</button></nav><span>{tab === 'voice' ? `Jev: ${jev.length} decisions, avg ${avg(jev)} · voice model: ${model.length}, avg ${avg(model)}` : 'Every exchange with Jev, the voice model and the agents (Claude, Codex, Grok): what was sent, each step, what came back. Click a line for the whole of it.'}</span>
-        <button className="icon-btn sm" title="Clear" onClick={() => { void window.desktop.debugClear(); setEvents([]); }}><Trash2 size={14} /></button><button className="icon-btn sm" title="Close" onClick={onClose}><X size={15} /></button></header>
+      <header><b>{t('app.debug.title')}</b><nav className="debug-tabs"><button className={tab === 'voice' ? 'on' : ''} onClick={() => { setTab('voice'); localStorage.setItem('cvc.debug.tab', 'voice'); }}>{t('app.debug.voice')}</button><button className={tab === 'model' ? 'on' : ''} onClick={() => { setTab('model'); localStorage.setItem('cvc.debug.tab', 'model'); }}>{t('app.debug.model')}</button></nav><span>{tab === 'voice' ? t('app.debug.voiceStats', { jev: jev.length, jevAvg: avg(jev), model: model.length, modelAvg: avg(model) }) : t('app.debug.modelIntro')}</span>
+        <button className="icon-btn sm" title={t('app.debug.clear')} onClick={() => { void window.desktop.debugClear(); setEvents([]); }}><Trash2 size={14} /></button><button className="icon-btn sm" title={t('common.close')} onClick={onClose}><X size={15} /></button></header>
       <div className="debug-list">
-        {shown.length === 0 && <p className="debug-empty">{tab === 'voice' ? 'Nothing yet. Turn voice mode on and talk: every transcript and decision shows up here.' : 'Nothing yet. Every question to Jev, every message to a model and every turn of an agent will show up here, with the answer.'}</p>}
+        {shown.length === 0 && <p className="debug-empty">{tab === 'voice' ? t('app.debug.emptyVoice') : t('app.debug.emptyModel')}</p>}
         {shown.map((e, i) => <div key={i} className={`debug-row k-${e.kind}${e.detail ? ' has-detail' : ''}`} onClick={() => { if (e.detail) setOpen(open === i ? null : i); }}><time>{new Date(e.at).toLocaleTimeString([], { hour12: false })}</time><i>{e.kind === 'model' ? (e.by === 'jev' ? 'jev' : e.by === 'agent' ? 'agent' : 'llm') : e.kind}</i><em className={e.by === 'jev' ? 'by-jev' : e.by === 'agent' ? 'by-agent' : ''} title={e.who}>{e.who ?? e.by ?? ''}</em><span className="ms">{e.ms != null ? `${e.ms} ms` : ''}</span><p>{e.text}</p>{open === i && e.detail && <pre className="debug-detail">{e.detail}</pre>}</div>)}
         <div ref={end} />
       </div>
@@ -731,22 +734,22 @@ function RenameInput({ initial, onDone, onCancel }: { initial: string; onDone: (
 /** Who a workflow's step goes to when nobody is named: the app's own agent, which every install has (a new workflow's Hello World runs on it). */
 const DEFAULT_AGENT = 'Jauvex';
 /** What deleting a workflow takes away, asked before it happens. */
-const deleteWorkflowText = (w: WorkflowInfo, folder: string) => `Delete the workflow "${w.name}"?\n\n${w.file} and its folder, workflows/${workflowBase(w.file)}/ (its steps' instructions, its ${w.runs === 1 ? 'run' : `${w.runs} runs`} and its versions), are deleted from ${folder}. The app cannot undo this.`;
+const deleteWorkflowText = (w: WorkflowInfo, folder: string) => t('app.workflow.confirmDelete', { count: w.runs, name: w.name, file: w.file, dir: `workflows/${workflowBase(w.file)}/`, folder });
 function WhatsNew({ line, notes, onClose }: { line: string; notes: string; onClose: () => void }) {
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal whats-new" role="dialog" aria-label="What's new in Jauvex">
-        <div className="modal-head"><div><h3>What's new in Jauvex</h3><p>From the changelog: what each version brings.</p></div><button className="icon-btn" title="Close" onClick={onClose}><X size={16} /></button></div>
+      <div className="modal whats-new" role="dialog" aria-label={t('app.whatsNew.title')}>
+        <div className="modal-head"><div><h3>{t('app.whatsNew.title')}</h3><p>{t('app.whatsNew.sub')}</p></div><button className="icon-btn" title={t('common.close')} onClick={onClose}><X size={16} /></button></div>
         <p className="whats-new-check">{line}</p>
         <div className="md whats-new-body" dangerouslySetInnerHTML={{ __html: md(notes, '') }} />
-        <div className="modal-foot"><span /><button autoFocus onClick={onClose}>Close</button></div>
+        <div className="modal-foot"><span /><button autoFocus onClick={onClose}>{t('common.close')}</button></div>
       </div>
     </div>
   );
 }
 
 function Unseen({ n }: { n: number }) {
-  return n > 0 ? <span className="row-unread" title={`${n} new ${n === 1 ? 'reply' : 'replies'}: open the agent to read ${n === 1 ? 'it' : 'them'}`}>{badgeText(n)}</span> : null;
+  return n > 0 ? <span className="row-unread" title={t('app.sidebar.unseen', { count: n })}>{badgeText(n)}</span> : null;
 }
 
 /** What a folder dragged in the left panel carries (T-255): its id, under a type of its own. */
@@ -777,52 +780,52 @@ function ProjectGroup({ onMoveHere, unread, project, infos, sel, working, listen
   const dropHere = (e: React.DragEvent<HTMLElement>) => { setDrop(null); const id = e.dataTransfer.getData(FOLDER_DRAG); if (!onMoveHere || !id) return; e.preventDefault(); if (id !== project.id) onMoveHere(id, whereOf(e)); };
   return (
     <section className={`group${folded ? ' folded' : ''}${drop ? ` drop-${drop}` : ''}${dragging ? ' dragging' : ''}`} onDragOver={dragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null); }} onDrop={dropHere}>
-      <div className="group-head" title={onMoveHere ? `${project.path} · drag to move this folder` : project.path} draggable={!!onMoveHere} onDragStart={(e) => { if (!onMoveHere) return; e.dataTransfer.setData(FOLDER_DRAG, project.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }} onDragEnd={() => { setDragging(false); setDrop(null); }}>
-        <button className="group-name" title={`${project.path} · click to ${folded ? 'unfold' : 'fold'}`} onClick={fold}>{folded ? <Folder size={15} /> : <FolderOpen size={15} />}<span className="group-label">{project.name}</span></button>
-        <button className="icon-btn sm" title="New session" onClick={onNew}><SquarePen size={15} /></button>
-        <button className="icon-btn sm" title="Add sessions" onClick={onAdd}><Plus size={16} /></button>
-        <button className="icon-btn sm" title="Filter" onClick={() => setFilter((f) => (f === null ? '' : null))}><Search size={15} /></button>
-        <button className="icon-btn sm" title="Folder options" onClick={() => setMenu((v) => !v)}><SlidersHorizontal size={15} /></button>
-        {menu && <div className="menu" onMouseLeave={() => setMenu(false)}><div className="menu-path">{project.path}</div><button onClick={() => { setMenu(false); onNewWorkflow(); }}><Plus size={14} />New workflow</button><button onClick={() => { setMenu(false); onNewBoard(); }}><Plus size={14} />New board</button><button onClick={() => { setMenu(false); onRemove(); }}><Trash2 size={14} />Remove folder</button></div>}
+      <div className="group-head" title={onMoveHere ? t('app.sidebar.dragFolder', { path: project.path }) : project.path} draggable={!!onMoveHere} onDragStart={(e) => { if (!onMoveHere) return; e.dataTransfer.setData(FOLDER_DRAG, project.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }} onDragEnd={() => { setDragging(false); setDrop(null); }}>
+        <button className="group-name" title={folded ? t('app.sidebar.clickUnfold', { path: project.path }) : t('app.sidebar.clickFold', { path: project.path })} onClick={fold}>{folded ? <Folder size={15} /> : <FolderOpen size={15} />}<span className="group-label">{project.name}</span></button>
+        <button className="icon-btn sm" title={t('app.newSession')} onClick={onNew}><SquarePen size={15} /></button>
+        <button className="icon-btn sm" title={t('app.sidebar.addSessions')} onClick={onAdd}><Plus size={16} /></button>
+        <button className="icon-btn sm" title={t('app.sidebar.filter')} onClick={() => setFilter((f) => (f === null ? '' : null))}><Search size={15} /></button>
+        <button className="icon-btn sm" title={t('app.sidebar.folderOptions')} onClick={() => setMenu((v) => !v)}><SlidersHorizontal size={15} /></button>
+        {menu && <div className="menu" onMouseLeave={() => setMenu(false)}><div className="menu-path">{project.path}</div><button onClick={() => { setMenu(false); onNewWorkflow(); }}><Plus size={14} />{t('app.sidebar.newWorkflow')}</button><button onClick={() => { setMenu(false); onNewBoard(); }}><Plus size={14} />{t('app.sidebar.newBoard')}</button><button onClick={() => { setMenu(false); onRemove(); }}><Trash2 size={14} />{t('app.sidebar.removeFolder')}</button></div>}
       </div>
       {!folded && <>
-      {filter !== null && <input className="group-filter" autoFocus placeholder="Filter sessions" value={filter} onChange={(e) => setFilter(e.target.value)} />}
-      {rows.length === 0 && <button className="row ghost" onClick={onAdd}><span className="dot" />{project.sessions.length ? 'No match' : 'Add sessions…'}</button>}
+      {filter !== null && <input className="group-filter" autoFocus placeholder={t('app.sidebar.filterSessions')} value={filter} onChange={(e) => setFilter(e.target.value)} />}
+      {rows.length === 0 && <button className="row ghost" onClick={onAdd}><span className="dot" />{project.sessions.length ? t('app.sidebar.noMatch') : t('app.sidebar.addSessionsEllipsis')}</button>}
       {rows.map((s) => (
-        <button key={s.sessionId} className={`row${sel?.projectId === project.id && sel.sessionId === s.sessionId ? ' on' : ''}`} onClick={() => onOpen(s.sessionId)} onDoubleClick={() => onRenaming(s.sessionId)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: s.sessionId, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }} title={`${PROVIDER_LABEL[s.provider]} · ${s.firstPrompt || s.summary} · double-click to rename`}>
-          <ProviderIcon provider={s.provider} />{renaming === s.sessionId ? <RenameInput initial={s.customTitle || s.summary} onDone={(t) => onRename(s.sessionId, t)} onCancel={() => onRenaming(null)} /> : <span className="row-title">{s.customTitle || s.summary}</span>}<Unseen n={unread[s.sessionId] ?? 0} />{listening === s.sessionId && <span className="row-listening" title="Listening: the microphone is on in this session"><AudioLines size={13} /></span>}{working.has(s.sessionId) ? <span className="row-working" title="Working"><Mark busy /></span> : <span className="row-time">{s.lastModified ? ago(s.lastModified) : ''}</span>}
+        <button key={s.sessionId} className={`row${sel?.projectId === project.id && sel.sessionId === s.sessionId ? ' on' : ''}`} onClick={() => onOpen(s.sessionId)} onDoubleClick={() => onRenaming(s.sessionId)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: s.sessionId, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }} title={t('app.sidebar.sessionRow', { provider: PROVIDER_LABEL[s.provider], summary: s.firstPrompt || s.summary })}>
+          <ProviderIcon provider={s.provider} />{renaming === s.sessionId ? <RenameInput initial={s.customTitle || s.summary} onDone={(t) => onRename(s.sessionId, t)} onCancel={() => onRenaming(null)} /> : <span className="row-title">{s.customTitle || s.summary}</span>}<Unseen n={unread[s.sessionId] ?? 0} />{listening === s.sessionId && <span className="row-listening" title={t('app.sidebar.listening')}><AudioLines size={13} /></span>}{working.has(s.sessionId) ? <span className="row-working" title={t('app.sidebar.working')}><Mark busy /></span> : <span className="row-time">{s.lastModified ? ago(s.lastModified) : ''}</span>}
         </button>
       ))}
       {(project.jev ?? []).filter((a) => !filter?.trim() || a.name.toLowerCase().includes(filter.trim().toLowerCase())).map((a) => (
-        <button key={a.id} className={`row${sel?.projectId === project.id && sel.sessionId === a.id ? ' on' : ''}`} onClick={() => onOpenJev(a.id)} onDoubleClick={() => onRenaming(a.id)} title={`Jev agent · ${a.runs.length} runs · double-click to rename`}
+        <button key={a.id} className={`row${sel?.projectId === project.id && sel.sessionId === a.id ? ' on' : ''}`} onClick={() => onOpenJev(a.id)} onDoubleClick={() => onRenaming(a.id)} title={t('app.sidebar.jevRow', { runs: a.runs.length })}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: a.id, jev: true, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }}>
           <img className="provider-icon jev" src={typesafeMark} alt="" aria-label="Jev (TypeSafe)" width={12} height={12} />{renaming === a.id ? <RenameInput initial={a.name} onDone={(t) => onRename(a.id, t)} onCancel={() => onRenaming(null)} /> : <span className="row-title">{a.name}</span>}<span className="row-time">{ago(a.updatedAt)}</span>
         </button>
       ))}
-      {workflows.length > 0 && <div className="group-sub">Workflows</div>}
+      {workflows.length > 0 && <div className="group-sub">{t('app.sidebar.workflows')}</div>}
       {workflows.map((w) => (
-        <button key={w.file} className={`row${sel?.projectId === project.id && sel.kind === 'workflow' && sel.file === w.file ? ' on' : ''}`} onClick={() => onOpenWorkflow(w.file, w.name)} title={`${w.file} · ${w.steps} steps · ${w.runs} runs · right-click to delete`}
+        <button key={w.file} className={`row${sel?.projectId === project.id && sel.kind === 'workflow' && sel.file === w.file ? ' on' : ''}`} onClick={() => onOpenWorkflow(w.file, w.name)} title={t('app.sidebar.workflowRow', { file: w.file, steps: w.steps, runs: w.runs })}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: '', wf: w, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }}>
           <span className={`wf-dot${w.latest && /^running/i.test(w.latest.result) ? ' live' : ''}`} /><span className="row-title">{w.name}</span>{w.latest && /^running/i.test(w.latest.result)
-            ? <span className="row-working" title={w.latest.waiting ? `Run #${w.latest.n} waits for you` : `Running · run #${w.latest.n}`}>{w.latest.waiting && <i className="wf-waits" />}<Mark busy /></span> /* the user, 2026-09-27: a running workflow shows the app's mark turning, as a working agent does; one that waits for a person, a yellow dot beside it ("when a workflow is waiting for the human in the loop, it must be marked in the left pane") */
+            ? <span className="row-working" title={w.latest.waiting ? t('app.sidebar.runWaits', { n: w.latest.n }) : t('app.sidebar.runRunning', { n: w.latest.n })}>{w.latest.waiting && <i className="wf-waits" />}<Mark busy /></span> /* the user, 2026-09-27: a running workflow shows the app's mark turning, as a working agent does; one that waits for a person, a yellow dot beside it ("when a workflow is waiting for the human in the loop, it must be marked in the left pane") */
             : <span className="row-time">{w.latest ? w.latest.started.slice(5, 10) : w.when.split('·')[0]?.trim().slice(0, 12) || ''}</span>}
         </button>
       ))}
-      {boards.length > 0 && <div className="group-sub">Boards</div>}
+      {boards.length > 0 && <div className="group-sub">{t('app.sidebar.boards')}</div>}
       {boards.map((b) => (
-        <button key={b.file} className={`row${sel?.projectId === project.id && sel.kind === 'board' && sel.file === b.file ? ' on' : ''}`} onClick={() => onOpenBoard(b.file, b.title)} title={`${b.file} · ${b.done} of ${b.total} done · right-click to delete`}
+        <button key={b.file} className={`row${sel?.projectId === project.id && sel.kind === 'board' && sel.file === b.file ? ' on' : ''}`} onClick={() => onOpenBoard(b.file, b.title)} title={t('app.sidebar.boardRow', { file: b.file, done: b.done, total: b.total })}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: '', board: b, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }}>
           <span className="board-dot" /><span className="row-title">{b.title}</span><span className="row-time">{b.done}/{b.total}</span>
         </button>
       ))}
       </>}
       {ctx && <div className="menu ctx" style={{ left: ctx.x, top: ctx.y }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
-        {ctx.wf ? <button className="danger" onClick={() => { const w = ctx.wf!; setCtx(null); onDeleteWorkflow(w); }}><Trash2 size={14} />Delete workflow</button>
-        : ctx.board ? <button className="danger" onClick={() => { const b = ctx.board!; setCtx(null); onDeleteBoard(b); }}><Trash2 size={14} />Delete board</button> : <>
-        <button onClick={() => { const sid = ctx.sid; setCtx(null); onRenaming(sid); }}><Pencil size={14} />Rename</button>
-        {!ctx.jev && <button onClick={() => { void navigator.clipboard.writeText(ctx.sid); setCtx(null); }}><Copy size={14} />Copy session ID</button>}
-        {!ctx.jev && <button className="danger" onClick={() => { const sid = ctx.sid; setCtx(null); onHide(sid); }}><HideIcon size={14} />Remove from sidebar</button>}
-        {ctx.jev && <button className="danger" onClick={() => { const sid = ctx.sid; setCtx(null); onDeleteJev(sid); }}><Trash2 size={14} />Delete agent</button>}</>}
+        {ctx.wf ? <button className="danger" onClick={() => { const w = ctx.wf!; setCtx(null); onDeleteWorkflow(w); }}><Trash2 size={14} />{t('app.menu.deleteWorkflow')}</button>
+        : ctx.board ? <button className="danger" onClick={() => { const b = ctx.board!; setCtx(null); onDeleteBoard(b); }}><Trash2 size={14} />{t('app.menu.deleteBoard')}</button> : <>
+        <button onClick={() => { const sid = ctx.sid; setCtx(null); onRenaming(sid); }}><Pencil size={14} />{t('common.rename')}</button>
+        {!ctx.jev && <button onClick={() => { void navigator.clipboard.writeText(ctx.sid); setCtx(null); }}><Copy size={14} />{t('app.menu.copySessionId')}</button>}
+        {!ctx.jev && <button className="danger" onClick={() => { const sid = ctx.sid; setCtx(null); onHide(sid); }}><HideIcon size={14} />{t('app.menu.removeFromSidebar')}</button>}
+        {ctx.jev && <button className="danger" onClick={() => { const sid = ctx.sid; setCtx(null); onDeleteJev(sid); }}><Trash2 size={14} />{t('app.menu.deleteAgent')}</button>}</>}
       </div>}
     </section>
   );
@@ -838,13 +841,13 @@ function SessionPicker({ project, all, onClose, onSave }: { project: Project; al
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-label="Add sessions">
-        <div className="modal-head"><div><h3>Sessions in {project.name}</h3><p>{project.path}</p></div><button className="icon-btn" onClick={onClose}><X size={16} /></button></div>
-        <div className="modal-search"><Search size={15} /><input autoFocus placeholder="Search sessions" value={q} onChange={(e) => setQ(e.target.value)} />
-          <span className="who">{([['all', 'All', (all ?? []).length] as const, ...PROVIDERS.filter((p) => p !== 'grok' || counts.grok > 0).map((p) => [p, PROVIDER_LABEL[p], counts[p]] as const)]).map(([k, label, n]) => <button key={k} className={who === k ? 'on' : ''} title={k === 'all' ? 'Sessions of every provider' : `${label} sessions only`} onClick={() => setWho(k)}>{k !== 'all' && <ProviderIcon provider={k} size={11} />}{label}{all ? <em>{n}</em> : null}</button>)}</span></div>
+      <div className="modal" role="dialog" aria-label={t('app.sidebar.addSessions')}>
+        <div className="modal-head"><div><h3>{t('app.picker.title', { folder: project.name })}</h3><p>{project.path}</p></div><button className="icon-btn" title={t('common.close')} onClick={onClose}><X size={16} /></button></div>
+        <div className="modal-search"><Search size={15} /><input autoFocus placeholder={t('app.picker.search')} value={q} onChange={(e) => setQ(e.target.value)} />
+          <span className="who">{([['all', t('app.picker.all'), (all ?? []).length] as const, ...PROVIDERS.filter((p) => p !== 'grok' || counts.grok > 0).map((p) => [p, PROVIDER_LABEL[p], counts[p]] as const)]).map(([k, label, n]) => <button key={k} className={who === k ? 'on' : ''} title={k === 'all' ? t('app.picker.allTitle') : t('app.picker.onlyTitle', { provider: label })} onClick={() => setWho(k)}>{k !== 'all' && <ProviderIcon provider={k} size={11} />}{label}{all ? <em>{n}</em> : null}</button>)}</span></div>
         <div className="modal-list">
-          {!all && <p className="modal-empty">Loading…</p>}
-          {all && list.length === 0 && <p className="modal-empty">{q.trim() ? 'No session matches.' : who === 'all' ? 'No provider has sessions for this folder yet.' : `${PROVIDER_LABEL[who]} has no sessions for this folder yet.`}</p>}
+          {!all && <p className="modal-empty">{t('app.loading')}</p>}
+          {all && list.length === 0 && <p className="modal-empty">{q.trim() ? t('app.picker.noMatch') : who === 'all' ? t('app.picker.noneAll') : t('app.picker.noneProvider', { provider: PROVIDER_LABEL[who] })}</p>}
           {list.map((s) => (
             <button key={s.sessionId} className={`pick${picked.has(s.sessionId) ? ' on' : ''}`} onClick={() => toggle(s.sessionId)}>
               <span className="box">{picked.has(s.sessionId) && <Check size={12} strokeWidth={3} />}</span>
@@ -853,7 +856,7 @@ function SessionPicker({ project, all, onClose, onSave }: { project: Project; al
             </button>
           ))}
         </div>
-        <div className="modal-foot"><span>{picked.size} selected</span><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn" disabled={saving} onClick={async () => { setSaving(true); await onSave([...picked]); }}>{saving ? 'Saving…' : 'Done'}</button></div>
+        <div className="modal-foot"><span>{t('app.picker.selected', { n: picked.size })}</span><button className="btn ghost" onClick={onClose}>{t('common.cancel')}</button><button className="btn" disabled={saving} onClick={async () => { setSaving(true); await onSave([...picked]); }}>{saving ? t('app.saving') : t('app.done')}</button></div>
       </div>
     </div>
   );
@@ -1042,7 +1045,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
       if (swallowed && ls) { ls.resent = true; pendingReplyTo.current = replyTo; window.desktop.debugPush('note', `a turn ended in ${ev.durationMs} ms with no answer (the provider answered a stopped background job, not the message): sending the message again`); setRunning(false); setTimeout(() => void sendRef.current(ls.text, false, undefined, true, ls.images, true, !!ls.dictated), 150); return; }
       // A message that did not fit the context: compacted at once, then sent again (once). Past the auto-compact setting: compacted before the next message.
       const recover = !ev.ok && !!ev.tooLong && !v.current.stopped && !!ls && !ls.resent && !!sid.current; if (recover && ls) ls.replyTo = replyTo; /* it goes again after the compaction, its answer still to whoever asked (a step's to its run: T-253) */ const due = ev.ok && !v.current.stopped && shouldCompact(ctxRef.current, autoPctRef.current);
-      if (ev.ok && reply.trim()) { embedRef.current?.onReply(reply); onReplyRef.current?.(reply, replyTo, back); } if (v.current.speakTurn) { v.current.speakTurn = false; if (ev.ok && !v.current.stopped) sayWhatHappened(); else settle(); } setRunning(false); setCompacting(false); setLiveText(''); setAsks([]); setNote(v.current.stopped ? 'Interrupted' : ev.ok ? (ev.durationMs ? `${(ev.durationMs / 1000).toFixed(1)} s` : '') : `Stopped: ${ev.error ?? 'error'}`); if (!ev.ok && !v.current.stopped && !recover) { const why = ev.error ?? 'The turn failed.'; setMessages((m) => [...m, { uuid: `local-err-${Date.now()}`, role: 'system', blocks: [{ type: 'text', text: why }], meta: false, error: true }]); toBottom(); if (v.current.engine && v.current.cfg.ack && !v.current.speakerOff) enqueue(say(`${PROVIDER_LABEL[provider]} could not answer: ${why.replace(/\s+/g, ' ').slice(0, 140)}`), v.current.gen); } /* a failure is a red card in the thread and one spoken line, never a summary */ v.current.stopped = false; onTurnEnd();
+      if (ev.ok && reply.trim()) { embedRef.current?.onReply(reply); onReplyRef.current?.(reply, replyTo, back); } if (v.current.speakTurn) { v.current.speakTurn = false; if (ev.ok && !v.current.stopped) sayWhatHappened(); else settle(); } setRunning(false); setCompacting(false); setLiveText(''); setAsks([]); setNote(v.current.stopped ? t('app.chat.interrupted') : ev.ok ? (ev.durationMs ? `${(ev.durationMs / 1000).toFixed(1)} s` : '') : t('app.chat.stoppedWith', { error: ev.error ?? t('app.chat.error') })); if (!ev.ok && !v.current.stopped && !recover) { const why = ev.error ?? t('app.chat.turnFailed'); setMessages((m) => [...m, { uuid: `local-err-${Date.now()}`, role: 'system', blocks: [{ type: 'text', text: why }], meta: false, error: true }]); toBottom(); if (v.current.engine && v.current.cfg.ack && !v.current.speakerOff) enqueue(say(t('app.voice.couldNotAnswer', { provider: PROVIDER_LABEL[provider], why: why.replace(/\s+/g, ' ').slice(0, 140) })), v.current.gen); } /* a failure is a red card in the thread and one spoken line, never a summary */ v.current.stopped = false; onTurnEnd();
       if (recover) startCompactRef.current('too-long'); else if (due && startCompactRef.current('auto')) { /* the queue goes out when the compaction is over */ } else if (flushQueue('turn ended')) { /* the next queued message is on its way */ }
       else if (byeAfter.current) { const bye = byeAfter.current; byeAfter.current = ''; const gen = v.current.gen; enqueue(say(bye), gen); v.current.chain = v.current.chain.then(() => { if (v.current.engine && gen === v.current.gen) void commands.current.toggleVoice(); }); } }
   }), [onSession, onTurnEnd]);
@@ -1071,7 +1074,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   // When the answer lands while the understanding (stage two) is still being said: if most of it is out, it finishes; otherwise it
   // is cut at the next sentence end (estimated from the text), faded over a quarter second, and a short bridge ("Oh, it is done
   // already.") leads into the summary. The bridges are rendered ahead so the cut is not followed by a silent wait.
-  const BRIDGES = ['Oh, it is done already.', 'Ah, here it is.', 'Right, it came back already.'];
+  const BRIDGES = [t('app.voice.bridge1'), t('app.voice.bridge2'), t('app.voice.bridge3')];
   const warmBridges = () => { for (const b of BRIDGES) if (!v.current.bridges.has(b)) { v.current.bridges.set(b, null); void window.desktop.speak(b, v.current.cfg.voice, v.current.cfg.rate).then((a) => v.current.bridges.set(b, a)).catch(() => v.current.bridges.delete(b)); } };
   const lastBridge = useRef('');
   const steerStageTwo = async (): Promise<Spoken | null> => {
@@ -1099,7 +1102,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
     v.current.chain = v.current.chain.then(settle);
   })(); };
   // A summary that was waiting when the user spoke: it is not lost, it follows the answer to what they said, as an aside.
-  const sayDeferred = (gen: number) => { const ps = v.current.pendingSummary; if (!ps || v.current.speakerOff) return; v.current.pendingSummary = null; window.desktop.debugPush('speech', 'the summary that was held while the user talked comes after the answer to what they said, as "by the way"'); enqueue(say(ps.words.then((t) => (t ? `By the way, ${t.charAt(0).toLowerCase()}${t.slice(1)}` : ''))), gen, undefined, 'response', undefined); };
+  const sayDeferred = (gen: number) => { const ps = v.current.pendingSummary; if (!ps || v.current.speakerOff) return; v.current.pendingSummary = null; window.desktop.debugPush('speech', 'the summary that was held while the user talked comes after the answer to what they said, as "by the way"'); enqueue(say(ps.words.then((w) => (w ? t('app.voice.byTheWay', { rest: `${w.charAt(0).toLowerCase()}${w.slice(1)}` }) : ''))), gen, undefined, 'response', undefined); };
   // After a piece of speech ends: still working -> Thinking, otherwise back to Listening. Never overrides the user talking.
   const settle = () => { const e = v.current.engine; if (!e || e.speaking || v.current.hearing) return; setPhase(v.current.wording ? 'wording' : v.current.running || v.current.speakTurn ? 'thinking' : 'listening'); };
   // Stop talking now: fade out, drop everything queued, kill renders, and forget the rest of the interrupted answer.
@@ -1133,20 +1136,22 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   const staleTurnEnded = () => { window.desktop.debugPush('note', 'the turn had ended without the window hearing it: ending it now and sending what was queued'); v.current.running = false; v.current.speakTurn = false; compactTurn.current = null; setRunning(false); setCompacting(false); setLiveText(''); setAsks([]); setNote('');
     if (!flushQueue('the turn had ended')) settle(); };
   // ---- compaction (T-74): a turn of its own, Claude Code's /compact or Codex's thread/compact/start, with the last turn's settings
+  const compactNote = useRef(''); // the note a compaction shows while it runs: replaced when it found nothing to compact
   const startCompact = (why: 'manual' | 'auto' | 'too-long', text = '/compact'): boolean => {
     if (v.current.running || !sid.current) return false;
     compactTurn.current = why; v.current.running = true; v.current.stopped = false; setRunning(true); setCompacting(true); setLiveText('');
-    setNote(why === 'manual' ? 'Compacting the conversation…' : why === 'auto' ? `Compacting: the context passed ${autoPctRef.current} %…` : 'The context was full: compacting, then your message goes again…');
+    compactNote.current = why === 'manual' ? t('app.compact.manual') : why === 'auto' ? t('app.compact.auto', { pct: autoPctRef.current }) : t('app.compact.full'); setNote(compactNote.current);
     const c = ctxRef.current; window.desktop.debugPush('note', `compacting ${why === 'manual' ? 'as asked' : why === 'auto' ? `(auto-compact at ${autoPctRef.current} %)` : '(a message did not fit the context)'}${c ? `: ${tokens(c.used)} of ${c.window ? tokens(c.window) : 'an unknown window'} tokens` : ''}`);
     void window.desktop.chatStart({ chatId: chatId.current, projectId: project.id, sessionId: sid.current, provider, permissions, ...(embed ? { hidden: true } : {}), ...(project.builtin === 'jauvex' ? { steward: true } : {}), text, compact: true, ...(model ? { model } : {}), ...(effort && efforts.includes(effort) ? { effort } : {}), ...(lastVoiced.current ? { voice: true, vocabulary: stt(v.current.cfg).vocabulary } : {}) });
     return true;
   };
   const compactEvent = (ev: Extract<ChatEvent, { type: 'compact' }>) => {
     const auto = ev.trigger === 'auto' || (!!compactTurn.current && compactTurn.current !== 'manual'); // the provider's own, or the app's (the setting, a message that did not fit)
-    if (ev.phase === 'start') { setCompacting(true); if (!compactTurn.current) setNote('Compacting: the context is nearly full…'); window.desktop.debugPush('note', `${PROVIDER_LABEL[provider]} started compacting ${auto ? 'on its own' : 'as asked'}${ev.before ? ` at ${tokens(ev.before)} tokens` : ''}`); return; }
+    if (ev.phase === 'start') { setCompacting(true); if (!compactTurn.current) { compactNote.current = t('app.compact.nearlyFull'); setNote(compactNote.current); } window.desktop.debugPush('note', `${PROVIDER_LABEL[provider]} started compacting ${auto ? 'on its own' : 'as asked'}${ev.before ? ` at ${tokens(ev.before)} tokens` : ''}`); return; }
     setCompacting(false); setLastCompact({ at: Date.now(), ok: ev.ok !== false, ...(ev.before ? { before: ev.before } : {}), ...(ev.after !== undefined ? { after: ev.after } : {}) });
     const what = ev.ok === false ? `The conversation could not be compacted${ev.error ? `: ${ev.error}` : ''}` : `Conversation compacted${auto ? ' automatically' : ''}${ev.before ? `: ${tokens(ev.before)}${ev.after !== undefined ? ` → ${tokens(ev.after)}` : ''} tokens` : ''}`;
-    window.desktop.debugPush('note', what); setNote(what);
+    const shown = ev.ok === false ? (ev.error ? t('app.compact.failedWith', { error: ev.error }) : t('app.compact.failed')) : ev.before ? t(auto ? 'app.compact.doneAutoTokens' : 'app.compact.doneTokens', { tokens: `${tokens(ev.before)}${ev.after !== undefined ? ` → ${tokens(ev.after)}` : ''}` }) : t(auto ? 'app.compact.doneAuto' : 'app.compact.done');
+    window.desktop.debugPush('note', what); setNote(shown);
     const mark: ChatMessage = { uuid: `local-note-${Date.now()}`, role: 'user', blocks: [{ type: 'text', text: `(from the app) ${what}.` }], meta: false }; // where it happened, kept with the session's notes
     setMessages((m) => [...m, mark]); toBottom(); void keepNotes([mark]);
   };
@@ -1154,9 +1159,9 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
     const why = compactTurn.current; compactTurn.current = null; ownWrite.current = Date.now(); turnText.current = ''; setTurns((n) => n + 1);
     v.current.running = false; setRunning(false); setCompacting(false); setLiveText(''); setAsks([]);
     const stopped = v.current.stopped; v.current.stopped = false;
-    if (stopped) setNote('Compaction interrupted');
-    else if (!ev.ok) { const err = ev.error ?? 'the compaction failed'; setNote(`Could not compact: ${err}`); setMessages((m) => [...m, { uuid: `local-err-${Date.now()}`, role: 'system', blocks: [{ type: 'text', text: `Could not compact the conversation: ${err}` }], meta: false, error: true }]); toBottom(); }
-    else setNote((n) => (/^(Compacting|The context was full)/.test(n) ? 'Nothing was compacted' : n)); // the provider found nothing to compact
+    if (stopped) setNote(t('app.compact.interrupted'));
+    else if (!ev.ok) { const err = ev.error ?? t('app.compact.errDefault'); setNote(t('app.compact.couldNot', { error: err })); setMessages((m) => [...m, { uuid: `local-err-${Date.now()}`, role: 'system', blocks: [{ type: 'text', text: t('app.compact.couldNotConversation', { error: err }) }], meta: false, error: true }]); toBottom(); }
+    else setNote((n) => (n && n === compactNote.current ? t('app.compact.nothing') : n)); // the provider found nothing to compact
     onTurnEnd();
     const ls = lastSent.current;
     if (why === 'too-long' && ev.ok && !stopped && ls) { pendingReplyTo.current = ls.replyTo; window.desktop.debugPush('note', 'compacted after a message that did not fit: sending it again'); setTimeout(() => void sendRef.current(ls.text, false, undefined, true, ls.images, true, !!ls.dictated), 150); return; }
@@ -1215,7 +1220,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
               if (suspicious(t.text, best)) { const r = await window.desktop.transcribe(wav, v.current.cfg.language, false, '', true).catch(() => null); const pick = pickTranscript(t.text, best, r?.text ?? null);
                 window.desktop.debugPush('note', `ears: the pass over the whole stretch heard ${wordsOf(t.text)} word(s) ("${t.text.slice(0, 60)}") where an earlier pass of it heard ${wordsOf(best!)}; the retry heard ${r ? wordsOf(r.text) : 'nothing'}: kept the ${pick.by}'s text`); t.text = pick.text; } }
             if (t.text) quiet(); /* real speech: whatever the voice still had to say is off the table. A sound that was nothing (a click, a cough, a ghost) leaves the queued lines and the renders alone: it used to cut them, and the second and third stages went missing */
-            if (!stillHearing()) v.current.hearing = false; if (t.text) v.current.lastHeard = Date.now(); if (t.dropped && t.dropped.split(/\s+/).length >= 3) setNote(`Not sent, it did not sound like speech to me: "${t.dropped}"`); /* never erased without a trace */ if (!t.text && !thought.current.text) { setDraft(null); settle(); resumeAutoMute(); return; }
+            if (!stillHearing()) v.current.hearing = false; if (t.text) v.current.lastHeard = Date.now(); if (t.dropped && t.dropped.split(/\s+/).length >= 3) setNote(tr('app.voice.notSpeech', { words: t.dropped })); /* never erased without a trace */ if (!t.text && !thought.current.text) { setDraft(null); settle(); resumeAutoMute(); return; }
             if (!t.text) { clearTimeout(thought.current.timer); thought.current.timer = setTimeout(flushHeld, thought.current.done ? 0 : HOLD_MS); settle(); return; } // noise after a held fragment: keep waiting for the rest
             const said = [thought.current.text, t.text].filter(Boolean).join(' '); const joined = thought.current.parts > 0; setDraft(said);
             // Closed for its length at a short pause, not because they stopped: held for the next words, which join it. Not counted as a hold.
@@ -1226,7 +1231,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
               if (v.current.hearing) { thought.current.text = said; thought.current.parts++; thought.current.done = d.done; clearTimeout(thought.current.timer); thought.current.timer = setTimeout(() => void flushHeld(), HOLD_STUCK_MS); return; } } // they are already talking again: this joins what comes next (and if that sound never ends, the words go anyway)
             thought.current = { ...thought.current, text: '', parts: 0, done: false };
             await handleUtterance(said, joined ? null : spec); return; // what was prepared during the pause only fits if nothing was joined to it
-          } catch (e) { if (!stillHearing()) v.current.hearing = false; setNote(`Voice: ${(e as Error).message}`); settle(); }
+          } catch (e) { if (!stillHearing()) v.current.hearing = false; setNote(tr('app.voice.error', { error: (e as Error).message })); settle(); }
         })(); },
       });
       const handleUtterance = async (text: string, spec: typeof v.current.spec) => { const t = { text };
@@ -1249,7 +1254,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
               setTimeout(() => { if (cmd.type === 'goodbye') { if (v.current.engine) void commands.current.toggleVoice(); } else cmdRef.current.onCommand?.(cmd, speaker.current.provider); }, wait + 150); return; }
             const busy = v.current.running; const prepared = spec && spec.busy === busy ? spec.ackAudio : undefined;
             if (!busy) { await sendRef.current(t.text, true, prepared); startAutoMute(); return; } /* always the latest send: the provider may have changed since voice started (the Jauvex agent moves) */
-            if (isStopCommand(t.text)) { setDraft(null); showStop(t.text); stopNow(); if (v.current.cfg.ack && !v.current.speakerOff) enqueue(say('Okay, stopped.'), v.current.gen); v.current.chain = v.current.chain.then(settle); settle(); return; }
+            if (isStopCommand(t.text)) { setDraft(null); showStop(t.text); stopNow(); if (v.current.cfg.ack && !v.current.speakerOff) enqueue(say(tr('app.voice.okayStopped')), v.current.gen); v.current.chain = v.current.chain.then(settle); settle(); return; }
             // The main thread is mid-turn. Said out loud, this reaches it now, as added information: it keeps going and keeps everything it has.
             // It only waits when they ask for that ("queue this"), and only a clear "stop" or "not that, this" interrupts the work. (Typed text queues, with a Send now button.)
             const triage = spec && spec.busy && spec.triage ? spec.triage : window.desktop.triage(t.text, speaker.current.provider, speaker.current.model, main.current, v.current.asked).catch(() => null);
@@ -1262,11 +1267,11 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
             if (!v.current.running) flushQueue('the turn ended while this was being weighed');
             if (action !== 'stop') startAutoMute();
             v.current.chain = v.current.chain.then(settle); settle();
-          } catch (e) { setNote(`Voice: ${(e as Error).message}`); settle(); }
+          } catch (e) { setNote(tr('app.voice.error', { error: (e as Error).message })); settle(); }
       };
       const ptt = !!cfg.pushToTalk; if (ptt) setMicMuted(true); engine.pauseMs = cfg.pauseMs; engine.muted = ptt || micMuted; /* push to talk: closed until its button is held */ engine.wake = !ptt && cfg.wakeOn !== false && !!(cfg.wakePhrase ?? '').trim(); engine.output = cfg.output ?? ''; await engine.start(); v.current.engine = engine;
       const poll = setInterval(() => { void window.desktop.voiceStatus().then((st) => { setVstatus(st); if (st.whisper !== 'starting' || !v.current.engine) clearInterval(poll); }); }, 700);
-    } catch (e) { setVoiceOn(false); setPhase('off'); setNote(`Voice could not start: ${(e as Error).message}`); void window.desktop.voiceOn(false, ears.current); }
+    } catch (e) { setVoiceOn(false); setPhase('off'); setNote(t('app.voice.couldNotStart', { error: (e as Error).message })); void window.desktop.voiceOn(false, ears.current); }
   };
   useEffect(() => () => { v.current.engine?.stop(); v.current.engine = null; void window.desktop.voiceOn(false, ears.current); window.desktop.voiceState({ on: false, phase: 'off', level: 0, micMuted: false, speakerOff: false, muteIn: null }); }, []);
   // Auto-mute (a setting): after each spoken message, a countdown on the microphone, then muted; talking again cancels it. With the
@@ -1329,7 +1334,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
     const typed = text.trim(); if (!typed && !images?.length) return;
     if (!spoken && !dictated && !images?.length && /^\/compact(\s|$)/i.test(typed)) { // typed /compact: the app's own compaction, shown as it runs (as a plain message it ran unseen)
       if (v.current.running) { enqueueForMain(typed); return; }
-      if (!sid.current) { setNote('Nothing to compact yet: this session has no conversation.'); return; }
+      if (!sid.current) { setNote(t('app.compact.nothingYet')); return; }
       if (!resend) { setMessages((m) => [...m, { uuid: `local-${Date.now()}`, role: 'user', blocks: [{ type: 'text', text: typed }], meta: false }]); toBottom(); }
       startCompactRef.current('manual', typed); return; }
     if (!spoken && !fromQueue && thought.current.text) { window.desktop.debugPush('thought', 'a typed message while words were held: the held words go first'); await flushHeldRef.current(); } /* never erased by what is typed next */
@@ -1395,17 +1400,17 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   return (
     <>
       {top}
-      {state === 'loading' ? <div className="empty"><Mark busy /><p>Loading conversation…</p></div>
-        : state === 'error' ? <div className="empty"><h2>Could not load this session</h2><p>{err}</p></div>
+      {state === 'loading' ? <div className="empty"><Mark busy /><p>{t('app.chat.loading')}</p></div>
+        : state === 'error' ? <div className="empty"><h2>{t('app.chat.loadError')}</h2><p>{err}</p></div>
         : <div className={voiceOn ? 'scroll under-orb' : 'scroll'} ref={scroller} onScroll={(e) => { const el = e.currentTarget; const gap = el.scrollHeight - el.scrollTop - el.clientHeight; const up = el.scrollTop < lastTop.current - 2; lastTop.current = el.scrollTop; if (gap < 80) pinned.current = true; else if (up) pinned.current = false; /* content growing under a pinned view is not the user leaving the bottom */ }}>
             <div className="thread">
-              {(start > 0 || copyMore > 0) && <button className="earlier" onClick={() => void earlier()}>Load earlier messages ({copyMore > 0 ? copyMore : start} more)</button>}
-              {messages.length === 0 && !running && (embed ? <p className="jev-hint">{embed.hint ?? `Tell ${PROVIDER_LABEL[provider]} what this agent should judge, by text or by voice. It sees the state, the questions and the last output, and it can rewrite them and run the evaluation.`}</p>
-                : <div className="empty inline"><Mark /><h2>New {PROVIDER_LABEL[provider]} session in {project.name}</h2><p>{project.path}</p></div>)}
+              {(start > 0 || copyMore > 0) && <button className="earlier" onClick={() => void earlier()}>{t('app.chat.loadEarlier', { n: copyMore > 0 ? copyMore : start })}</button>}
+              {messages.length === 0 && !running && (embed ? <p className="jev-hint">{embed.hint ?? t('app.chat.jevHint', { provider: PROVIDER_LABEL[provider] })}</p>
+                : <div className="empty inline"><Mark /><h2>{t('app.chat.newSessionIn', { provider: PROVIDER_LABEL[provider], folder: project.name })}</h2><p>{project.path}</p></div>)}
               {dev ? messages.map((m) => (m.voice && !cfg.showVoiceLines ? null : <Message key={m.uuid} m={m} showMeta={showMeta} results={results} base={project.path} />))
                 : (() => { const units = threadUnits(messages.filter((m) => !(m.voice && !cfg.showVoiceLines)), showMeta); /* not a developer: each run of tool calls as one Working row (T-247) */
                   return units.map((u, k) => (u.kind === 'msg' ? <Message key={u.key} m={u.m} showMeta={showMeta} results={results} base={project.path} />
-                    : u.kind === 'media' ? <div key={u.key} className="assistant"><a className="tool-media" href={u.src} title="Open it beside the chat"><img src={localSrc(u.src)} alt="" loading="lazy" /></a></div>
+                    : u.kind === 'media' ? <div key={u.key} className="assistant"><a className="tool-media" href={u.src} title={t('app.chat.openBeside')}><img src={localSrc(u.src)} alt="" loading="lazy" /></a></div>
                     : <WorkRow key={u.key} parts={u.parts} results={results} showMeta={showMeta} live={running && k === units.length - 1} />)); })()}
               {statusLine && <p className="chat-status" role="status">{statusLine}</p>}
               {liveText && <div className="assistant"><div className="prose" dangerouslySetInnerHTML={{ __html: md(liveText, project.path) }} /></div>}
@@ -1413,20 +1418,20 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
                 <div key={a.requestId} className="ask">
                   <div className="ask-head"><ShieldQuestion size={16} /><b>{a.toolName}</b><span>{toolHint(a.input)}</span></div>
                   <pre>{JSON.stringify(a.input, null, 2)}</pre>
-                  <div className="ask-row"><button className="btn ghost" onClick={() => answer(a.requestId, 'deny')}>Deny</button><button className="btn ghost" onClick={() => answer(a.requestId, 'always')}>Always allow {a.toolName}</button><button className="btn" onClick={() => answer(a.requestId, 'allow')}>Allow once</button></div>
+                  <div className="ask-row"><button className="btn ghost" onClick={() => answer(a.requestId, 'deny')}>{t('app.ask.deny')}</button><button className="btn ghost" onClick={() => answer(a.requestId, 'always')}>{t('app.ask.always', { tool: a.toolName })}</button><button className="btn" onClick={() => answer(a.requestId, 'allow')}>{t('app.ask.once')}</button></div>
                 </div>
               ))}
-              {queued.some((q) => !q.shown) && <div className="user">{queued.map((q, i) => q.shown ? null : <div key={i} className="bubble queued" title="Goes to the main thread as soon as this turn ends"><small>Queued</small>{q.text}{q.images.length > 0 && <div className="queued-imgs">{q.images.map((a, j) => <img key={j} src={`data:${a.mediaType};base64,${a.data}`} alt={a.name} title={a.name} />)}</div>}<button className="steer-now" title="Hand it to the running turn now, without interrupting it" onClick={() => { queue.current.splice(i, 1); setQueued([...queue.current]); persistQueue(); void steer(q.text, q.images.length ? q.images : undefined); }}>Send now</button></div>)}</div>}
-              {draft !== null && <div className="user"><div className="bubble draft" title="What is being heard. It becomes your message when you finish the thought."><small>Hearing you</small>{draft ? <DraftText text={draft} /> : <span className="draft-dots"><i /><i /><i /></span>}</div></div>}
+              {queued.some((q) => !q.shown) && <div className="user">{queued.map((q, i) => q.shown ? null : <div key={i} className="bubble queued" title={t('app.chat.queuedTitle')}><small>{t('app.chat.queued')}</small>{q.text}{q.images.length > 0 && <div className="queued-imgs">{q.images.map((a, j) => <img key={j} src={`data:${a.mediaType};base64,${a.data}`} alt={a.name} title={a.name} />)}</div>}<button className="steer-now" title={t('app.chat.sendNowTitle')} onClick={() => { queue.current.splice(i, 1); setQueued([...queue.current]); persistQueue(); void steer(q.text, q.images.length ? q.images : undefined); }}>{t('app.chat.sendNow')}</button></div>)}</div>}
+              {draft !== null && <div className="user"><div className="bubble draft" title={t('app.chat.draftTitle')}><small>{t('app.chat.hearing')}</small>{draft ? <DraftText text={draft} /> : <span className="draft-dots"><i /><i /><i /></span>}</div></div>}
               <div className="thread-end"><Mark busy={running} />{note && <span>{note}</span>}</div>
             </div>
           </div>}
-      <Composer context={sid.current || ctx ? { usage: ctx, compacting, autoPct, hasSession: !!sid.current, last: lastCompact, onCompact: () => { if (!startCompactRef.current('manual')) setNote(v.current.running ? 'The conversation can be compacted once this turn is over.' : 'Nothing to compact yet: this session has no conversation.'); } } : undefined} draftKey={storeKey} signedIn={signedIn} usageTick={turns} usageModel={model || mainModel.current || ''} jev={jev} running={running} disabled={state !== 'ready'} provider={provider} onProvider={hybrid ? (running ? undefined : switchProvider) : !embed && !sessionId && !sid.current && messages.length === 0 && !running ? pickProvider : undefined}
+      <Composer context={sid.current || ctx ? { usage: ctx, compacting, autoPct, hasSession: !!sid.current, last: lastCompact, onCompact: () => { if (!startCompactRef.current('manual')) setNote(v.current.running ? t('app.compact.afterTurn') : t('app.compact.nothingYet')); } } : undefined} draftKey={storeKey} signedIn={signedIn} usageTick={turns} usageModel={model || mainModel.current || ''} jev={jev} running={running} disabled={state !== 'ready'} provider={provider} onProvider={hybrid ? (running ? undefined : switchProvider) : !embed && !sessionId && !sid.current && messages.length === 0 && !running ? pickProvider : undefined}
         models={provider === 'claude' ? CLAUDE_MODELS : listedModels} model={model} onModel={(m) => { setModel(m); localStorage.setItem(modelKey(provider), m); keep({ model: m }); }}
         permissions={perm} permissionsLocked={!!providerModes[provider]} onPermissions={(p) => { setPermissions(p); localStorage.setItem('cvc.permissions', p); keep({ permissions: p }); }}
         efforts={efforts} effort={effort} onEffort={(e) => { setEffort(e); localStorage.setItem(effortKey(provider), e); keep({ effort: e }); }} onSend={(t, images) => void send(t, false, undefined, false, images)} onStop={() => { hush(); v.current.stopped = true; void window.desktop.chatStop(chatId.current); }}
-        voice={{ ptt: cfg.pushToTalk ? { press: pttPress, release: pttRelease } : null, muteIn, on: voiceOn, phase, status: vstatus, cfg, level, micMuted, speakerOff, toggle: () => void toggleVoice(), toggleMic, toggleSpeaker, hush, save: saveCfg, test: () => { if (v.current.engine) enqueue(say('This is the voice. If you hear this, the speaker is right.'), v.current.gen); } }}
-        warning={busyElsewhere ? 'This session was active moments ago, possibly in another window. Writing here at the same time can tangle its history.' : ''} />
+        voice={{ ptt: cfg.pushToTalk ? { press: pttPress, release: pttRelease } : null, muteIn, on: voiceOn, phase, status: vstatus, cfg, level, micMuted, speakerOff, toggle: () => void toggleVoice(), toggleMic, toggleSpeaker, hush, save: saveCfg, test: () => { if (v.current.engine) enqueue(say(t('app.voice.testLine')), v.current.gen); } }}
+        warning={busyElsewhere ? t('app.chat.busyElsewhere') : ''} />
     </>
   );
 }
@@ -1438,19 +1443,19 @@ function VoiceLine({ text, ms, cut }: { text: string; ms: number; cut: boolean }
     const tick = () => { if (stop.current) return; const k = Math.min(text.length, Math.ceil(((performance.now() - t0) / Math.max(300, ms * 0.94)) * text.length)); setN(k); if (k < text.length) raf = requestAnimationFrame(tick); };
     raf = requestAnimationFrame(tick); return () => cancelAnimationFrame(raf); }, [text, ms]);
   const typing = n < text.length && !cut;
-  return <div className="voice-line"><span className="voice-tag"><AudioLines size={12} />Voice</span><p>{text.slice(0, n)}{typing ? <i className="caret" /> : n < text.length ? '…' : ''}</p></div>;
+  return <div className="voice-line"><span className="voice-tag"><AudioLines size={12} />{t('app.debug.voice')}</span><p>{text.slice(0, n)}{typing ? <i className="caret" /> : n < text.length ? '…' : ''}</p></div>;
 }
 
 function Message({ m, showMeta, results, base }: { m: ChatMessage; showMeta: boolean; results: Map<string, Extract<Block, { type: 'tool_result' }>>; base: string }) {
-  if (m.error) return <div className="chat-error" role="alert"><strong>{m.role === 'system' ? 'The turn failed' : 'The provider could not answer'}</strong><span>{m.blocks.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n')}</span></div>;
+  if (m.error) return <div className="chat-error" role="alert"><strong>{m.role === 'system' ? t('app.chat.turnFailedTitle') : t('app.chat.providerFailed')}</strong><span>{m.blocks.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n')}</span></div>;
   if (m.voice) return <VoiceLine text={m.blocks.map((b) => (b.type === 'text' ? b.text : '')).join(' ')} ms={m.voice.ms} cut={Boolean(m.voice.cut)} />;
   if (m.meta) {
     if (!showMeta) return null;
     const text = m.blocks.map((b) => (b.type === 'text' ? b.text : b.type === 'tool_result' ? `[result] ${b.text.slice(0, 400)}` : `[${b.type}]`)).join('\n');
-    return <Fold label={m.role === 'system' ? 'System' : 'System event'} icon={<Eye size={13} />} body={text} />;
+    return <Fold label={m.role === 'system' ? t('app.chat.system') : t('app.chat.systemEvent')} icon={<Eye size={13} />} body={text} />;
   }
-  if (m.role === 'user' && m.blocks.some((x) => x.type === 'text' && x.text.replace(CONTEXT_TAG, '').trim().startsWith('(from the app)'))) { const note = m.blocks[0]?.type === 'text' ? m.blocks[0].text.replace(CONTEXT_TAG, '').trim().replace('(from the app) ', '') : ''; return <p className="app-note">{!note ? 'The app showed the trainer the result of the evaluation.' : note.length <= 240 ? note : `${note.slice(0, 240)}…`}</p>; }
-  if (m.role === 'user') return <div className="user">{m.blocks.map((b, i) => { if (b.type !== 'text') return b.type === 'image' ? (b.src ? <img key={i} className="bubble-img" src={b.src} alt={b.name ?? 'image'} title={b.name} /> : <div key={i} className="bubble muted">[image]</div>) : null; const raw = b.text.replace(CONTEXT_TAG, '').trim(); if (!raw) return null; const from = /^\(from agent "([^"]+)"(?: \[[0-9a-f]*\])?\)\s*/.exec(raw); const text = from ? raw.slice(from[0].length) : raw; return <div key={i} className={from ? 'bubble agent-msg' : m.steered || m.stopped ? 'bubble steered' : 'bubble'} title={from ? `Sent by the agent "${from[1]}"${m.steered ? ', handed to the running turn' : ''}` : m.steered ? 'Handed to the running turn without interrupting it' : undefined}>{from ? <small>From {from[1]}</small> : m.stopped ? <small>Stopped the turn</small> : m.steered && <small>Sent mid-turn</small>}{text}</div>; })}</div>;
+  if (m.role === 'user' && m.blocks.some((x) => x.type === 'text' && x.text.replace(CONTEXT_TAG, '').trim().startsWith('(from the app)'))) { const note = m.blocks[0]?.type === 'text' ? m.blocks[0].text.replace(CONTEXT_TAG, '').trim().replace('(from the app) ', '') : ''; return <p className="app-note">{!note ? t('app.chat.trainerNote') : note.length <= 240 ? note : `${note.slice(0, 240)}…`}</p>; }
+  if (m.role === 'user') return <div className="user">{m.blocks.map((b, i) => { if (b.type !== 'text') return b.type === 'image' ? (b.src ? <img key={i} className="bubble-img" src={b.src} alt={b.name ?? t('app.chat.image')} title={b.name} /> : <div key={i} className="bubble muted">[{t('app.chat.image')}]</div>) : null; const raw = b.text.replace(CONTEXT_TAG, '').trim(); if (!raw) return null; const from = /^\(from agent "([^"]+)"(?: \[[0-9a-f]*\])?\)\s*/.exec(raw); const text = from ? raw.slice(from[0].length) : raw; return <div key={i} className={from ? 'bubble agent-msg' : m.steered || m.stopped ? 'bubble steered' : 'bubble'} title={from ? (m.steered ? t('app.chat.sentByAgentSteered', { name: from[1]! }) : t('app.chat.sentByAgent', { name: from[1]! })) : m.steered ? t('app.chat.steeredTitle') : undefined}>{from ? <small>{t('app.chat.fromAgent', { name: from[1]! })}</small> : m.stopped ? <small>{t('app.chat.stoppedTurn')}</small> : m.steered && <small>{t('app.chat.sentMidTurn')}</small>}{text}</div>; })}</div>;
   return (
     <div className="assistant">
       {m.blocks.map((b, i) => {
@@ -1458,7 +1463,7 @@ function Message({ m, showMeta, results, base }: { m: ChatMessage; showMeta: boo
         if (b.type === 'thinking') return <WorkFold key={i} b={b} results={results} />;
         if (b.type === 'tool_use') { const image = toolImage(b); // a picture the tool made (Grok's imagine): shown under its row, a click opens it beside the chat
           const fold = <WorkFold key={i} b={b} results={results} />;
-          return image ? <div key={i} className="tool-with-media">{fold}<a className="tool-media" href={image} title="Open it beside the chat"><img src={localSrc(image)} alt="" loading="lazy" /></a></div> : fold; }
+          return image ? <div key={i} className="tool-with-media">{fold}<a className="tool-media" href={image} title={t('app.chat.openBeside')}><img src={localSrc(image)} alt="" loading="lazy" /></a></div> : fold; }
         return null;
       })}
     </div>
@@ -1466,19 +1471,32 @@ function Message({ m, showMeta, results, base }: { m: ChatMessage; showMeta: boo
 }
 /** A tool call or a thought, folded: its name and what it was about; open, everything. */
 function WorkFold({ b, results }: { b: Block; results: Map<string, Extract<Block, { type: 'tool_result' }>> }) {
-  if (b.type === 'thinking') return <Fold label="Thinking" icon={<Brain size={13} />} body={b.text} />;
+  if (b.type === 'thinking') return <Fold label={t('app.chat.thinking')} icon={<Brain size={13} />} body={b.text} />;
   if (b.type !== 'tool_use') return null; const r = results.get(b.id);
-  return <Fold label={b.name} hint={toolHint(b.input)} icon={<Wrench size={13} />} error={r?.isError} body={`${JSON.stringify(b.input, null, 2)}${r ? `\n\n— result —\n${r.text}` : ''}`} />;
+  return <Fold label={b.name} hint={toolHint(b.input)} icon={<Wrench size={13} />} error={r?.isError} body={`${JSON.stringify(b.input, null, 2)}${r ? `\n\n— ${t('app.chat.result')} —\n${r.text}` : ''}`} />;
 }
 
 /** The app's look (T-248): the Mac's own (the default: light, dark or auto as the Mac is set), or light or dark for this app; applied at once. */
+/** The app's words (i18n): the system's language, or one chosen here. Picking one draws the window again in it. */
+function LanguageSetting() {
+  const [v, setV] = useState<LangSetting>(savedLanguageSetting);
+  const system = LANGUAGES[resolveLanguage('auto', navigator.language)];
+  return <section className="settings-group"><strong>{t('settings.language')}</strong>
+    <select className="model" aria-label={t('settings.language')} value={v} onChange={(e) => { const s = langSettingOf(e.target.value); setV(s); void chooseLanguage(s); }}>
+      <option value="auto">{t('settings.language.auto', { lang: system })}</option>
+      {(Object.entries(LANGUAGES) as [Lang, string][]).map(([k, name]) => <option key={k} value={k}>{name}</option>)}
+    </select>
+    <p className="muted">{t('settings.language.note')}</p>
+  </section>;
+}
+
 function ThemeSetting({ onCustom }: { onCustom: () => void }) {
   const [t, setT] = useState<Theme>(() => { try { return themeOf(localStorage.getItem('cvc.theme')); } catch { return 'system'; } });
   useEffect(() => { void api.state().then((st) => setT(themeOf(st.ui?.theme))).catch(() => {}); const on = (e: Event) => setT(themeOf((e as CustomEvent).detail)); window.addEventListener('app-theme', on); return () => window.removeEventListener('app-theme', on); }, []);
   // Custom (T-278): the user's own colours, made in words with the Jauvex agent; its chat opens and it asks what they feel like
   const pick = (v: Theme) => { setT(v); applyTheme(v); void api.setUi({ theme: v }); if (v === 'custom') onCustom(); };
-  return <section className="settings-group theme-setting"><strong>Appearance</strong>
-    <div className="theme-picks">{([['system', 'Same as the Mac'], ['light', 'Light'], ['dark', 'Dark'], ['custom', 'Custom']] as const).map(([k, label]) => <button key={k} type="button" className={`theme-pick ${k}${t === k ? ' on' : ''}`} onClick={() => pick(k)}><i />{label}</button>)}</div>
+  return <section className="settings-group theme-setting"><strong>{tr('app.settings.appearance')}</strong>
+    <div className="theme-picks">{([['system', tr('app.settings.theme.system')], ['light', tr('app.settings.theme.light')], ['dark', tr('app.settings.theme.dark')], ['custom', tr('app.settings.theme.custom')]] as const).map(([k, label]) => <button key={k} type="button" className={`theme-pick ${k}${t === k ? ' on' : ''}`} onClick={() => pick(k)}><i />{label}</button>)}</div>
   </section>;
 }
 
@@ -1489,7 +1507,7 @@ const DevMode = createContext(false);
 function WorkRow({ parts, results, showMeta, live }: { parts: WorkPart[]; results: Map<string, Extract<Block, { type: 'tool_result' }>>; showMeta: boolean; live: boolean }) {
   const [open, setOpen] = useState(false); const steps = parts.filter((p) => p.b?.type === 'tool_use').length;
   return <div className={`work-row${open ? ' open' : ''}`}>
-    <button onClick={() => setOpen((v) => !v)} title={open ? 'Hide what the agent did' : 'See what the agent did: each tool it used, and its thoughts'}>{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<span>{live ? 'Working…' : 'Worked'}</span>{steps > 0 && <small>{steps} step{steps === 1 ? '' : 's'}</small>}</button>
+    <button onClick={() => setOpen((v) => !v)} title={open ? t('app.chat.workHide') : t('app.chat.workShow')}>{open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<span>{live ? t('app.chat.working') : t('app.chat.worked')}</span>{steps > 0 && <small>{t('app.chat.steps', { count: steps })}</small>}</button>
     {open && <div className="work-parts">{parts.map((p, k) => (p.b ? <WorkFold key={k} b={p.b} results={results} /> : <Message key={k} m={p.m} showMeta={showMeta} results={results} base="" />))}</div>}
   </div>;
 }
@@ -1524,22 +1542,22 @@ function DraftText({ text }: { text: string }) {
 function VoiceSettingsForm({ c, set, st, provider, models, onTest }: { c: VoiceSettings; set: (patch: Partial<VoiceSettings>) => void; st: VoiceStatus | null; provider: Provider; models: ModelOption[]; onTest?: () => void }) {
   const after = c.autoMute ? (c.autoMuteSec ?? 5) : 0; const idle = c.idleMuteSec ?? 0;
   return <>
-          <label>Voice<select value={c.voice} onChange={(e) => set({ voice: e.target.value })}><option value="">{window.desktop.platform === 'darwin' ? 'System voice (same as `say`)' : 'Default voice'}</option>{(st?.voices ?? []).map((x) => { const [n, loc] = x.split('|'); return <option key={x} value={n}>{n} · {loc}</option>; })}</select></label>
-          <label><span className="lhead">Speed<em>{c.rate} wpm</em></span><input type="range" min={140} max={260} step={5} value={c.rate} onChange={(e) => set({ rate: +e.target.value })} /></label>
-          <label><span className="lhead">Pause that ends your turn<em>{(c.pauseMs / 1000).toFixed(1)} s</em></span><input type="range" min={400} max={2000} step={100} value={c.pauseMs} onChange={(e) => set({ pauseMs: +e.target.value })} /></label>
-          <label>Spoken language<select value={c.language} onChange={(e) => set({ language: e.target.value })}>{[['auto', 'Detect'], ['en', 'English'], ['es', 'Español'], ['pt', 'Português'], ['fr', 'Français'], ['de', 'Deutsch'], ['it', 'Italiano']].map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
-          <label><span className="lhead">Transcription model (Whisper, on this Mac){st?.model ? <em>{st.model.replace(/^ggml-|\.bin$/g, '')}</em> : null}</span><select value={(st?.models ?? []).includes(c.sttModel) ? c.sttModel : ''} onChange={(e) => set({ sttModel: e.target.value })}><option value="">Automatic (the fastest one)</option>{(st?.models ?? []).map((m) => <option key={m} value={m}>{m.replace(/^ggml-|\.bin$/g, '')}</option>)}</select></label>
-          <label>Names it should know<TextSetting value={c.vocabulary} placeholder="Jauvex, Codex, …" onSave={(x) => set({ vocabulary: x })} /></label>
-          <label>Decisions (is the thought finished, is it a question, queue, stop or replace)<select value={c.decisions} onChange={(e) => set({ decisions: e.target.value as VoiceSettings['decisions'] })}><option value="jev">Jev, by TypeSafe, when its key is on this Mac</option><option value="model">Always the voice model</option></select></label>
-          <p className="vnote">Deciding now: <b>{st?.jev ? 'Jev' : 'the voice model'}</b>{st?.jev ? ', with the voice model as backup.' : c.decisions === 'jev' && !st?.jevKey ? ' (no Jev key found on this Mac).' : '.'}</p>
+          <label>{t('app.settings.voice.voice')}<select value={c.voice} onChange={(e) => set({ voice: e.target.value })}><option value="">{window.desktop.platform === 'darwin' ? t('app.settings.voice.systemVoice') : t('app.settings.voice.defaultVoice')}</option>{(st?.voices ?? []).map((x) => { const [n, loc] = x.split('|'); return <option key={x} value={n}>{n} · {loc}</option>; })}</select></label>
+          <label><span className="lhead">{t('app.settings.voice.speed')}<em>{t('app.settings.voice.wpm', { n: c.rate })}</em></span><input type="range" min={140} max={260} step={5} value={c.rate} onChange={(e) => set({ rate: +e.target.value })} /></label>
+          <label><span className="lhead">{t('app.settings.voice.pause')}<em>{(c.pauseMs / 1000).toFixed(1)} s</em></span><input type="range" min={400} max={2000} step={100} value={c.pauseMs} onChange={(e) => set({ pauseMs: +e.target.value })} /></label>
+          <label>{t('app.settings.voice.language')}<select value={c.language} onChange={(e) => set({ language: e.target.value })}>{[['auto', t('app.settings.voice.detect')], ['en', 'English'], ['es', 'Español'], ['pt', 'Português'], ['fr', 'Français'], ['de', 'Deutsch'], ['it', 'Italiano']].map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
+          <label><span className="lhead">{t('app.settings.voice.sttModel')}{st?.model ? <em>{st.model.replace(/^ggml-|\.bin$/g, '')}</em> : null}</span><select value={(st?.models ?? []).includes(c.sttModel) ? c.sttModel : ''} onChange={(e) => set({ sttModel: e.target.value })}><option value="">{t('app.settings.voice.sttAuto')}</option>{(st?.models ?? []).map((m) => <option key={m} value={m}>{m.replace(/^ggml-|\.bin$/g, '')}</option>)}</select></label>
+          <label>{t('app.settings.voice.vocabulary')}<TextSetting value={c.vocabulary} placeholder="Jauvex, Codex, …" onSave={(x) => set({ vocabulary: x })} /></label>
+          <label>{t('app.settings.voice.decisions')}<select value={c.decisions} onChange={(e) => set({ decisions: e.target.value as VoiceSettings['decisions'] })}><option value="jev">{t('app.settings.voice.decisionsJev')}</option><option value="model">{t('app.settings.voice.decisionsModel')}</option></select></label>
+          <p className="vnote">{t('app.settings.voice.decidingNow')} <b>{st?.jev ? 'Jev' : t('app.settings.voice.theVoiceModel')}</b>{st?.jev ? t('app.settings.voice.withBackup') : c.decisions === 'jev' && !st?.jevKey ? t('app.settings.voice.noJevKey') : '.'}</p>
           <OutputPicker value={c.output ?? ''} onChange={(id) => set({ output: id })} onTest={onTest} />
-          <label className="check"><input type="checkbox" checked={!!c.pushToTalk} onChange={(e) => set({ pushToTalk: e.target.checked })} />Push to talk: the microphone hears only while you hold its button, or the Option key</label>
-          <label className="check"><input type="checkbox" checked={c.wakeOn !== false} onChange={(e) => set({ wakeOn: e.target.checked })} />Wake phrase: said while muted, it turns the microphone back on</label>
+          <label className="check"><input type="checkbox" checked={!!c.pushToTalk} onChange={(e) => set({ pushToTalk: e.target.checked })} />{t('app.settings.voice.ptt')}</label>
+          <label className="check"><input type="checkbox" checked={c.wakeOn !== false} onChange={(e) => set({ wakeOn: e.target.checked })} />{t('app.settings.voice.wake')}</label>
     {c.wakeOn !== false && <label><TextSetting value={c.wakePhrase ?? ''} placeholder="Hey Jauvex" onSave={(x) => set({ wakePhrase: x.trim() })} /></label>}
-          <label><span className="lhead">Mute after each message<em>{after ? `${after} s` : 'off'}</em></span><input type="range" min={0} max={20} step={1} value={after} onChange={(e) => { const n = +e.target.value; set(n < 2 ? { autoMute: false } : { autoMute: true, autoMuteSec: n }); }} /></label>
-          <label><span className="lhead">Mute when idle<em>{idle ? (idle >= 60 ? '1 min' : `${idle} s`) : 'off'}</em></span><input type="range" min={0} max={60} step={5} value={idle} onChange={(e) => set({ idleMuteSec: +e.target.value })} /></label>
-          <label className="check"><input type="checkbox" checked={c.showVoiceLines} onChange={(e) => set({ showVoiceLines: e.target.checked })} />Show what the voice says in the thread</label>
-          <label className="check"><input type="checkbox" checked={c.ack} onChange={(e) => set({ ack: e.target.checked })} />Acknowledge while thinking</label>
+          <label><span className="lhead">{t('app.settings.voice.muteAfter')}<em>{after ? `${after} s` : t('app.settings.voice.off')}</em></span><input type="range" min={0} max={20} step={1} value={after} onChange={(e) => { const n = +e.target.value; set(n < 2 ? { autoMute: false } : { autoMute: true, autoMuteSec: n }); }} /></label>
+          <label><span className="lhead">{t('app.settings.voice.muteIdle')}<em>{idle ? (idle >= 60 ? '1 min' : `${idle} s`) : t('app.settings.voice.off')}</em></span><input type="range" min={0} max={60} step={5} value={idle} onChange={(e) => set({ idleMuteSec: +e.target.value })} /></label>
+          <label className="check"><input type="checkbox" checked={c.showVoiceLines} onChange={(e) => set({ showVoiceLines: e.target.checked })} />{t('app.settings.voice.showLines')}</label>
+          <label className="check"><input type="checkbox" checked={c.ack} onChange={(e) => set({ ack: e.target.checked })} />{t('app.settings.voice.ack')}</label>
           <VoiceModelPick provider={provider} value={c[ACK_MODEL_KEY[provider]] ?? ''} options={provider !== 'claude' ? (st?.voiceModels[provider].length ? st.voiceModels[provider] : models.map((m) => ({ id: m.id, label: m.label }))) : st?.voiceModels.claude ?? []} onChange={(id) => set({ [ACK_MODEL_KEY[provider]]: id })} />
   </>;
 }
@@ -1559,26 +1577,26 @@ function VoiceChatSettings({ provider }: { provider: Provider }) {
   if (!c) return null;
   const set = (patch: Partial<VoiceSettings>) => { const next = { ...c, ...patch }; setC(next); void api.setUi({ voice: next }); window.dispatchEvent(new CustomEvent('cvc-voice-settings', { detail: { cfg: next, from: '' } }));
     if (next.sttModel !== c.sttModel || next.vocabulary !== c.vocabulary) void window.desktop.sttConfig(next.sttModel, next.vocabulary); if (next.decisions !== c.decisions) void window.desktop.decisions(next.decisions === 'jev').then(setSt); };
-  return <section className="settings-group vsettings-main"><strong>Voice chat</strong><VoiceSettingsForm c={c} set={set} st={st} provider={provider} models={[]} /></section>;
+  return <section className="settings-group vsettings-main"><strong>{t('app.settings.voiceChat')}</strong><VoiceSettingsForm c={c} set={set} st={st} provider={provider} models={[]} /></section>;
 }
 function OutputPicker({ value, onChange, onTest }: { value: string; onChange: (id: string) => void; onTest?: () => void }) {
   const [devices, setDevices] = useState<{ id: string; label: string }[]>([]);
-  useEffect(() => { let alive = true; const load = () => void navigator.mediaDevices.enumerateDevices().then((all) => { if (alive) setDevices(all.filter((d) => d.kind === 'audiooutput').map((d) => ({ id: d.deviceId, label: d.label || `Speaker ${d.deviceId.slice(0, 6)}` }))); }).catch(() => {}); load(); navigator.mediaDevices.addEventListener('devicechange', load); return () => { alive = false; navigator.mediaDevices.removeEventListener('devicechange', load); }; }, []);
-  return <label>Speaker (where the voice comes out)<span className="row-inline"><select value={devices.some((d) => d.id === value) ? value : ''} onChange={(e) => onChange(e.target.value)}><option value="">System default</option>{devices.filter((d) => d.id !== 'default').map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select>{onTest && <button type="button" className="mini-btn" onClick={onTest} title="Say a short line through the selected speaker">Test</button>}</span></label>;
+  useEffect(() => { let alive = true; const load = () => void navigator.mediaDevices.enumerateDevices().then((all) => { if (alive) setDevices(all.filter((d) => d.kind === 'audiooutput').map((d) => ({ id: d.deviceId, label: d.label || t('app.settings.voice.speakerN', { id: d.deviceId.slice(0, 6) }) }))); }).catch(() => {}); load(); navigator.mediaDevices.addEventListener('devicechange', load); return () => { alive = false; navigator.mediaDevices.removeEventListener('devicechange', load); }; }, []);
+  return <label>{t('app.settings.voice.speaker')}<span className="row-inline"><select value={devices.some((d) => d.id === value) ? value : ''} onChange={(e) => onChange(e.target.value)}><option value="">{t('app.settings.voice.systemDefault')}</option>{devices.filter((d) => d.id !== 'default').map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}</select>{onTest && <button type="button" className="mini-btn" onClick={onTest} title={t('app.settings.voice.testTitle')}>{t('app.settings.voice.test')}</button>}</span></label>;
 }
 type VoiceUi = { ptt?: { press: () => void; release: () => void } | null; /* push to talk: the mic button is held */ muteIn: number | null; test: () => void; on: boolean; phase: VoicePhase; status: VoiceStatus | null; cfg: VoiceSettings; level: React.RefObject<number>; micMuted: boolean; speakerOff: boolean; toggle: () => void; toggleMic: () => void; toggleSpeaker: () => void; hush: () => void; save: (c: VoiceSettings) => void };
-const PHASE_LABEL: Record<VoicePhase, string> = { off: '', listening: 'Listening', hearing: 'Hearing you', transcribing: 'Transcribing', thinking: 'Thinking', wording: 'Preparing the reply', speaking: 'Speaking' };
+const PHASE_LABEL = (): Record<VoicePhase, string> => ({ off: '', listening: t('app.voice.phase.listening'), hearing: t('app.chat.hearing'), transcribing: t('app.voice.phase.transcribing'), thinking: t('app.chat.thinking'), wording: t('app.voice.phase.wording'), speaking: t('app.voice.phase.speaking') });
 
 /** The controller from ChatGPT's voice mode: mic | orb | speaker in one pill. Shared by the app and the floating window. */
 export function VoicePill({ level, phase, micMuted, speakerOff, onMic, onOrb, onSpeaker, orbTitle, muteIn = null, ptt = null }: { level: React.RefObject<number>; phase: VoicePhase; micMuted: boolean; speakerOff: boolean; onMic: () => void; onOrb: () => void; onSpeaker: () => void; orbTitle: string; muteIn?: number | null; ptt?: { press: () => void; release: () => void } | null }) {
   return (
     <div className="pill">
-      {ptt ? <button className={`ptt${micMuted ? ' muted' : ''}`} title="Hold to talk (or hold the Option key): letting go sends what you said" onPointerDown={(e) => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* a pointer that is not down (a synthetic one) */ } ptt.press(); }} onPointerUp={ptt.release} onPointerCancel={ptt.release} onLostPointerCapture={ptt.release}>{micMuted ? <MicOff size={18} /> : <Mic size={18} />}</button>
-        : <button className={`${micMuted ? 'muted' : ''}${muteIn != null ? ' counting' : ''}`} title={muteIn != null ? `Muting in ${muteIn} s (click to mute now)` : micMuted ? 'Unmute microphone' : 'Mute microphone'} onClick={onMic}>{micMuted ? <MicOff size={18} /> : <Mic size={18} />}{muteIn != null && <span className="mute-count" key={muteIn}>{muteIn}</span>}</button>}
+      {ptt ? <button className={`ptt${micMuted ? ' muted' : ''}`} title={t('app.voice.holdToTalk')} onPointerDown={(e) => { try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* a pointer that is not down (a synthetic one) */ } ptt.press(); }} onPointerUp={ptt.release} onPointerCancel={ptt.release} onLostPointerCapture={ptt.release}>{micMuted ? <MicOff size={18} /> : <Mic size={18} />}</button>
+        : <button className={`${micMuted ? 'muted' : ''}${muteIn != null ? ' counting' : ''}`} title={muteIn != null ? t('app.voice.mutingInClick', { s: muteIn }) : micMuted ? t('app.voice.unmuteMic') : t('app.voice.muteMic')} onClick={onMic}>{micMuted ? <MicOff size={18} /> : <Mic size={18} />}{muteIn != null && <span className="mute-count" key={muteIn}>{muteIn}</span>}</button>}
       <i />
       <button className="pill-orb" title={orbTitle} onClick={onOrb}><Orb size={30} level={level} phase={phase} mute={micMuted} silent={speakerOff} /></button>
       <i />
-      <button className={speakerOff ? 'muted' : ''} title={speakerOff ? 'Turn the voice back on' : 'Silence the voice'} onClick={onSpeaker}>{speakerOff ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
+      <button className={speakerOff ? 'muted' : ''} title={speakerOff ? t('app.voice.speakerOn') : t('app.voice.speakerOff')} onClick={onSpeaker}>{speakerOff ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
     </div>
   );
 }
@@ -1601,15 +1619,15 @@ function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, per
       {warning && <p className="composer-warn">{warning}</p>}
       {voice.on && (
         <div className="voice-dock">
-          <button className="orb-btn" title="Tap to make it stop talking" onClick={voice.hush}><Orb size={132} level={voice.level} phase={voice.phase} mute={voice.micMuted} silent={voice.speakerOff} /></button>
-          <p className="dock-phase">{st && st.whisper !== 'ready' ? (st.whisper === 'starting' ? 'Loading Whisper…' : st.detail) : voice.micMuted ? 'Muted' : PHASE_LABEL[voice.phase]}</p>
+          <button className="orb-btn" title={t('app.voice.tapToHush')} onClick={voice.hush}><Orb size={132} level={voice.level} phase={voice.phase} mute={voice.micMuted} silent={voice.speakerOff} /></button>
+          <p className="dock-phase">{st && st.whisper !== 'ready' ? (st.whisper === 'starting' ? t('app.voice.loadingWhisper') : st.detail) : voice.micMuted ? t('app.voice.muted') : PHASE_LABEL()[voice.phase]}</p>
         </div>
       )}
       {voice.on && (
         <div className="voice-controls">
-          <button className="round" title="End voice chat" onClick={voice.toggle}><X size={18} /></button>
-          <VoicePill muteIn={voice.muteIn} level={voice.level} phase={voice.phase} micMuted={voice.micMuted} speakerOff={voice.speakerOff} onMic={voice.toggleMic} onOrb={voice.hush} onSpeaker={voice.toggleSpeaker} orbTitle="Stop talking" ptt={voice.ptt} />
-          <button className="round" title="Voice settings" onClick={() => setSettings((x) => !x)}><Settings2 size={17} /></button>
+          <button className="round" title={t('app.voice.end')} onClick={voice.toggle}><X size={18} /></button>
+          <VoicePill muteIn={voice.muteIn} level={voice.level} phase={voice.phase} micMuted={voice.micMuted} speakerOff={voice.speakerOff} onMic={voice.toggleMic} onOrb={voice.hush} onSpeaker={voice.toggleSpeaker} orbTitle={t('app.voice.stopTalking')} ptt={voice.ptt} />
+          <button className="round" title={t('app.voice.settings')} onClick={() => setSettings((x) => !x)}><Settings2 size={17} /></button>
           {settings && (
             <div className="vsettings" onMouseLeave={() => setSettings(false)}>
               <VoiceSettingsForm c={c} set={set} st={st} provider={provider} models={models} onTest={() => voice.test()} />
@@ -1618,22 +1636,22 @@ function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, per
         </div>
       )}
       <div className={`composer${disabled ? ' off' : ''}${over ? ' drop' : ''}`} onDragOver={(e) => { if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) { e.preventDefault(); setOver(true); } }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); addFiles([...e.dataTransfer.files]); }}>
-        {files.length > 0 && <div className="attach-row">{files.map((f, i) => <div key={i} className="attach" title={f.name}><img src={f.src} alt={f.name} /><button title="Remove" onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}><X size={11} /></button></div>)}</div>}
-        <textarea ref={ta} rows={1} value={text} disabled={disabled} onPaste={(e) => { const fs = [...e.clipboardData.items].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter((f): f is File => !!f); if (fs.length) { e.preventDefault(); addFiles(fs); } }} placeholder={voice.on ? 'Talk, or type here' : running ? `${PROVIDER_LABEL[provider]} is working… Enter queues your next message` : 'Type a message'} onChange={(e) => setText(e.target.value)}
+        {files.length > 0 && <div className="attach-row">{files.map((f, i) => <div key={i} className="attach" title={f.name}><img src={f.src} alt={f.name} /><button title={t('app.composer.remove')} onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}><X size={11} /></button></div>)}</div>}
+        <textarea ref={ta} rows={1} value={text} disabled={disabled} onPaste={(e) => { const fs = [...e.clipboardData.items].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter((f): f is File => !!f); if (fs.length) { e.preventDefault(); addFiles(fs); } }} placeholder={voice.on ? t('app.composer.talkOrType') : running ? t('app.composer.working', { provider: PROVIDER_LABEL[provider] }) : t('app.composer.typeMessage')} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }} />
-        {running && <button className="send stop" title="Stop" onClick={onStop}><Square size={13} fill="currentColor" /></button>}
-        {!running && (text.trim() || files.length > 0) && <button className="send" title="Send" disabled={disabled} onClick={submit}><ArrowUp size={16} /></button>}
-        {!voice.on && !(text.trim() || files.length > 0) && <button className="voice-start" title="Start voice chat" disabled={disabled} onClick={voice.toggle}><AudioLines size={16} /></button>} {/* also while a turn runs: voice can join the work in progress */}
+        {running && <button className="send stop" title={t('app.composer.stop')} onClick={onStop}><Square size={13} fill="currentColor" /></button>}
+        {!running && (text.trim() || files.length > 0) && <button className="send" title={t('app.composer.send')} disabled={disabled} onClick={submit}><ArrowUp size={16} /></button>}
+        {!voice.on && !(text.trim() || files.length > 0) && <button className="voice-start" title={t('app.voice.start')} disabled={disabled} onClick={voice.toggle}><AudioLines size={16} /></button>} {/* also while a turn runs: voice can join the work in progress */}
       </div>
-      <div className="composer-row"><button className="icon-btn sm" title="Attach images (or paste, or drop them here)" disabled={disabled} onClick={() => void window.desktop.pickImages().then((got) => { if (got.length) setFiles((x) => [...x, ...got.map((a) => ({ ...a, src: `data:${a.mediaType};base64,${a.data}` }))]); })}><Paperclip size={16} /></button>
-        <select className="model" value={permissions} disabled={permissionsLocked} onChange={(e) => onPermissions(e.target.value as Permissions)} title={`${provider === 'codex' ? "Ask: you approve what Codex's sandbox will not allow. Auto: Codex's automatic reviewer decides." : provider === 'grok' ? "Ask: you approve what Grok's own permission settings do not allow already. Auto: Grok's automatic mode decides. Set when the session is opened." : 'Ask: you approve each tool that needs permission. Auto: Claude\'s permission classifier decides.'} YOLO: run tools without permission prompts or the provider sandbox, with this account’s access.${permissionsLocked ? ' Set in Settings → Safety → Provider permissions.' : ''}`}><option value="ask">Ask permission</option><option value="auto">Auto permissions</option><option value="yolo">YOLO — full access</option></select>
+      <div className="composer-row"><button className="icon-btn sm" title={t('app.composer.attach')} disabled={disabled} onClick={() => void window.desktop.pickImages().then((got) => { if (got.length) setFiles((x) => [...x, ...got.map((a) => ({ ...a, src: `data:${a.mediaType};base64,${a.data}` }))]); })}><Paperclip size={16} /></button>
+        <select className="model" value={permissions} disabled={permissionsLocked} onChange={(e) => onPermissions(e.target.value as Permissions)} title={`${provider === 'codex' ? t('app.composer.perm.codex') : provider === 'grok' ? t('app.composer.perm.grok') : t('app.composer.perm.claude')} ${t('app.composer.perm.yolo')}${permissionsLocked ? ` ${t('app.composer.perm.locked')}` : ''}`}><option value="ask">{t('app.composer.perm.ask')}</option><option value="auto">{t('app.composer.perm.auto')}</option><option value="yolo">{t('app.composer.perm.yoloOption')}</option></select>
         <span className="grow" />
         {context && <ContextMeter {...context} provider={provider} running={running} />}
         <UsageBattery provider={provider} model={usageModel} tick={usageTick} others={PROVIDERS.filter((p) => p !== provider && signedIn?.[p] !== false)} />
-        {onProvider ? <select className="model" value={provider} onChange={(e) => (e.target.value === 'jev' ? jev?.() : onProvider(e.target.value as Provider))} title="Who answers in this session. Fixed once the session starts. Jev is not a chat: it opens an agent (state, questions, output).">{PROVIDERS.map((p) => <option key={p} value={p} disabled={p !== provider && signedIn?.[p] === false}>{PROVIDER_LABEL[p]}{p !== provider && signedIn?.[p] === false ? ' (not signed in)' : ''}</option>)}{jev && <option value="jev">Jev agent</option>}</select>
-          : <span title="A session stays with the provider it started with">{PROVIDER_LABEL[provider]}</span>}
-        <select className="model" value={models.some((m) => m.id === model) ? model : ''} onChange={(e) => onModel(e.target.value)} title="Model for the next message"><option value="">Default model</option>{models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select>
-        {efforts.length > 0 && <select className="model" value={efforts.includes(effort) ? effort : ''} onChange={(e) => onEffort(e.target.value)} title="How hard the model thinks, from the next message on"><option value="">Default effort</option>{efforts.map((e) => <option key={e} value={e}>{EFFORT_LABEL[e] ?? e} effort</option>)}</select>}
+        {onProvider ? <select className="model" value={provider} onChange={(e) => (e.target.value === 'jev' ? jev?.() : onProvider(e.target.value as Provider))} title={t('app.composer.providerTitle')}>{PROVIDERS.map((p) => <option key={p} value={p} disabled={p !== provider && signedIn?.[p] === false}>{p !== provider && signedIn?.[p] === false ? t('app.composer.notSignedIn', { provider: PROVIDER_LABEL[p] }) : PROVIDER_LABEL[p]}</option>)}{jev && <option value="jev">{t('app.composer.jevAgent')}</option>}</select>
+          : <span title={t('app.composer.providerFixed')}>{PROVIDER_LABEL[provider]}</span>}
+        <select className="model" value={models.some((m) => m.id === model) ? model : ''} onChange={(e) => onModel(e.target.value)} title={t('app.composer.modelTitle')}><option value="">{t('app.composer.defaultModel')}</option>{models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select>
+        {efforts.length > 0 && <select className="model" value={efforts.includes(effort) ? effort : ''} onChange={(e) => onEffort(e.target.value)} title={t('app.composer.effortTitle')}><option value="">{t('app.composer.defaultEffort')}</option>{efforts.map((e) => <option key={e} value={e}>{t('app.composer.effortOption', { level: EFFORT_LABEL()[e] ?? e })}</option>)}</select>}
       </div>
     </div>
   );
@@ -1655,10 +1673,10 @@ export function Mini() {
   return (
     <div className="mini">
       {/* The move handle: it appears when the bar is hovered (the bar never takes focus), and dragging it moves the bar; nothing else drags. */}
-      <span className="mini-move" title="Drag to move" onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); window.desktop.miniDrag(true); }} onPointerUp={() => window.desktop.miniDrag(false)} onPointerCancel={() => window.desktop.miniDrag(false)} onLostPointerCapture={() => window.desktop.miniDrag(false)}><Move size={14} /></span>
-      <button className={`round${typing ? ' on' : ''}`} title={typing ? 'Close the typing box' : 'Type to this session instead of talking'} onClick={() => (typing ? closeBox() : openBox())}><Keyboard size={17} /></button>
-      <span className={`mini-type${typing ? ' open' : ''}`}><input ref={box} value={text} placeholder="Type to the session…" onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } else if (e.key === 'Escape') closeBox(); }} onBlur={() => setTimeout(() => { if (document.activeElement !== box.current) closeBox(); }, 120)} /></span>
-      <VoicePill level={level} phase={st.phase} micMuted={st.micMuted} speakerOff={st.speakerOff} muteIn={st.muteIn} onMic={() => window.desktop.voiceCmd('mic')} onOrb={() => window.desktop.voiceCmd('focus')} onSpeaker={() => window.desktop.voiceCmd('speaker')} orbTitle="Back to the app" />
+      <span className="mini-move" title={t('app.mini.dragMove')} onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); window.desktop.miniDrag(true); }} onPointerUp={() => window.desktop.miniDrag(false)} onPointerCancel={() => window.desktop.miniDrag(false)} onLostPointerCapture={() => window.desktop.miniDrag(false)}><Move size={14} /></span>
+      <button className={`round${typing ? ' on' : ''}`} title={typing ? t('app.mini.closeBox') : t('app.mini.openBox')} onClick={() => (typing ? closeBox() : openBox())}><Keyboard size={17} /></button>
+      <span className={`mini-type${typing ? ' open' : ''}`}><input ref={box} value={text} placeholder={t('app.mini.placeholder')} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } else if (e.key === 'Escape') closeBox(); }} onBlur={() => setTimeout(() => { if (document.activeElement !== box.current) closeBox(); }, 120)} /></span>
+      <VoicePill level={level} phase={st.phase} micMuted={st.micMuted} speakerOff={st.speakerOff} muteIn={st.muteIn} onMic={() => window.desktop.voiceCmd('mic')} onOrb={() => window.desktop.voiceCmd('focus')} onSpeaker={() => window.desktop.voiceCmd('speaker')} orbTitle={t('app.mini.backToApp')} />
     </div>
   );
 }
@@ -1680,28 +1698,28 @@ function ProviderPermissionSettings() {
       await api.setUi({ providerPermissions: next }); window.dispatchEvent(new CustomEvent('provider-permissions', { detail: next })); setError('');
     } catch (e) { setError(String(e)); }
   };
-  return <section className="settings-group"><strong>Provider permissions</strong>
-    <p className="muted">Applies to every session's next turn. "Use session setting" gives the choice back to each session's composer.</p>
-    <p className="muted">YOLO runs tools without permission prompts and disables the provider sandbox. Agents can use everything this account can access. It does not grant administrator access.</p>
-    {PROVIDERS.map((p) => <label className="check" key={p}>{PROVIDER_LABEL[p]}<select className="model" aria-label={`${PROVIDER_LABEL[p]} permissions`} value={modes[p] ?? 'session'} onChange={(e) => void pick(p, e.target.value)}><option value="session">Use session setting</option><option value="ask">Ask permission</option><option value="auto">Auto permissions</option><option value="yolo">YOLO — full access</option></select></label>)}
+  return <section className="settings-group"><strong>{t('app.settings.perm.title')}</strong>
+    <p className="muted">{t('app.settings.perm.note')}</p>
+    <p className="muted">{t('app.settings.perm.yoloNote')}</p>
+    {PROVIDERS.map((p) => <label className="check" key={p}>{PROVIDER_LABEL[p]}<select className="model" aria-label={t('app.settings.perm.aria', { provider: PROVIDER_LABEL[p] })} value={modes[p] ?? 'session'} onChange={(e) => void pick(p, e.target.value)}><option value="session">{t('app.settings.perm.session')}</option><option value="ask">{t('app.composer.perm.ask')}</option><option value="auto">{t('app.composer.perm.auto')}</option><option value="yolo">{t('app.composer.perm.yoloOption')}</option></select></label>)}
     {error && <p role="alert">{error}</p>}
   </section>;
 }
 
 type SettingsTab = 'general' | 'voice' | 'context' | 'safety' | 'reset';
-const SETTINGS_TABS: [SettingsTab, string][] = [['general', 'General'], ['voice', 'Voice'], ['context', 'Context'], ['safety', 'Safety'], ['reset', 'Reset']];
+const SETTINGS_TABS = (): [SettingsTab, string][] => [['general', t('app.settings.tab.general')], ['voice', t('app.settings.tab.voice')], ['context', t('app.settings.tab.context')], ['safety', t('app.settings.tab.safety')], ['reset', t('app.settings.tab.reset')]];
 /** The tries a new workflow is written with (the user, 2026-09-28: "the global one of the application will set the default value for the
  *  creation of new workflows, and then each workflow can have its own"): past them, a loop between agents alone stops the run; a decision
  *  of the user's starts the count again. Each workflow keeps its own number in its file, and a step can say its own. */
 function WorkflowTriesSetting() {
   const [n, setN] = useState<number>(DEFAULT_TRIES); const [missed, setMissed] = useState<MissedPolicy>(MISSED_DEFAULT);
   useEffect(() => { void api.state().then((st) => { setN(st.ui?.workflowTries ?? DEFAULT_TRIES); setMissed(st.ui?.workflowMissed ?? MISSED_DEFAULT); }).catch(() => {}); }, []);
-  return <section className="settings-group"><strong>Workflows</strong>
+  return <section className="settings-group"><strong>{t('app.sidebar.workflows')}</strong>
     {/* the user, 2026-09-29: a schedule missed while the app was closed is at least asked about; run it, or nothing, if you say so */}
-    <label className="check stack">When a workflow's schedule is missed because the app was closed<select className="model" aria-label="A missed workflow" value={missed} onChange={(e) => { const v = e.target.value as MissedPolicy; setMissed(v); void api.setUi({ workflowMissed: v }); }}>{MISSED_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}{k === MISSED_DEFAULT ? ' (default)' : ''}</option>)}</select></label>
-    <p className="muted">Schedules run while the app is open. When it opens after missing one (closed, or this computer asleep), only the latest missed time of each workflow counts: run it then, have the Jauvex agent tell you and ask whether to run it now, or skip it.</p>
-    <label><span className="lhead">Tries per step in a new workflow<em>{n}</em></span><input type="range" min={1} max={20} step={1} value={n} onChange={(e) => { const v = Number(e.target.value); setN(v); void api.setUi({ workflowTries: v }); }} /></label>
-    <p className="muted">How many times a step may come round with no decision of yours: past that, a loop between agents stops the run. Your decisions start the count again, so a loop through you has no limit. Each workflow keeps its own number (its <code>tries:</code> line), and a step can say its own in its instructions.</p></section>;
+    <label className="check stack">{t('app.settings.wf.missed')}<select className="model" aria-label={t('app.settings.wf.missedAria')} value={missed} onChange={(e) => { const v = e.target.value as MissedPolicy; setMissed(v); void api.setUi({ workflowMissed: v }); }}>{MISSED_OPTIONS.map(([k]) => { const label = t(`app.settings.wf.missedOpt.${k}`); return <option key={k} value={k}>{k === MISSED_DEFAULT ? t('app.settings.withDefault', { label }) : label}</option>; })}</select></label>
+    <p className="muted">{t('app.settings.wf.missedNote')}</p>
+    <label><span className="lhead">{t('app.settings.wf.tries')}<em>{n}</em></span><input type="range" min={1} max={20} step={1} value={n} onChange={(e) => { const v = Number(e.target.value); setN(v); void api.setUi({ workflowTries: v }); }} /></label>
+    <p className="muted">{t('app.settings.wf.triesNote1')}<code>tries:</code>{t('app.settings.wf.triesNote2')}</p></section>;
 }
 function SettingsPanel({ dashOn, onDashOn, onCustomTheme, signedIn, welcomeNext, onWelcomeNext, onOpenWelcome, defaultProvider, onDefaultProvider, showJauvex, onShowJauvex, jauvexMove, onJauvexMove, autoCompact, onAutoCompact, onClose }: { dashOn: boolean; onDashOn: (on: boolean) => void; onCustomTheme: () => void; autoCompact: number; onAutoCompact: (pct: number) => void; signedIn: Record<Provider, boolean>; welcomeNext: boolean; onWelcomeNext: (on: boolean) => void; onOpenWelcome: () => void; defaultProvider: Provider | null; onDefaultProvider: (p: Provider) => void; showJauvex: boolean; onShowJauvex: (on: boolean) => void; jauvexMove: 'unified' | 'handoff'; onJauvexMove: (m: 'unified' | 'handoff') => void; onClose: () => void }) {
   // One tab per kind of setting, a bar across the top (the user, 2026-09-24: the settings were "a freaking mess because there are no tabs").
@@ -1709,51 +1727,52 @@ function SettingsPanel({ dashOn, onDashOn, onCustomTheme, signedIn, welcomeNext,
   const [tab, setTab] = useState<SettingsTab>('general');
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal settings" role="dialog" aria-label="Jauvex settings" onClick={(e) => e.stopPropagation()}>
-        <h2>Jauvex settings</h2>
-        <div className="settings-tabs" role="tablist">{SETTINGS_TABS.map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} className={`settings-tab${tab === k ? ' on' : ''}`} onClick={() => setTab(k)}>{label}</button>)}</div>
+      <div className="modal settings" role="dialog" aria-label={t('app.footer.settings')} onClick={(e) => e.stopPropagation()}>
+        <h2>{t('app.footer.settings')}</h2>
+        <div className="settings-tabs" role="tablist">{SETTINGS_TABS().map(([k, label]) => <button key={k} role="tab" aria-selected={tab === k} className={`settings-tab${tab === k ? ' on' : ''}`} onClick={() => setTab(k)}>{label}</button>)}</div>
         <div className="settings-body" role="tabpanel">
         {tab === 'general' && <>
-          <p className="muted">Accounts are in the Jauvex button below the sidebar. The voice settings are here and under the orb of any session: one set for the whole app.</p>
+          <p className="muted">{t('app.settings.generalNote')}</p>
           <ThemeSetting onCustom={onCustomTheme} />
+          <LanguageSetting />
           <section className="settings-group">
-            <strong>Dashboard</strong>
-            <label className="check"><input type="checkbox" checked={dashOn} onChange={(e) => onDashOn(e.target.checked)} />Show the dashboard above the Jauvex agent's chat: what needs you, today, who is working, pinned notes. The Jauvex agent keeps it up to date.</label>
+            <strong>{t('app.settings.dashboard')}</strong>
+            <label className="check"><input type="checkbox" checked={dashOn} onChange={(e) => onDashOn(e.target.checked)} />{t('app.settings.dashboardShow')}</label>
           </section>
           <section className="settings-group">
-            <strong>Default agent</strong>
-            <label className="check">New sessions and the Jauvex agent start with<select className="model" value={defaultProvider ?? ''} onChange={(e) => onDefaultProvider(e.target.value as Provider)}><option value="" disabled>Not chosen yet</option>{PROVIDERS.map((p) => <option key={p} value={p} disabled={signedIn?.[p] === false}>{PROVIDER_LABEL[p]}{signedIn?.[p] === false ? ' (not signed in)' : ''}</option>)}</select></label>
+            <strong>{t('app.settings.defaultAgent')}</strong>
+            <label className="check">{t('app.settings.defaultAgentLabel')}<select className="model" value={defaultProvider ?? ''} onChange={(e) => onDefaultProvider(e.target.value as Provider)}><option value="" disabled>{t('app.settings.notChosen')}</option>{PROVIDERS.map((p) => <option key={p} value={p} disabled={signedIn?.[p] === false}>{signedIn?.[p] === false ? t('app.composer.notSignedIn', { provider: PROVIDER_LABEL[p] }) : PROVIDER_LABEL[p]}</option>)}</select></label>
           </section>
           <section className="settings-group">
-            <strong>Jauvex agent</strong>
-            <label className="check"><input type="checkbox" checked={showJauvex} onChange={(e) => onShowJauvex(e.target.checked)} />Show it at the top of the sidebar (hidden, it still exists and still answers other agents)</label>
-            <label className="check stack">When it moves to the other provider<select className="model" value={jauvexMove} onChange={(e) => onJauvexMove(e.target.value as 'unified' | 'handoff')}><option value="unified">Unified (experimental): the app replays the whole conversation</option><option value="handoff">Handover: the leaving agent writes a note, the next starts from it</option></select></label>
+            <strong>{t('app.settings.jauvexAgent')}</strong>
+            <label className="check"><input type="checkbox" checked={showJauvex} onChange={(e) => onShowJauvex(e.target.checked)} />{t('app.settings.showJauvex')}</label>
+            <label className="check stack">{t('app.settings.jauvexMove')}<select className="model" value={jauvexMove} onChange={(e) => onJauvexMove(e.target.value as 'unified' | 'handoff')}><option value="unified">{t('app.settings.moveUnified')}</option><option value="handoff">{t('app.settings.moveHandoff')}</option></select></label>
           </section>
           <WorkflowTriesSetting />
           <section className="settings-group">
-            <strong>Welcome screen</strong>
-            <label className="check"><input type="checkbox" checked={welcomeNext} onChange={(e) => onWelcomeNext(e.target.checked)} />Show it again on the next start</label>
-            <div className="row-btns"><button onClick={onOpenWelcome}>Open it now</button></div>
+            <strong>{t('app.settings.welcome')}</strong>
+            <label className="check"><input type="checkbox" checked={welcomeNext} onChange={(e) => onWelcomeNext(e.target.checked)} />{t('app.settings.welcomeNext')}</label>
+            <div className="row-btns"><button onClick={onOpenWelcome}>{t('app.settings.welcomeOpen')}</button></div>
           </section>
         </>}
         {tab === 'voice' && <VoiceChatSettings provider={defaultProvider ?? 'claude'} />}
         {tab === 'context' && <>
           <section className="settings-group">
-            <strong>Context</strong>
-            <label className="check stack">Compact an agent's conversation by itself when its context is this full<select className="model" value={autoCompact} onChange={(e) => onAutoCompact(Number(e.target.value))}>{AUTO_COMPACT_CHOICES.map((p) => <option key={p} value={p}>{p} %{p === AUTO_COMPACT_DEFAULT ? ' (default)' : ''}</option>)}{![0, ...AUTO_COMPACT_CHOICES].includes(autoCompact) && <option value={autoCompact}>{autoCompact} %</option>}<option value={0}>Leave it to the provider (Claude near the limit, Codex at about 95 %)</option></select></label>
-            <p className="muted">The pile of sheets next to each composer shows how full that agent's context is: click it for the numbers and to compact now. Compacting replaces the conversation so far with a summary. It also happens at once when a message does not fit, and that message is then sent again.</p>
+            <strong>{t('app.settings.tab.context')}</strong>
+            <label className="check stack">{t('app.settings.autoCompact')}<select className="model" value={autoCompact} onChange={(e) => onAutoCompact(Number(e.target.value))}>{AUTO_COMPACT_CHOICES.map((p) => <option key={p} value={p}>{p === AUTO_COMPACT_DEFAULT ? t('app.settings.withDefault', { label: `${p} %` }) : `${p} %`}</option>)}{![0, ...AUTO_COMPACT_CHOICES].includes(autoCompact) && <option value={autoCompact}>{autoCompact} %</option>}<option value={0}>{t('app.settings.autoCompactProvider')}</option></select></label>
+            <p className="muted">{t('app.settings.contextNote')}</p>
           </section>
         </>}
         {tab === 'safety' && <ProviderPermissionSettings />}
         {tab === 'reset' && <>
           <section className="settings-group danger">
-            <strong>Danger zone</strong>
-            <p>Reset the app to its initial state: the sidebar's folders and sessions (the sessions stay in Claude, Codex and Grok), the Jauvex agent's conversation and every setting. Cannot be undone; the app exits.</p>
-            <div className="row-btns"><button className="btn-danger" onClick={() => void window.desktop.appReset()}>Reset the app…</button></div>
+            <strong>{t('app.settings.danger')}</strong>
+            <p>{t('app.settings.resetNote')}</p>
+            <div className="row-btns"><button className="btn-danger" onClick={() => void window.desktop.appReset()}>{t('app.settings.resetButton')}</button></div>
           </section>
         </>}
         </div>
-        <div className="modal-foot"><span className="app-version">Jauvex Personal {__APP_VERSION__}</span><button onClick={onClose}>Close</button></div>
+        <div className="modal-foot"><span className="app-version">Jauvex Personal {__APP_VERSION__}</span><button onClick={onClose}>{t('common.close')}</button></div>
       </div>
     </div>
   );
@@ -1766,8 +1785,8 @@ function VoiceModelPick({ provider, value, options, onChange }: { provider: Prov
   // The live list can still be on its way when the panel opens (it is asked once per run): keep looking for it a few seconds.
   useEffect(() => { if (options.length) { setList(options); return; } let alive = true; let tries = 0; const look = () => { void window.desktop.voiceStatus().then((st) => { if (!alive) return; const l = st.voiceModels[provider]; if (l.length) setList(l); else if (tries++ < 14) setTimeout(look, 700); }).catch(() => {}); }; look(); return () => { alive = false; }; }, [provider, options]);
   const shown = list.find((o) => o.id === value)?.id ?? list.find((o) => o.resolved === value)?.id ?? ''; const known = !!shown; /* a saved wire id (claude-sonnet-5) shows as the alias that stands for it (sonnet), so the selector never claims automatic while Sonnet is in use */
-  return <label>Voice model for {PROVIDER_LABEL[provider]} sessions (acknowledges, then says what happened)<em>in use: {inUse ? (list.find((o) => o.id === inUse) ?? list.find((o) => o.resolved === inUse))?.label ?? inUse : '…'}</em>
-    <select value={shown} onChange={(e) => onChange(e.target.value)}><option value="">Automatic (the smallest{list.length ? '' : ', list loading'})</option>{list.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}{value && !known && list.length > 0 && <option value={value} disabled>{value} (not offered any more: automatic is used)</option>}</select></label>;
+  return <label>{t('app.settings.voice.modelFor', { provider: PROVIDER_LABEL[provider] })}<em>{t('app.settings.voice.inUse', { model: inUse ? (list.find((o) => o.id === inUse) ?? list.find((o) => o.resolved === inUse))?.label ?? inUse : '…' })}</em>
+    <select value={shown} onChange={(e) => onChange(e.target.value)}><option value="">{list.length ? t('app.settings.voice.modelAuto') : t('app.settings.voice.modelAutoLoading')}</option>{list.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}{value && !known && list.length > 0 && <option value={value} disabled>{t('app.settings.voice.modelGone', { model: value })}</option>}</select></label>;
 }
 
 /** The in-app name question (Electron has no prompt()): a new board's name. */
@@ -1779,7 +1798,7 @@ function NameBox({ title, hint, placeholder, onDone }: { title: string; hint?: s
         <h2>{title}</h2>
         {hint && <p className="muted">{hint}</p>}
         <input autoFocus value={v} placeholder={placeholder} spellCheck={false} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') onDone(null); }} />
-        <div className="namebox-btns"><button type="button" onClick={() => onDone(null)}>Cancel</button><button type="submit" className="go" disabled={!v.trim()}>Create</button></div>
+        <div className="namebox-btns"><button type="button" onClick={() => onDone(null)}>{t('common.cancel')}</button><button type="submit" className="go" disabled={!v.trim()}>{t('app.namebox.create')}</button></div>
       </form>
     </div>
   );
