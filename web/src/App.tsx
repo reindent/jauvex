@@ -34,7 +34,7 @@ import { threadUnits, toolImage, type WorkPart } from '../../shared/thread';
 import { applyTheme, themeOf, type Theme } from './theme';
 import { badgeText, counted, seen, countOf, unreadFrom, type Unread } from '../../shared/unread';
 import { inSlots, moveFolder } from '../../shared/folder-order';
-import { t, LANGUAGES, resolveLanguage, type Lang, type LangSetting } from '../../shared/i18n';
+import { t, LANGUAGES, resolveLanguage, type Language, type LanguagePref } from '../../shared/i18n';
 import { chooseLanguage, langSettingOf, savedLanguageSetting, syncLanguage } from './language';
 const tr = t; // t() inside code where a local named t (a transcript, a timer) hides it
 
@@ -218,6 +218,7 @@ export default function App() {
           }
           if (c.jauvexMove) { setJauvexMove(c.jauvexMove); ui.jauvexMove = c.jauvexMove; } if (c.defaultProvider) { setDefaultProvider(c.defaultProvider); localStorage.setItem('cvc.provider', c.defaultProvider); ui.defaultProvider = c.defaultProvider; } if (typeof c.showJauvex === 'boolean') { setShowJauvex(c.showJauvex); ui.showJauvex = c.showJauvex; } if (typeof c.welcomeNext === 'boolean') { setWelcomeNext(c.welcomeNext); ui.welcomed = !c.welcomeNext; } if (typeof c.autoCompact === 'number') { if (!(c.autoCompact >= 0 && c.autoCompact <= 100)) return { ok: false, error: '--auto-compact takes a percentage from 1 to 99, or provider (the provider decides)' }; const n = Math.round(c.autoCompact); setAutoCompact(n); window.dispatchEvent(new CustomEvent('cvc-auto-compact', { detail: n })); ui.autoCompact = n; }
           if (c.workflowMissed !== undefined) { if (!MISSED_OPTIONS.some(([k]) => k === c.workflowMissed)) return { ok: false, error: '--workflow-missed takes run (run it as soon as the app opens), alert (tell the user and ask: the default) or nothing' }; ui.workflowMissed = c.workflowMissed as MissedPolicy; }
+          if (c.language !== undefined) { if (c.language !== 'auto' && !(c.language in LANGUAGES)) return { ok: false, error: `--language takes auto (the system's) or ${Object.keys(LANGUAGES).join(', ')}` }; void chooseLanguage(langSettingOf(c.language)); return { ok: true, language: c.language }; }
           if (!Object.keys(ui).length) { const cur = (await api.state()).ui; return { ok: true, workflowMissed: cur?.workflowMissed ?? MISSED_DEFAULT }; }
           await api.setUi(ui); return { ok: true, ...ui }; }
         case 'update': { // the app the install command made, to the latest version
@@ -1479,12 +1480,12 @@ function WorkFold({ b, results }: { b: Block; results: Map<string, Extract<Block
 /** The app's look (T-248): the Mac's own (the default: light, dark or auto as the Mac is set), or light or dark for this app; applied at once. */
 /** The app's words (i18n): the system's language, or one chosen here. Picking one draws the window again in it. */
 function LanguageSetting() {
-  const [v, setV] = useState<LangSetting>(savedLanguageSetting);
+  const [v, setV] = useState<LanguagePref>(savedLanguageSetting);
   const system = LANGUAGES[resolveLanguage('auto', navigator.language)];
   return <section className="settings-group"><strong>{t('settings.language')}</strong>
     <select className="model" aria-label={t('settings.language')} value={v} onChange={(e) => { const s = langSettingOf(e.target.value); setV(s); void chooseLanguage(s); }}>
       <option value="auto">{t('settings.language.auto', { lang: system })}</option>
-      {(Object.entries(LANGUAGES) as [Lang, string][]).map(([k, name]) => <option key={k} value={k}>{name}</option>)}
+      {(Object.entries(LANGUAGES) as [Language, string][]).map(([k, name]) => <option key={k} value={k}>{name}</option>)}
     </select>
     <p className="muted">{t('settings.language.note')}</p>
   </section>;

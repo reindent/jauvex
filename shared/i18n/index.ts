@@ -1,44 +1,44 @@
-// The interface's words in every language the app speaks (i18n; the user, 2026-10-03: English and Spanish first, a third language one file
-// more). en.ts holds every string, by key: it is the source and the fallback. Another language is a file typed as en's keys (es.ts), so the
-// typecheck refuses a key it lacks, and one line in LANGUAGES below. tests/i18n-keys.test.ts checks what the typecheck cannot: empty
-// values, placeholders that differ, keys the code asks for that do not exist. Model prompts, agent briefings and logs are never translated.
-//   t('sidebar.addFolder')                       one string
-//   t('welcome.signedInAs', { who })             {who} filled in
-//   t('queue.waiting', { count: 3 })             a plural: the key's .one or .other form, by the language's own rules
-// Kept identical in Jauvex Personal and Jauvex Pro (index.ts, GLOSSARY.md); the strings themselves differ where the apps do.
+// The app's languages (i18n; the user, 2026-10-03: Spanish first, a third language should be one file). Every text the app shows is a key of
+// en.ts, English, the source and the fallback; each other language is one file of the same keys (es.ts), typed against it so TypeScript
+// refuses a missing key, and tests/i18n-keys.test.ts also refuses an empty one, an unknown key and a placeholder that does not match.
+// Not translated: what models read (prompts, briefings), logs, file formats. Shared with Jauvex Personal: change both (GLOSSARY.md).
+//   t('sidebar.newHuddle')                       the text in the language on now
+//   t('workflow.runOf', { n: 3, total: 4 })      {n} and {total} filled in
+//   t('agents.count', { count: 2 })             'agents.count.one' or 'agents.count.other', by the count
 import { en } from './en.js';
 import { es } from './es.js';
 
 export type Key = keyof typeof en;
-type Base<K> = K extends `${infer B}.one` ? B : K extends `${infer B}.other` ? B : never;
-/** A key, or the base of a plural pair (key.one / key.other) when given a count. */
-export type TKey = Key | Base<Key>;
-export type Vars = Record<string, string | number>;
+export type Table = Record<Key, string>;
+/** The languages the app speaks, as each names itself. A third: its file, and one line here. */
+export const LANGUAGES = { en: 'English', es: 'Español' } as const;
+export type Language = keyof typeof LANGUAGES;
+export const TABLES: Record<Language, Table> = { en, es };
+/** What the person picked: a language, or 'auto' (the system's). */
+export type LanguagePref = 'auto' | Language;
 
-export const LANGUAGES = { en: 'English', es: 'Español' } as const; // each in its own words: the setting's list
-export type Lang = keyof typeof LANGUAGES;
-const TABLES: Record<Lang, Record<Key, string>> = { en, es };
-/** The setting: a language, or 'auto' (the system's, else English). */
-export type LangSetting = Lang | 'auto';
-
-/** The language for a setting and the system's locale ('es-CL', 'en_US', 'es'...). */
-export function resolveLanguage(setting: unknown, systemLocale: string | undefined): Lang {
-  if (typeof setting === 'string' && setting in LANGUAGES) return setting as Lang;
-  const base = (systemLocale ?? '').toLowerCase().split(/[-_]/)[0] ?? '';
-  return base in LANGUAGES ? (base as Lang) : 'en';
+/** The language to speak for a preference and the system's locale ('es-PA', 'en_US'): the picked one, else the system's when the app has
+ *  it, else English. */
+export function resolveLanguage(pref: string | undefined | null, system: string | undefined | null): Language {
+  if (pref && pref !== 'auto' && pref in LANGUAGES) return pref as Language;
+  const sys = String(system ?? '').slice(0, 2).toLowerCase();
+  return (sys in LANGUAGES ? sys : 'en') as Language;
 }
 
-let lang: Lang = 'en';
-export const getLanguage = (): Lang => lang;
-export function setLanguage(l: Lang): void { lang = l in LANGUAGES ? l : 'en'; }
+let current: Language = 'en';
+export const language = (): Language => current;
+export function setLanguage(l: Language): void { current = l in LANGUAGES ? l : 'en'; }
 
-const fill = (s: string, vars?: Vars): string => (vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : s);
-/** The string for a key in the language now in use (English when this language lacks it), with its {placeholders} filled. Given a count and
- *  a plural base, the .one or .other form. */
-export function t(key: TKey, vars?: Vars, l: Lang = lang): string {
-  const table = TABLES[l];
+const fill = (s: string, vars?: Record<string, string | number | null | undefined>): string => (vars ? s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k] ?? "") : m)) : s);
+/** A key's text in the language on now (English when that language lacks it), its {placeholders} filled. With vars.count and no such key,
+ *  the plural forms `<key>.one` / `<key>.other`. */
+export function t(key: Key | `${string}`, vars?: Record<string, string | number | null | undefined>): string {
+  const table = TABLES[current] as Record<string, string>; const base = en as Record<string, string>;
   let k = key as string;
-  if (vars && typeof vars.count === 'number' && !(k in en)) k = `${k}.${new Intl.PluralRules(l).select(vars.count) === 'one' ? 'one' : 'other'}`;
-  const s = (table as Record<string, string>)[k] || (en as Record<string, string>)[k];
-  return fill(s ?? key, vars);
+  if (!(k in base) && vars && typeof vars.count === 'number') k = `${k}.${vars.count === 1 ? 'one' : 'other'}`;
+  return fill(table[k] || base[k] || k, vars);
 }
+/** t, for a scope where a local `t` hides it. */
+export const tr = t;
+/** The same in a given language, whatever is on now (the main process answering a window in another one). */
+export function tIn(l: Language, key: Key | `${string}`, vars?: Record<string, string | number | null | undefined>): string { const was = current; current = l; try { return t(key, vars); } finally { current = was; } }

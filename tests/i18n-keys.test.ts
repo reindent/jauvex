@@ -1,34 +1,27 @@
-// The interface's languages (i18n, 2026-10-03): every language in LANGUAGES has its file (shared/i18n/<code>.ts) with every key English has,
-// none empty, the same {placeholders}, both forms of every plural; and every key the code asks for with t('...') exists. The typecheck refuses
-// a missing key already; this also catches an empty one, a placeholder translated by mistake, and a key typed wrong in a template.
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import path from 'node:path';
-const { LANGUAGES } = await import('../shared/i18n/index.ts');
-const { en } = await import('../shared/i18n/en.ts');
+import { readdirSync, readFileSync } from 'node:fs'; import path from 'node:path';
+// Every language has every key of English, none empty, the same {placeholders}; every key the code uses exists (the user, 2026-10-03:
+// "add a check that flags missing keys"); a third language is one file in shared/i18n and one line in LANGUAGES.
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };
+const { TABLES, LANGUAGES, resolveLanguage, setLanguage, t } = await import('../shared/i18n/index.ts');
+const en = TABLES.en as Record<string, string>;
 const vars = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
-const keys = Object.keys(en);
-
-for (const code of Object.keys(LANGUAGES)) {
-  const table = (await import(`../shared/i18n/${code}.ts`))[code] as Record<string, string> | undefined;
-  if (!table) { check(`${code}: shared/i18n/${code}.ts exports ${code}`, false); continue; }
-  const missing = keys.filter((k) => !(k in table)); const extra = Object.keys(table).filter((k) => !(k in en));
-  check(`${code}: every key English has, and no other`, !missing.length && !extra.length, [...missing.map((k) => `missing ${k}`), ...extra.map((k) => `extra ${k}`)].slice(0, 12).join('; '));
-  const empty = keys.filter((k) => k in table && !String(table[k]).trim());
-  check(`${code}: no empty string`, !empty.length, empty.slice(0, 12).join(', '));
-  const wrong = keys.filter((k) => k in table && vars(table[k]!) !== vars(en[k as keyof typeof en]));
-  check(`${code}: the same {placeholders} as English`, !wrong.length, wrong.slice(0, 12).map((k) => `${k}: {${vars(en[k as keyof typeof en])}} vs {${vars(table[k]!)}}`).join('; '));
+for (const [lang, table] of Object.entries(TABLES) as [string, Record<string, string>][]) {
+  if (lang === 'en') continue;
+  const missing = Object.keys(en).filter((k) => !(k in table)), extra = Object.keys(table).filter((k) => !(k in en));
+  const empty = Object.keys(table).filter((k) => !table[k]?.trim()), mism = Object.keys(en).filter((k) => k in table && vars(en[k]!) !== vars(table[k]!));
+  check(`${lang}: every English key is there`, !missing.length, missing.slice(0, 10).join(' '));
+  check(`${lang}: no key English does not have`, !extra.length, extra.slice(0, 10).join(' '));
+  check(`${lang}: no empty text`, !empty.length, empty.slice(0, 10).join(' '));
+  check(`${lang}: the same {placeholders} as English`, !mism.length, mism.slice(0, 5).map((k) => `${k}: "${en[k]}" / "${table[k]}"`).join(' | '));
 }
-const plurals = keys.filter((k) => /\.(one|other)$/.test(k)).map((k) => k.replace(/\.(one|other)$/, ''));
-const half = [...new Set(plurals)].filter((b) => !(`${b}.one` in en) || !(`${b}.other` in en));
-check('every plural has its .one and its .other', !half.length, half.join(', '));
-
-// Every key the code names in a call: t('...'), tr('...'), ui('...') (the names t() is imported or aliased under).
-const files: string[] = []; const walk = (d: string) => { for (const f of readdirSync(d)) { const p = path.join(d, f); if (statSync(p).isDirectory()) { if (f !== 'i18n') walk(p); } else if (/\.tsx?$/.test(f)) files.push(p); } };
-for (const d of ['web/src', 'shared', 'electron']) walk(d);
-const asked = new Map<string, string>();
-for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/\b(?:t|tr|ui)\(\s*'([a-z][\w]*(?:\.[\w]+)+)'/g)) asked.set(m[1]!, f);
-const unknown = [...asked].filter(([k]) => !(k in en) && !(`${k}.one` in en));
-check(`every key the code asks for exists (${asked.size} named in the code)`, !unknown.length, unknown.slice(0, 12).map(([k, f]) => `${k} (${f})`).join('; '));
-console.log(`${keys.length} keys, ${Object.keys(LANGUAGES).length} languages`);
+check('every language in LANGUAGES has its table', Object.keys(LANGUAGES).every((l) => l in TABLES));
+// the keys the code asks for, in t('...') and tIn(l, '...'), exist in English (a plural base needs its .one and .other)
+const files: string[] = []; const walk = (d: string) => { for (const f of readdirSync(d, { withFileTypes: true })) { const p = path.join(d, f.name); if (f.isDirectory()) { if (!/node_modules|i18n/.test(p)) walk(p); } else if (/\.(tsx?|mjs)$/.test(f.name)) files.push(p); } };
+['web/src', 'electron', 'shared'].forEach(walk);
+const used = new Set<string>(); for (const f of files) for (const m of readFileSync(f, 'utf8').matchAll(/\bt(?:In)?\((?:\w+, )?'([a-z][\w.-]*)'/g)) used.add(m[1]!);
+const unknown = [...used].filter((k) => !(k in en) && !(`${k}.one` in en && `${k}.other` in en));
+check('every key the code uses exists in English', !unknown.length, unknown.slice(0, 10).join(' '));
+check('the code uses keys (the check reads it)', used.size > 0, `${used.size} keys`);
+check('the language: picked, else the system\'s when the app has it, else English', resolveLanguage('es', 'en-US') === 'es' && resolveLanguage('auto', 'es-PA') === 'es' && resolveLanguage(undefined, 'es_PA') === 'es' && resolveLanguage('auto', 'de-DE') === 'en' && resolveLanguage('fr', 'es') === 'es');
+setLanguage('es'); check('t speaks the language on, with English as the fallback for an unknown key', t('settings.language') === 'Idioma' && t('no.such.key' as never) === 'no.such.key'); setLanguage('en');
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

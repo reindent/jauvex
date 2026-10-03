@@ -12,7 +12,7 @@
 //                   A decision of the user's starts the count again: a loop that goes through them has no limit; one between agents alone does.
 // A run record:     # Run N, `started:` `result:` `took:` lines, then `## N. Step` sections with `took:` `started:` `result:` `said:`.
 
-import { t as ui, type TKey } from './i18n/index.js';
+import { t as ui } from './i18n/index.js';
 
 /** file: the step's instructions file as its heading links it (relative to workflows/), '' for one written under its heading; prompt: its
  *  instructions, with their lines; note: the same on one line. */
@@ -279,7 +279,7 @@ export const missedNote = (items: Missed[], now = new Date()): string => {
 };
 /** An event trigger that names this workflow (by its title or its file name, case and punctuation aside). */
 export const firesAfter = (tr: Trigger, def: { name: string; file?: string }): boolean => { if (tr.kind !== 'after') return false; const sq = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ''); const want = sq(tr.workflow); return !!want && (want === sq(def.name) || want === sq((def.file ?? '').replace(/^workflows\//, '').replace(/\.md$/, ''))); };
-export const describeTrigger = (tr: Trigger, now = new Date()): string => { const n = nextSlot(tr, now); const at = (d: Date) => `${d.toDateString() === now.toDateString() ? ui('workflow.trigger.today') : ui(`workflow.trigger.day.${d.getDay()}` as TKey)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+export const describeTrigger = (tr: Trigger, now = new Date()): string => { const n = nextSlot(tr, now); const at = (d: Date) => `${d.toDateString() === now.toDateString() ? ui('workflow.trigger.today') : ui(`workflow.trigger.day.${d.getDay()}`)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const hm = (x: number) => `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`;
   if (tr.kind === 'window') return n ? ui('workflow.trigger.windowNext', { from: hm(tr.from), to: hm(tr.to), day: at(n).replace(/ \d\d:\d\d$/, '') }) : ui('workflow.trigger.window', { from: hm(tr.from), to: hm(tr.to) });
   return tr.kind === 'manual' ? ui('workflow.trigger.byHand') : tr.kind === 'after' ? ui('workflow.trigger.after', { workflow: tr.workflow }) : n ? ui('workflow.trigger.next', { at: at(n) }) : ''; }; /* shown in the window only */
