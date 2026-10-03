@@ -1,32 +1,27 @@
-# Spanish glossary (agreed between Jauvex Personal and Jauvex Pro, 2026-10-03)
+# The app's words in Spanish
 
-Spanish is neutral Latin American, with **tú** throughout ("Escribe un mensaje", "Elige una carpeta"). Short, plain words; the app's own
-voice, not a manual's. Brand and product names stay as they are: Jauvex, Jev, TypeSafe, Claude, Claude Code, Codex, Grok, Whisper, Kokoro,
-Anthropic, OpenAI, xAI, macOS, Linux, Kanban. Keyboard keys keep their names (Enter, Shift, Alt, Option, Cmd).
+Shared by Jauvex Pro and Jauvex Personal (agreed 2026-10-03): the same terms in both apps. Neutral Latin American Spanish, "tú" throughout.
+Brand and product names stay as they are: Jauvex, Jev, Claude, Codex, Grok, Whisper, Kokoro, TypeSafe.
 
 | English | Español |
 |---|---|
+| workspace | espacio de trabajo |
+| workflow | flujo de trabajo (short: flujo) |
+| board | tablero |
+| huddle | reunión rápida |
+| meetings (saved huddles) | reuniones |
 | agent | agente |
 | the Jauvex agent | el agente de Jauvex |
-| approval | aprobación |
-| board | tablero |
-| Kanban columns: To do / Doing / Done | Por hacer / En curso / Hecho |
-| chat | chat |
-| folder | carpeta |
-| huddle | reunión rápida |
-| Meetings (saved huddles) | Reuniones |
-| message | mensaje |
-| queue / queued | cola / en cola |
-| run (of a workflow) | ejecución |
 | session | sesión |
-| settings | Ajustes |
-| sign in / sign out | iniciar sesión / cerrar sesión |
+| folder | carpeta |
 | step | paso |
-| steer (into a running turn) | redirigir |
-| stop | detener |
-| turn (an agent's) | turno |
+| run (of a workflow) | ejecución |
+| approval | aprobación |
+| To do / Doing / Done | Por hacer / En curso / Hecho |
 | Type a message | Escribe un mensaje |
-| update | actualizar / actualización |
+| settings | ajustes |
 | voice | voz |
-| workflow | flujo de trabajo (short: flujo) |
-| workspace | espacio de trabajo |
+| queue | cola |
+| steer | redirigir |
+| sign in | iniciar sesión |
+| update | actualizar |

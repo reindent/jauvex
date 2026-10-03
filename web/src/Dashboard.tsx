@@ -4,7 +4,7 @@
 // (the file read, the greeting, the saved way) are in shared/dashboard.ts.
 import { useState } from 'react';
 import { PanelTop, PanelTopClose, Rows2 } from 'lucide-react';
-import { getLanguage, t } from '../../shared/i18n';
+import { language, t } from '../../shared/i18n';
 const greeting = (hour: number): string => t(hour < 12 ? 'dashboard.greeting.morning' : hour < 18 ? 'dashboard.greeting.afternoon' : 'dashboard.greeting.evening');
 import { DASH_CARDS, dashPrefsFrom, itemsFor, type DashCard, type DashPrefs, type DashSize, type DashboardFile } from '../../shared/dashboard';
 
@@ -32,7 +32,7 @@ export function Dashboard({ file, auto, today, working, onHide }: DashboardProps
   const rows: Row[] = [...auto, ...itemsFor(f, ME).map((l) => ({ kind: 'file' as const, text: l.text, note: l.note }))];
   const cards = DASH_CARDS.filter((c) => !prefs.hide.includes(c));
   const failed = today.filter((e) => e.state === 'failed').length;
-  const day = new Date().toLocaleDateString(getLanguage() === 'en' ? 'en-US' : getLanguage(), { weekday: 'long', month: 'long', day: 'numeric' });
+  const day = new Date().toLocaleDateString(language() === 'en' ? 'en-US' : language(), { weekday: 'long', month: 'long', day: 'numeric' });
   const summary = [day, t('dashboard.summary.needs', { count: rows.length }), t('dashboard.summary.working', { count: working.length }), ...(failed ? [t('dashboard.summary.failed', { count: failed })] : [])].join(' · ');
   const cols = cards.map((c) => (c === 'needs' ? '1.45fr' : '1fr')).join(' ');
   return <div className={`dash dash-${prefs.size}`} data-testid="dashboard">
