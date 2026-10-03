@@ -11,6 +11,7 @@
 //                   between (DEFAULT_TRIES when there is none); a step's own `tries: N` line, in its instructions, overrides it for that step.
 //                   A decision of the user's starts the count again: a loop that goes through them has no limit; one between agents alone does.
 // A run record:     # Run N, `started:` `result:` `took:` lines, then `## N. Step` sections with `took:` `started:` `result:` `said:`.
+export { stepFile, stepReplyText, saidOf, questionOf, choicesOf, linkedFiles, type Choice } from './gate-reply.js'; // what a step found, for the gate after it
 
 import { t as ui } from './i18n/index.js';
 
