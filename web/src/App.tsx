@@ -77,6 +77,8 @@ export function Mark({ busy = false }: { busy?: boolean }) {
   );
 }
 
+/** A text cut at about n characters on a word, for a notification or a dashboard line. */
+const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1).replace(/\s+\S*$/, '')}…` : s);
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [autoCompact, setAutoCompact] = useState(AUTO_COMPACT_DEFAULT); // compact an agent's conversation when its context is this full (T-74); every open chat is told
@@ -484,7 +486,7 @@ export default function App() {
     const agentOf = (sid: string) => { for (const f of folders) { const i = infos[f.id]?.find((x) => x.sessionId === sid); if (i || f.sessions.includes(sid)) return { f, name: i?.customTitle || shortTitle(i?.summary ?? '') || t('app.sessionN', { id: sid.slice(0, 6) }), provider: i?.provider ?? providerOf(f, sid) }; } return null; };
     const openFlow = (pid: string, wf: WorkflowInfo) => () => open({ projectId: pid, sessionId: null, key: `${pid}:wf:${wf.file}`, kind: 'workflow', file: wf.file, name: wf.name });
     const auto: DashNeed[] = []; // what waits on you that the app knows by itself
-    for (const f of folders) for (const wf of workflows[f.id] ?? []) if (wf.latest?.waiting) auto.push({ kind: 'gate', text: t('app.dash.runWaits', { name: wf.name, n: wf.latest.n }), note: f.name, open: openFlow(f.id, wf) });
+    for (const f of folders) for (const wf of workflows[f.id] ?? []) if (wf.latest?.waiting) auto.push({ kind: 'gate', text: wf.latest.asks ? `${wf.name}: ${clip(wf.latest.asks, 120)}` : t('app.dash.runWaits', { name: wf.name, n: wf.latest.n }), note: f.name, open: openFlow(f.id, wf) });
     for (const o of opened) if ((asking[o.key] ?? 0) > 0 && o.sessionId && folders.some((f) => f.id === o.projectId)) { const a = agentOf(o.sessionId); auto.push({ kind: 'ask', text: t('app.dash.asksPermission', { name: a?.name ?? o.name ?? t('app.dash.anAgent') }), note: a?.f.name, open: () => open(o) }); }
     for (const [sid, n] of Object.entries(unread)) if (n > 0) { const a = agentOf(sid); if (a) auto.push({ kind: 'reply', text: n > 1 ? t('app.dash.repliedCount', { name: a.name, n }) : t('app.dash.replied', { name: a.name }), note: a.f.name, open: () => open({ projectId: a.f.id, sessionId: sid, key: `${a.f.id}:${sid}` }) }); }
     const d = new Date(); const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; const today: DashEvent[] = [];
@@ -526,8 +528,8 @@ export default function App() {
   deliverToAgentRef.current = deliverToAgent;
   const makeRunner = (p: Project, file: string, md: string, prompts: Record<string, string> | undefined, run: Run): Runner => {
     const key = runKey(p, file); const def = parseWorkflow(md, file, prompts); const folder = run.file.replace(/\.md$/, '/');
-    const r = new Runner(def, run, folder, { deliver: (agent, text, step) => deliverToAgentRef.current({ projectId: p.id, sessionId: null, key: `run:${key}`, kind: 'run', file, step, name: def.name }, agent, text), /* the app as it is at each step, not as it was when the run started (T-252) */ save: (m) => api.saveRun(p.id, run.file, m).then(() => {}), log: (t) => window.desktop.debugPush('note', t),
-      onGate: (n, name) => { void loadWorkflows(p); /* the sidebar marks it: it waits for you */ try { new Notification(t('app.run.gateTitle', { name: def.name }), { body: t('app.run.gateBody', { n, step: name, folder: p.name }), silent: true }); } catch { /* no notifications */ } }, // silent: a banner, never a sound
+    const r = new Runner(def, run, folder, { deliver: (agent, text, step) => deliverToAgentRef.current({ projectId: p.id, sessionId: null, key: `run:${key}`, kind: 'run', file, step, name: def.name }, agent, text), /* the app as it is at each step, not as it was when the run started (T-252) */ save: (m) => api.saveRun(p.id, run.file, m).then(() => {}), saveStep: (n, reply) => api.saveRunStep(p.id, run.file, n, reply).then(() => {}), log: (t) => window.desktop.debugPush('note', t),
+      onGate: (n, name, asks) => { void loadWorkflows(p); /* the sidebar marks it: it waits for you */ try { new Notification(t('app.run.gateTitle', { name: def.name }), { body: asks ? clip(asks, 120) : t('app.run.gateBody', { n, step: name, folder: p.name }), silent: true }); } catch { /* no notifications */ } }, // silent: a banner, never a sound
       onFinish: (result) => { runners.current.delete(key); void loadWorkflows(p); if (/^done/i.test(result)) void runAfter(p, def); } });
     r.root = p.path; runners.current.set(key, r); return r;
   };
@@ -558,7 +560,9 @@ export default function App() {
    * Never a reply this window knows the address of: one to another message, ending with an OUTCOME line, closed a step its agent had not
    * started (T-253). */
   const routeToWaitingRun = async (o: Sel, text: string, queued: string[]) => { if (!o.sessionId || !/OUTCOME\s*[:：]/i.test(text)) return; for (const [key, r] of [...runners.current]) { const agent = r.waitingFor; if (!agent || !closesWaitingStep({ queued }, `run:${key}`)) continue; const hits = findAgents(roster(), agent); if (hits.length !== 1 || hits[0]!.sessionId !== o.sessionId) continue; await r.onReply(r.current, text); tidyRun(key); const p = projects.find((x) => key.startsWith(`${x.id}:`)); if (p) void loadWorkflows(p); } };
-  const runControl = (p: Project, file: string): RunControl => ({ run: () => startRun(p, file), resume: () => attachRun(p, file).then(() => {}), resend: () => resendRun(p, file), stop: () => stopRun(p, file), decide: (step, outcome, note) => decideRun(p, file, step, outcome, note), driven: () => runners.current.has(runKey(p, file)), waitingFor: () => runners.current.get(runKey(p, file))?.waitingFor ?? null, asking: () => null });
+  /** A workflow step's agent, by its name, opened (the gate's "Open its chat"): false when no agent of the app has that name. */
+  const openAgentByName = (name: string): boolean => { const hit = findAgents(roster(), name)[0]; if (!hit?.sessionId) return false; open({ projectId: hit.projectId, sessionId: hit.sessionId, key: `${hit.projectId}:${hit.sessionId}` }); return true; };
+  const runControl = (p: Project, file: string): RunControl => ({ openAgent: openAgentByName, run: () => startRun(p, file), resume: () => attachRun(p, file).then(() => {}), resend: () => resendRun(p, file), stop: () => stopRun(p, file), decide: (step, outcome, note) => decideRun(p, file, step, outcome, note), driven: () => runners.current.has(runKey(p, file)), waitingFor: () => runners.current.get(runKey(p, file))?.waitingFor ?? null, asking: () => null });
   // Schedules: every tick (SCHEDULE_TICK_MS), each folder's workflows as they are on disk now, so an edited `when:` line counts at once. A time
   // whose slot is under ten minutes old, with no run since, starts it (once per slot); a window draws its time (windowDue). The run's record says so.
   const workflowsRef = useRef(workflows); workflowsRef.current = workflows; const fired = useRef(new Set<string>());

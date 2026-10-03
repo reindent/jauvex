@@ -726,4 +726,8 @@ export const es: Record<keyof typeof en, string> = {
   'misc.usage.resetsNow': 'se reinicia ahora',
   'misc.usage.resetsIn': 'se reinicia en {left} ({time})',
   'misc.voice.aLink': 'un enlace',
+  'workflow.gate.found': 'Lo que encontró {step}',
+  'workflow.gate.openChat': 'Abrir el chat de {agent}',
+  'workflow.gate.showAll': 'Ver todo',
+  'workflow.gate.showLess': 'Ver menos',
 };

@@ -726,4 +726,8 @@ export const en = {
   'misc.usage.resetsNow': 'resets now',
   'misc.usage.resetsIn': 'resets in {left} ({time})',
   'misc.voice.aLink': 'a link',
+  'workflow.gate.found': 'What {step} found',
+  'workflow.gate.openChat': 'Open {agent}\'s chat',
+  'workflow.gate.showAll': 'Show all',
+  'workflow.gate.showLess': 'Show less',
 } as const;

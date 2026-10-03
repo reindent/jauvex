@@ -6,6 +6,8 @@ import { setStep, addStep, removeStep, setMeta, readStep, stepFileFor } from '..
 import { PROVIDER_LABEL, WORKFLOW_FORMAT, type Project, type Provider } from '../../shared/types';
 import { Chat, Mark, type ChatEmbed } from './App';
 import { t } from '../../shared/i18n';
+import { choicesOf, linkedFiles, questionOf } from '../../shared/workflow';
+import { md } from './md';
 
 // A workflow, drawn from its markdown file: one line, one row per step, its agent and the state of the current run; branches as
 // quiet lines under their step. The runs (markdown records in the workflow's folder) give the live state, the history and the
@@ -18,7 +20,7 @@ export type ShowPane = (title: string, node: ReactNode, key?: string) => void;
 /** The agents a step may be given: this folder's, then the app's own agent and the other folders' agents, each with its provider and folder. */
 export type StepAgents = { here: { name: string; provider: string; folder: string }[]; elsewhere: { name: string; provider: string; folder: string }[] };
 /** What the window does with a run: start one, stop or resume the live one, decide a gate (one of its outcomes, with a note). driven: this window's runner drives the live run. */
-export type RunControl = { run: () => Promise<void>; resume: () => Promise<void>; resend: () => Promise<void>; stop: () => Promise<void>; decide: (step: number, outcome: string, note?: string) => Promise<boolean>; driven: () => boolean; waitingFor: () => string | null; asking: () => { agent: string; open: () => void } | null };
+export type RunControl = { openAgent?: (name: string) => boolean; /* opens that agent's chat; false when it is not found */ run: () => Promise<void>; resume: () => Promise<void>; resend: () => Promise<void>; stop: () => Promise<void>; decide: (step: number, outcome: string, note?: string) => Promise<boolean>; driven: () => boolean; waitingFor: () => string | null; asking: () => { agent: string; open: () => void } | null };
 /** A chat inside a view, a workflow's (T-205): the window's message router hears its replies (its message-agent blocks go out, and an answer to
  *  a message it got goes back), and delivers to it there, never to a second copy of its session opened in the background. */
 export type EmbeddedMail = {
@@ -87,7 +89,11 @@ export function WorkflowView({ project, file, showPane, paneShows, paneOpen, ope
     const n = Number(id); const s = def.steps[n - 1]; if (!s) return null; const avg = st.stepAvg[n - 1]; const slowest = avg != null && avg === Math.max(...st.stepAvg.filter((x): x is number => x != null));
     const waiting = s.gate && st.live && /^waiting/i.test(st.latest?.steps[n]?.result ?? ''); const b = stepBefore(st.latest, n); const from = b ? st.latest?.steps[b] : undefined;
     // at a gate the run waits at: what to do first, from the step before it (its FOR YOU line), else from this step's own instructions
-    const gate = s.gate && <Gate key="gate" n={n} live={waiting} driven={control.driven()} names={outcomes(s).map((o) => o.name)} onDecide={(o, note) => act(() => control.decide(n, o, note))} onResume={() => act(control.resume)}
+    // the agent step the gate follows (past a gate just before it): its whole reply, kept in the run's folder, is what the person decides on
+    let ab = b; while (ab > 0 && def.steps[ab - 1]?.gate) ab = stepBefore(st.latest, ab);
+    const agentStep = ab > 0 ? def.steps[ab - 1] : undefined;
+    const context = waiting && st.latest && agentStep ? { project, runFile: st.latest.file, step: ab, title: stepTitle(agentStep), agent: agentStep.agent, startedAt: startOf(st.latest, ab), base: `${project.path}/${st.latest.file.replace(/\.md$/, '')}`, openFile, openAgent: control.openAgent } : null;
+    const gate = s.gate && <Gate key="gate" n={n} live={waiting} driven={control.driven()} names={outcomes(s).map((o) => o.name)} context={context} onDecide={(o, note) => act(() => control.decide(n, o, note))} onResume={() => act(control.resume)}
       ask={from?.asks ? { label: t('workflow.gate.asks', { step: def.steps[b - 1] ? title(def.steps[b - 1]!) : t('workflow.step.n', { n: b }) }), text: from.asks } : s.note ? { label: t('workflow.gate.whatToDo'), text: s.note } : from?.said ? { label: t('workflow.gate.said', { step: def.steps[b - 1] ? title(def.steps[b - 1]!) : t('workflow.step.n', { n: b }) }), text: from.said } : null} />;
     return <>
       {waiting && gate}
@@ -173,13 +179,45 @@ export function WorkflowView({ project, file, showPane, paneShows, paneOpen, ope
 
 /** A gate step in the pane: while the live run waits here, what to do (ask: the step before it tells the user, or the gate's own instructions),
  *  a note and one button per outcome, first in the pane; otherwise what the gate is. */
-function Gate({ n, live, driven, names, ask, onDecide, onResume }: { n: number; live: boolean; driven: boolean; names: string[]; ask: { label: string; text: string } | null; onDecide: (outcome: string, note: string) => void; onResume: () => void }) {
-  const [note, setNote] = useState('');
+/** When a step of the run started, in ms (its record keeps the day of the run and the step's hour). */
+const startOf = (run: Run, n: number): number => { const at = Date.parse(`${run.started.slice(0, 10)}T${run.steps[n]?.started || '00:00'}`); return Number.isFinite(at) ? at : 0; };
+type GateContext = { project: Project; runFile: string; step: number; title: string; agent: string; startedAt: number; base: string; openFile: (path: string) => void; openAgent?: (name: string) => boolean };
+/** What the person decides on at a gate (the user, 2026-10-03: "when it asks me to choose something, it doesn't tell me what to choose"): the
+ *  whole reply of the agent step before it (kept in the run's folder as step-N.md), folded to a few lines; the files that step wrote or named
+ *  in the run's folder, which open beside; and a way to its agent's chat. Its CHOICE lines, when it gave some, become picks. */
+function useGateReply(c: GateContext | null) {
+  const [reply, setReply] = useState<string | null>(null); const [files, setFiles] = useState<{ name: string; path: string; at: number }[]>([]);
+  useEffect(() => { if (!c) return; let gone = false;
+    void api.runStepReply(c.project.id, c.runFile, c.step).then((r) => { if (!gone) setReply(r); }).catch(() => {});
+    void api.runFiles(c.project.id, c.runFile).then((f) => { if (!gone) setFiles(f); }).catch(() => {});
+    return () => { gone = true; }; }, [c?.project.id, c?.runFile, c?.step]);
+  if (!c) return { reply: null, files: [] };
+  const named = reply ? linkedFiles(reply, c.runFile.replace(/\.md$/, '')) : [];
+  const shown = files.filter((f) => f.name !== `step-${c.step}.md` && (named.includes(f.name) || f.at >= c.startedAt - 60_000) && /\.(md|txt|csv|pdf|png|jpe?g|svg|html?)$/i.test(f.name));
+  return { reply, files: shown.sort((a, b) => Number(named.includes(b.name)) - Number(named.includes(a.name))).slice(0, 8) };
+}
+function GateContextView({ c, reply, files }: { c: GateContext; reply: string | null; files: { name: string; path: string }[] }) {
+  const [all, setAll] = useState(false);
+  if (!reply && !files.length) return null;
+  const long = !!reply && (reply.split('\n').length > 14 || reply.length > 1200);
+  return <div className="wf-gate-context">
+    <div className="wf-gate-context-head"><b>{t('workflow.gate.found', { step: c.title })}</b>{c.openAgent && <button className="btn ghost sm" onClick={() => c.openAgent!(c.agent)}>{t('workflow.gate.openChat', { agent: c.agent })}</button>}</div>
+    {reply && <div className={`wf-gate-reply md${long && !all ? ' folded' : ''}`} dangerouslySetInnerHTML={{ __html: md(reply.replace(/^\s*[-*]?\s*\**\s*CHOICE\s*\**\s*[:：].*$/gim, '').trim(), c.base) }} />} {/* its CHOICE lines are the picks below */}
+    {long && <button className="wf-gate-more" onClick={() => setAll(!all)}>{all ? t('workflow.gate.showLess') : t('workflow.gate.showAll')}</button>}
+    {files.length > 0 && <div className="wf-gate-files">{files.map((f) => <button key={f.path} className="wf-gate-file" title={f.path} onClick={() => c.openFile(f.path)}>{f.name}</button>)}</div>}
+  </div>;
+}
+function Gate({ n, live, driven, names, ask, context, onDecide, onResume }: { n: number; live: boolean; driven: boolean; names: string[]; ask: { label: string; text: string } | null; context?: GateContext | null; onDecide: (outcome: string, note: string) => void; onResume: () => void }) {
+  const [note, setNote] = useState(''); const [picked, setPicked] = useState<string | null>(null);
+  const { reply, files } = useGateReply(live ? context ?? null : null);
   if (!live) return <p className="pane-note">{t('workflow.gate.idle', { n, names: names.join(', ') })}</p>;
-  const what = ask && <div className="wf-gate-ask"><i>{ask.label}</i><p>{ask.text}</p></div>;
+  // the question: the step before's FOR YOU line, else what its reply ends on; its CHOICE lines are picks that fill the answer (never send it)
+  const question = ask?.text || (reply ? questionOf(reply) : ''); const choices = reply ? choicesOf(reply) : [];
+  const what = <>{context && <GateContextView c={context} reply={reply} files={files} />}{question && <div className="wf-gate-ask"><i>{ask?.label ?? t('workflow.gate.whatToDo')}</i><p>{question}</p></div>}
+    {choices.length > 0 && <div className="wf-gate-choices">{choices.map((ch) => <button key={ch.label} className={`wf-gate-choice${picked === ch.label ? ' on' : ''}`} title={ch.detail} onClick={() => { setPicked(ch.label); setNote(ch.detail ? `${ch.label} — ${ch.detail}` : ch.label); }}><b>{ch.label}</b>{ch.detail && <span>{ch.detail}</span>}</button>)}</div>}</>;
   if (!driven) return <div className="wf-gate">{what}<div className="btns"><p className="pane-note">{t('workflow.gate.undriven')}</p><button className="btn ghost" onClick={onResume}>{t('workflow.gate.resume')}</button></div></div>;
   return <div className="wf-gate">{what}<textarea className="gate-note" placeholder={t('workflow.gate.notePlaceholder')} value={note} onChange={(e) => setNote(e.target.value)} />
-    <div className="btns">{names.map((o) => <button key={o} className={`btn ${o === names[0] ? 'primary' : 'ghost'}`} onClick={() => onDecide(o, note)}>{o}</button>)}</div></div>;
+    <div className="btns">{names.map((o) => <button key={o} className={`btn ${o === (picked && names.includes('continue') ? 'continue' : names[0]) ? 'primary' : 'ghost'}`} onClick={() => onDecide(o, note)}>{o}</button>)}</div></div>;
 }
 /** Text edited where it stands: a click makes it a field; Enter or leaving it saves, Escape puts it back. */
 function Inline({ value, placeholder, onSave }: { value: string; placeholder: string; onSave: (v: string) => void }) {

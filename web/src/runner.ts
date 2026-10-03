@@ -2,11 +2,12 @@
 // picks the branch; a step addressed to the user waits for their decision; the run's record (markdown, in the workflow's folder) is
 // rewritten at every change, so the view, the history and the averages follow. Pure apart from the two things it is given: how to
 // deliver a message to an agent and how to save the record (tests hand it fakes).
-import { askOf, formatRun, matchOutcome, outcomes, resolveTarget, stepMessage, stepTitle, stamp, took, mins, triesOf, type Run, type Workflow } from '../../shared/workflow';
+import { askOf, saidOf, stepReplyText, formatRun, matchOutcome, outcomes, resolveTarget, stepMessage, stepTitle, stamp, took, mins, triesOf, type Run, type Workflow } from '../../shared/workflow';
 
 export type Delivered = { ok: true } | { ok: false; note: string };
 export type RunnerDeps = { deliver: (agent: string, text: string, step: number) => Promise<Delivered>; save: (md: string) => Promise<void>; log?: (text: string) => void;
-  onGate?: (step: number, name: string) => void; /* the run waits for the user */ onFinish?: (result: string) => void; /* done, stopped or failed */ };
+  saveStep?: (step: number, reply: string) => Promise<void>; /* the step's full reply, kept in the run's folder for the gate after it */
+  onGate?: (step: number, name: string, asks?: string) => void; /* the run waits for the user */ onFinish?: (result: string) => void; /* done, stopped or failed */ };
 
 export class Runner {
   current = 0; waiting: 'agent' | 'user' | null = null; over = false;
@@ -47,7 +48,7 @@ export class Runner {
   }
   private async enter(n: number, resumed: boolean): Promise<void> {
     const s = this.def.steps[n - 1]!; this.current = n; this.retried = false; this.first = ''; this.startedAt[n] = Date.now(); const x = this.run.steps[n]!;
-    if (s.gate) { this.waiting = 'user'; x.result = 'waiting for you'; await this.save(); this.log(`step ${n} "${stepTitle(s)}" waits for the user`); this.deps.onGate?.(n, stepTitle(s)); return; }
+    if (s.gate) { this.waiting = 'user'; x.result = 'waiting for you'; await this.save(); this.log(`step ${n} "${stepTitle(s)}" waits for the user`); this.deps.onGate?.(n, stepTitle(s), Object.keys(this.run.steps).map(Number).filter((k) => k < n).sort((a, b) => b - a).map((k) => this.run.steps[k]!.asks).find(Boolean)); return; }
     x.result = ''; await this.save();
     const text = stepMessage(this.def, n, this.run, this.folder, this.root) + (resumed ? '\n(This step was already sent once; the app resumed the run. If you did the work, just answer with the OUTCOME line.)' : '');
     const r = await this.deps.deliver(s.agent, text, n);
@@ -60,6 +61,7 @@ export class Runner {
     if (!o) {
       if (!this.retried) { this.retried = true; this.first = text; this.log(`step ${step}: no outcome in the reply, asking once more`); const r = await this.deps.deliver(s.agent, `(from the app) Your reply to step ${step} ("${s.name}") of workflow "${this.def.name}" did not end with an OUTCOME line. Reply with that one line only: OUTCOME: one of ${outcomes(s).map((x) => `"${x.name}"`).join(', ')}.`, step); if (r.ok) return; }
       this.run.steps[step]!.said = said(text); this.run.steps[step]!.result = 'no outcome named'; await this.finish(`failed: step ${step} (${stepTitle(s)}) ended without an outcome`); return; }
+    const full = this.first && !said(text) ? `${this.first}\n\n${text}` : text; await this.deps.saveStep?.(step, stepReplyText(full)).catch(() => {});
     await this.complete(step, o.name, o.to, said(text) || said(this.first), askOf(text) || askOf(this.first));
   }
   /** The user's decision at a gate (a button, a command, a word by voice): one of the step's outcomes, with a note if they left one. */
@@ -82,4 +84,4 @@ const squash = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, '');
 /** The words an agent relaying the user may still use for continue, a step of yours' usual way on (it was called approved until 2026-09-27). */
 const GO_ON = /^(approved?|yes|ok(ay)?|go( on)?|next|done|accept(ed)?|proceed)$/i;
 /** What a step "said", for the record: the reply without its OUTCOME line and fenced blocks, on one line, cut short. */
-export const said = (text: string): string => { const t = text.replace(/```[\s\S]*?```/g, ' ').replace(/^\s*\**\s*(?:OUTCOME|FOR YOU)\s*[:：].*$/gim, ' ').replace(/\s+/g, ' ').trim(); return t.length > 240 ? `${t.slice(0, 239).replace(/\s+\S*$/, '')}…` : t; };
+export const said = (text: string): string => saidOf(text); // its last paragraph, where the result is (shared/workflow.ts)

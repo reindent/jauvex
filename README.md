@@ -258,7 +258,12 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
     (`OUTCOME: <one of the step's outcomes>`); the reply's OUTCOME line picks what comes next; a reply without it is asked for once more,
     then the run stops as failed; a step whose agent is not in the app fails the run and says so. A step of yours waits: its pane offers one
     button per outcome and a note (continue goes on, changes goes back to the step before with your notes), and the step before it is told to
-    end with a FOR YOU line saying plainly what to do there. A gate that is reached raises a silent notification, and the workflow's row in
+    end with a FOR YOU line saying plainly what to do there, to put what you decide on in the reply itself (the candidates, the figures, the
+    draft) and to list the options as `CHOICE: <label> — <one line>` lines. Above the question, the pane shows what that step found: its whole
+    reply (each agent step's reply is kept in the run's folder as `step-N.md`), folded to a few lines with "Show all", chips for the files of
+    the run it wrote or named, which open beside, and "Open <agent>'s chat"; its CHOICE lines are buttons that fill your answer and make
+    continue the main button, without sending it. A run record's `said:` is the end of a step's reply, where its result is, not its opening
+    narration. A gate that is reached raises a silent notification carrying its question (the dashboard's item too), and the workflow's row in
     the sidebar shows the app's mark turning while it runs, with a yellow dot while it waits for you. An agent may pass a gate only on your
     explicit word (`decide --workflow … --outcome …`). A run is driven by the window that started it: after a reload or a restart it is taken
     over as it stands, nothing re-sent; "Send step again" re-sends a step whose agent never answered, and Stop stops it.

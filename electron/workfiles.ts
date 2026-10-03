@@ -17,11 +17,13 @@ async function modifiedOf(wdir: string, f: string): Promise<number> {
   for (const e of await fs.readdir(path.join(wdir, base), { withFileTypes: true }).catch(() => [])) if (e.isFile() && e.name.endsWith('.md') && e.name !== 'README.md') t = Math.max(t, (await fs.stat(path.join(wdir, base, e.name)).catch(() => null))?.mtimeMs ?? 0);
   return Math.round(t);
 }
+/** What a live run asks its person at the step it waits at: the FOR YOU line of the step before (the dashboard and the notification say it). */
+const askedOf = (run: Run): { asks?: string } => { const ks = Object.keys(run.steps).map(Number).sort((a, b) => a - b); const w = ks.find((k) => /^waiting/i.test(run.steps[k]!.result)); const a = w ? ks.filter((k) => k < w).reverse().map((k) => run.steps[k]!.asks).find(Boolean) : undefined; return a ? { asks: a } : {}; };
 export async function listWorkflows(dir: string): Promise<WorkflowInfo[]> {
   const wdir = path.join(dir, 'workflows'); let names: string[] = []; try { names = (await fs.readdir(wdir)).filter((f) => f.endsWith('.md')).sort(); } catch { return []; }
   const out: WorkflowInfo[] = [];
   for (const f of names) { const md = await fs.readFile(path.join(wdir, f), 'utf8').catch(() => ''); const def = parseWorkflow(md); if (!isWorkflow(def)) continue; /* notes or rules kept beside the workflows (T-251) */ const runs = await listRuns(dir, f);
-    const latest = runs[0]; out.push({ file: `workflows/${f}`, name: def.name || f.replace(/\.md$/, ''), when: def.when, steps: def.steps.length, runs: runs.length, modified: await modifiedOf(wdir, f), latest: latest ? { n: latest.n, result: latest.result, took: latest.took, started: latest.started, waiting: /^running/i.test(latest.result) && Object.values(latest.steps).some((x) => /^waiting/i.test(x.result)) } : null }); }
+    const latest = runs[0]; out.push({ file: `workflows/${f}`, name: def.name || f.replace(/\.md$/, ''), when: def.when, steps: def.steps.length, runs: runs.length, modified: await modifiedOf(wdir, f), latest: latest ? { n: latest.n, result: latest.result, took: latest.took, started: latest.started, waiting: /^running/i.test(latest.result) && Object.values(latest.steps).some((x) => /^waiting/i.test(x.result)), ...askedOf(latest) } : null }); }
   return sortWorkflows(out);
 }
 export async function listRuns(dir: string, file: string): Promise<Run[]> {
@@ -104,6 +106,16 @@ export async function restoreVersion(dir: string, file: string, v: number): Prom
   return { restored: v, kept };
 }
 export async function saveRun(dir: string, file: string, md: string): Promise<void> { if (!/^workflows\/[^/]+\/runs\/[^/]+\.md$/.test(file)) throw new Error('not a run record'); await fs.writeFile(path.join(dir, file), md); }
+/** A run's own folder (workflows/<name>/runs/NNN/, beside its record): the full reply of each agent step (step-N.md, the gate shows the one
+ *  before it: the user, 2026-10-03, "when it asks me to choose something, it doesn't tell me what to choose") and what the steps wrote there. */
+const runDirOf = (dir: string, file: string): string => { if (!/^workflows\/[^/]+\/runs\/[^/]+\.md$/.test(file) || file.includes('..')) throw new Error('not a run record'); return path.join(dir, file.replace(/\.md$/, '')); };
+export async function saveRunStep(dir: string, file: string, n: number, text: string): Promise<void> { if (!Number.isInteger(n) || n < 1) throw new Error('not a step'); const d = runDirOf(dir, file); await fs.mkdir(d, { recursive: true }); await fs.writeFile(path.join(d, `step-${n}.md`), text.slice(0, 200_000)); }
+export async function runStepReply(dir: string, file: string, n: number): Promise<string | null> { if (!Number.isInteger(n) || n < 1) return null; try { return await fs.readFile(path.join(runDirOf(dir, file), `step-${n}.md`), 'utf8'); } catch { return null; } }
+export async function runFiles(dir: string, file: string): Promise<{ name: string; path: string; size: number; at: number }[]> {
+  const d = runDirOf(dir, file); const out: { name: string; path: string; size: number; at: number }[] = [];
+  for (const e of await fs.readdir(d, { withFileTypes: true }).catch(() => [])) { if (!e.isFile() || e.name.startsWith('.')) continue; const st = await fs.stat(path.join(d, e.name)).catch(() => null); if (st) out.push({ name: e.name, path: `${file.replace(/\.md$/, '')}/${e.name}`, size: st.size, at: st.mtimeMs }); }
+  return out.sort((a, b) => a.at - b.at);
+}
 export async function readRun(dir: string, file: string): Promise<string> { if (!/^workflows\/[^/]+\/runs\/[^/]+\.md$/.test(file)) throw new Error('not a run record'); return fs.readFile(path.join(dir, file), 'utf8'); }
 /** A new workflow: the file from a small template, its folder with one file per step (T-168) and a README, all at once. */
 export async function newWorkflow(dir: string, name: string, agent = 'Jauvex', tries = DEFAULT_TRIES): Promise<string> { // tries: the app's setting for a new workflow (T-197)
