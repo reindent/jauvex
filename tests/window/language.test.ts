@@ -5,7 +5,7 @@ const { js, close } = await connect(); await sleep(1500);
 // picked in Settings, General. Picking one draws the window again in it and keeps it in the settings; the agents' own words are untouched.
 const ui = () => JSON.parse(readFileSync(path.join(process.env.CVC_DATA_DIR!, 'state.json'), 'utf8')).ui ?? {};
 const side = "document.querySelector('.sidebar, aside')?.innerText ?? document.body.innerText";
-const settings = "(async () => { document.querySelector('button[title=\"Jauvex settings\"], button[title=\"Ajustes de Jauvex\"]').click(); await new Promise((r) => setTimeout(r, 400)); return true; })()";
+const settings = "(async () => { document.querySelector('button[title=\"Jauvex settings\"], button[title=\"Configuración de Jauvex\"]').click(); await new Promise((r) => setTimeout(r, 400)); return true; })()";
 const pick = (v: string) => `(() => { const s = [...document.querySelectorAll('.modal.settings select')].find((x) => [...x.options].some((o) => o.value === 'es') && [...x.options].some((o) => o.value === 'auto')); s.value = '${v}'; s.dispatchEvent(new Event('change', { bubbles: true })); return [...s.options].map((o) => o.textContent).join(' | '); })()`;
 check('the system language here is English, so the app speaks English', /Add folder/.test(await js(side)), (await js(side)).slice(0, 60));
 await js(settings);
