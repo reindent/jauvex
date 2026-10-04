@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { PROVIDERS, PROVIDER_LABEL, type Provider, type ProviderUsage, type UsageWindow } from '../../shared/types';
 import { ProviderIcon } from './ProviderIcon';
 import { planName, resetText, usageLevel, windowWords } from '../../shared/usage';
+import { t } from '../../shared/i18n';
 
 // How much of the provider's plan is left, as a small battery next to the composer. It shows the tightest window (the one
 // with the least left) that counts for the model in use. A click opens the whole picture (T-98): one tab per provider signed in,
@@ -33,14 +34,14 @@ export function UsageBattery({ provider, model, tick, others = [] }: { provider:
   const name = PROVIDER_LABEL[provider]; const toggle = () => { setTab(provider); setOpen((x) => !x); };
   const tabs = PROVIDERS.filter((p) => p === provider || others.includes(p)); const shown = tab === provider ? u : more[tab] ?? null;
   let button;
-  if (!u) button = <button className="battery unknown" title={`Checking how much ${name} usage is left…`} aria-label={`${name} usage: checking`} onClick={toggle}><span className="battery-body" /><span className="battery-cap" /></button>;
-  else if (!u.available) button = <button className="battery off" title={`${name} usage is not available here: ${u.error ?? 'no usage information for this account'}.`} aria-label={`${name} usage not available`} onClick={toggle}><span className="battery-body" /><span className="battery-cap" /><span className="battery-pct">n/a</span></button>;
+  if (!u) button = <button className="battery unknown" title={t('misc.usage.checkingTitle', { name })} aria-label={t('misc.usage.checkingAria', { name })} onClick={toggle}><span className="battery-body" /><span className="battery-cap" /></button>;
+  else if (!u.available) button = <button className="battery off" title={t('misc.usage.unavailableTitle', { name, error: u.error ?? t('misc.usage.noInfo') })} aria-label={t('misc.usage.unavailableAria', { name })} onClick={toggle}><span className="battery-body" /><span className="battery-cap" /><span className="battery-pct">{t('misc.usage.na')}</span></button>;
   else {
     // A window that belongs to one model only counts when that is the model in use (known once it is picked, or reported by the first turn).
     const mine = u.windows.filter((w) => counts(w, model)); const counted = mine.length ? mine : u.windows;
     const tight = counted.reduce((a, b) => (b.usedPercent > a.usedPercent ? b : a)); const left = Math.round(100 - tight.usedPercent);
     button = (
-      <button className={`battery ${usageLevel(left)}`} title={`${name} usage: ${left}% left (${windowWords(tight.label)}).\nClick for every window and when it resets.`} aria-label={`${name} usage: ${left}% left`} aria-expanded={open} onClick={toggle}>
+      <button className={`battery ${usageLevel(left)}`} title={t('misc.usage.title', { name, left, window: windowWords(tight.label) })} aria-label={t('misc.usage.aria', { name, left })} aria-expanded={open} onClick={toggle}>
         <span className="battery-body"><span className="battery-fill" style={{ width: `${Math.max(left, 4)}%` }} /></span><span className="battery-cap" /><span className="battery-pct">{left}%</span>
       </button>
     );
@@ -49,13 +50,13 @@ export function UsageBattery({ provider, model, tick, others = [] }: { provider:
     <span className="use-wrap" ref={box}>
       {button}
       {open && (
-        <div className="use-pop" role="dialog" aria-label="Usage">
-          <div className="ctx-head"><strong>Usage</strong><button className="use-refresh" disabled={busy} onClick={() => void refresh()}>{busy ? 'Refreshing…' : 'Refresh'}</button></div>
+        <div className="use-pop" role="dialog" aria-label={t('misc.usage.heading')}>
+          <div className="ctx-head"><strong>{t('misc.usage.heading')}</strong><button className="use-refresh" disabled={busy} onClick={() => void refresh()}>{busy ? t('misc.usage.refreshing') : t('misc.usage.refresh')}</button></div>
           {tabs.length > 1 && <div className="use-tabs" role="tablist">{tabs.map((p) => { const x = p === provider ? u : more[p]; const left = x ? leftOf(x, p === provider ? model : '') : null; return (
-            <button key={p} role="tab" aria-selected={tab === p} className={`use-tab${tab === p ? ' on' : ''}`} title={`${PROVIDER_LABEL[p]}${p === provider ? ' (this chat)' : ''}${left !== null ? `: ${left} % left` : ''}`} onClick={() => setTab(p)}>
+            <button key={p} role="tab" aria-selected={tab === p} className={`use-tab${tab === p ? ' on' : ''}`} title={left !== null ? t(p === provider ? 'misc.usage.tabThisChatLeft' : 'misc.usage.tabLeft', { name: PROVIDER_LABEL[p], left }) : p === provider ? t('misc.usage.tabThisChat', { name: PROVIDER_LABEL[p] }) : PROVIDER_LABEL[p]} onClick={() => setTab(p)}>
               <ProviderIcon provider={p} size={11} />{PROVIDER_LABEL[p]}{left !== null && <em>{left}%</em>}</button>); })}</div>}
           <UsageSection usage={shown} provider={tab} model={tab === provider ? model : ''} here={tab === provider} />
-          <p className="ctx-foot">How much of each plan is left, window by window. Refreshed every minute and after each turn.</p>
+          <p className="ctx-foot">{t('misc.usage.foot')}</p>
         </div>
       )}
     </span>
@@ -65,14 +66,14 @@ export function UsageBattery({ provider, model, tick, others = [] }: { provider:
 function UsageSection({ usage, provider, model, here = false }: { usage: ProviderUsage | null; provider: Provider; model: string; here?: boolean }) {
   return (
     <section className="use-sec">
-      <div className="use-name">{PROVIDER_LABEL[provider]}{usage?.plan ? ` · ${planName(usage.plan)} plan` : ''}{here && <em>this chat</em>}</div>
-      {!usage ? <p className="ctx-note">Checking…</p>
-        : !usage.available ? <p className="ctx-note">Not available: {usage.error ?? 'no usage information for this account'}.</p>
+      <div className="use-name">{PROVIDER_LABEL[provider]}{usage?.plan ? ` · ${t('misc.usage.plan', { plan: planName(usage.plan) })}` : ''}{here && <em>{t('misc.usage.thisChat')}</em>}</div>
+      {!usage ? <p className="ctx-note">{t('misc.usage.checking')}</p>
+        : !usage.available ? <p className="ctx-note">{t('misc.usage.notAvailable', { error: usage.error ?? t('misc.usage.noInfo') })}</p>
         : usage.windows.map((w) => { const left = Math.round(100 - w.usedPercent); const other = here && !counts(w, model); return (
           <div key={w.label} className={`use-row${other ? ' other' : ''}`}>
-            <div className="use-top"><span>{windowWords(w.label)}</span><b>{left} % left</b></div>
+            <div className="use-top"><span>{windowWords(w.label)}</span><b>{t('misc.usage.left', { left })}</b></div>
             <div className={`use-bar ${usageLevel(left)}`}><span style={{ width: `${Math.max(left, 1)}%` }} /></div>
-            <div className="use-sub">{Math.round(w.usedPercent)} % used{w.resetsAt ? ` · ${resetText(w.resetsAt, Date.now(), clock)}` : ''}{other ? ' · another model: not counted in this chat' : ''}</div>
+            <div className="use-sub">{t('misc.usage.used', { used: Math.round(w.usedPercent) })}{w.resetsAt ? ` · ${resetText(w.resetsAt, Date.now(), clock)}` : ''}{other ? ` · ${t('misc.usage.otherModel')}` : ''}</div>
           </div>); })}
       {usage?.notes?.map((n) => <p key={n} className="ctx-note">{n}</p>)}
     </section>

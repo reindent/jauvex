@@ -258,7 +258,12 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
     (`OUTCOME: <one of the step's outcomes>`); the reply's OUTCOME line picks what comes next; a reply without it is asked for once more,
     then the run stops as failed; a step whose agent is not in the app fails the run and says so. A step of yours waits: its pane offers one
     button per outcome and a note (continue goes on, changes goes back to the step before with your notes), and the step before it is told to
-    end with a FOR YOU line saying plainly what to do there. A gate that is reached raises a silent notification, and the workflow's row in
+    end with a FOR YOU line saying plainly what to do there, to put what you decide on in the reply itself (the candidates, the figures, the
+    draft) and to list the options as `CHOICE: <label> — <one line>` lines. Above the question, the pane shows what that step found: its whole
+    reply (each agent step's reply is kept in the run's folder as `step-N.md`), folded to a few lines with "Show all", chips for the files of
+    the run it wrote or named, which open beside, and "Open <agent>'s chat"; its CHOICE lines are buttons that fill your answer and make
+    continue the main button, without sending it. A run record's `said:` is the end of a step's reply, where its result is, not its opening
+    narration. A gate that is reached raises a silent notification carrying its question (the dashboard's item too), and the workflow's row in
     the sidebar shows the app's mark turning while it runs, with a yellow dot while it waits for you. An agent may pass a gate only on your
     explicit word (`decide --workflow … --outcome …`). A run is driven by the window that started it: after a reload or a restart it is taken
     over as it stands, nothing re-sent; "Send step again" re-sends a step whose agent never answered, and Stop stops it.
@@ -355,6 +360,21 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   A picture Grok makes (its `imagine` tool) shows under the tool's row, and the answer's link to it points at the file Grok saved
   in its own session folder: Grok writes it relative to that folder (`images/1.jpg`), which read against the project's folder
   was a broken image.
+
+## Languages
+
+The app speaks English and Spanish (neutral Latin American, with tú). By default it follows the system's language (English when the system
+speaks another); Settings, General, Language picks one, and the window is drawn again in it at once. Only the app's own words change:
+what the agents write, the prompts the app sends them and the logs stay as they are, so an agent answers in the language you write to it in.
+The welcome screen speaks its lines in the chosen language too; on Linux the voice (Kokoro) is English only, so Spanish there is read with an
+English accent, and the welcome still listens for "start", "Claude" and "Codex".
+
+Every string lives in `shared/i18n/en.ts`, by key (`app.sidebar.addFolder`), English being the source and the fallback, and `es.ts` has the
+same keys (the typecheck refuses one missing). The code asks for a string with `t('key', { vars })`; a plural is a `.one` and an `.other`
+key, chosen by the language's own rules. A third language is one file: copy `es.ts` to `<code>.ts`, translate the values, and add it to
+`LANGUAGES` and `TABLES` in `shared/i18n/index.ts`. `tests/i18n-keys.test.ts` checks every language for missing, extra or empty keys and
+changed `{placeholders}`, and that every key the code names exists. The app's words in Spanish are fixed in `shared/i18n/GLOSSARY.md`,
+shared with Jauvex Pro.
 
 ## Setting up on Linux
 

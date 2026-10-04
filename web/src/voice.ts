@@ -7,6 +7,7 @@
  * Everything the app plays goes through Chromium, so its echo canceller knows what the speakers are
  * playing and the app does not interrupt itself.
  */
+import { t } from '../../shared/i18n';
 const WORKLET = `
 class Frames extends AudioWorkletProcessor {
   constructor() { super(); this.ratio = sampleRate / 16000; this.acc = 0; this.sum = 0; this.n = 0; this.out = new Float32Array(480); this.i = 0; }
@@ -159,7 +160,7 @@ export class VoiceEngine {
 // ---- a short plain answer can be spoken as it is; this strips what a voice should not pronounce
 export function clean(text: string): string {
   return text
-    .replace(/`([^`]*)`/g, '$1').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, 'a link')
+    .replace(/`([^`]*)`/g, '$1').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/https?:\/\/\S+/g, t('misc.voice.aLink'))
     .replace(/^\s{0,3}#{1,6}\s*/gm, '').replace(/^\s*[-*+]\s+/gm, '').replace(/^\s*\d+[.)]\s+/gm, '').replace(/^\s*>\s?/gm, '').replace(/\|/g, ', ')
     .replace(/[*_~]{1,3}/g, '').replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').replace(/\s+/g, ' ').trim();
 }

@@ -13,7 +13,7 @@ import * as codex from './codex.js';
 import * as grok from './grok.js';
 import type { ContextUsage } from '../shared/context.js';
 import * as jev from './jev.js';
-import { listBoards, readBoardFiles, setBoardStatus, newBoard, deleteBoard, listWorkflows, readWorkflow, saveWorkflow, saveWorkflowStep, removeWorkflowStep, deleteWorkflow, workflowVersions, restoreVersion, readVersion, newWorkflow, readRun, newRun, saveRun, workflowChat, setWorkflowChat, moveWorkflow as moveWorkflowFiles, boardTimes } from './workfiles.js';
+import { listBoards, readBoardFiles, setBoardStatus, newBoard, deleteBoard, listWorkflows, readWorkflow, saveWorkflow, saveWorkflowStep, removeWorkflowStep, deleteWorkflow, workflowVersions, restoreVersion, readVersion, newWorkflow, readRun, newRun, saveRun, saveRunStep, runStepReply, runFiles, workflowChat, setWorkflowChat, moveWorkflow as moveWorkflowFiles, boardTimes } from './workfiles.js';
 import { moveClaudeSession } from './move.js';
 import { DASHBOARD_FILE, dashboardDue, type DashboardDue } from '../shared/dashboard.js';
 
@@ -350,5 +350,8 @@ export const backend = {
     return run;
   },
   models: async (provider: Provider): Promise<ModelOption[]> => (provider === 'codex' ? codex.models() : provider === 'grok' ? grok.models() : []), // Claude's list is fixed in the UI
+  saveRunStep: async (id: string, file: string, n: number, text: string) => { await saveRunStep((await projectOr404(id)).project.path, file, n, text); return true; },
+  runStepReply: async (id: string, file: string, n: number) => runStepReply((await projectOr404(id)).project.path, file, n),
+  runFiles: async (id: string, file: string) => runFiles((await projectOr404(id)).project.path, file),
 };
 export type Backend = typeof backend;
