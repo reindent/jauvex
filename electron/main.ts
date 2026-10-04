@@ -73,6 +73,7 @@ function showMini(): void {
 // providers' own folders when the user moved them: CLAUDE_CONFIG_DIR (where Claude Code keeps its sessions: without it the app looked in
 // ~/.claude and listed none of a user's Claude Code sessions, while Codex's showed) and CODEX_HOME. Taken from the login shell.
 function adoptShellPath(): void {
+  if (process.platform === 'win32') return; // no login shell on Windows: an app gets the user's PATH from the system (T-283)
   try {
     const shell = process.env.SHELL || (MAC ? '/bin/zsh' : '/bin/sh');
     const out = execFileSync(shell, ['-ilc', SHELL_VARS.map((k) => `printf "__${k}__%s__END_${k}__" "$${k}"`).join('; ')], { encoding: 'utf8', timeout: 4000, stdio: ['ignore', 'pipe', 'ignore'] });

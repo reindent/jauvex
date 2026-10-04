@@ -32,10 +32,13 @@ const MODEL_CANDIDATES = ['ggml-small-q5_1.bin', 'ggml-small.bin', 'ggml-base-q5
 // ---------- ears
 let whisper: ChildProcess | null = null;
 let whisperState: VoiceStatus['whisper'] = 'starting';
+const WIN = process.platform === 'win32'; // Windows (T-283): whisper.cpp's own Windows build, which start.ps1 puts in the app's whisper folder
 let whisperDetail = '';
 
 function findOnPath(bin: string): string | null {
-  for (const dir of (process.env.PATH ?? '').split(':').concat(['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin')])) { const p = path.join(dir, bin); if (dir && existsSync(p)) return p; }
+  const names = WIN ? [`${bin}.exe`, bin] : [bin]; // Windows: the program is whisper-server.exe, and PATH's folders are split by ";", not ":"
+  const extra = WIN ? [path.join(ROOT, 'whisper')] : ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin')];
+  for (const dir of (process.env.PATH ?? '').split(path.delimiter).concat(extra)) for (const n of names) { const p = path.join(dir, n); if (dir && existsSync(p)) return p; }
   return null;
 }
 // What the user picked in the voice settings. The vocabulary is Whisper's "initial prompt": names it would otherwise
@@ -59,11 +62,19 @@ function findModel(): string | null {
  * stopped by its own pid. Another install's is left alone: on 2026-09-24 starting the other edition next to this one stopped both our servers. */
 const ownModel = (cmd: string): boolean => [path.join(ROOT, 'models'), process.env.CVC_WHISPER_MODEL_DIR].some((d) => !!d && cmd.includes(`${d}${path.sep}`)) || (!!process.env.CVC_WHISPER_MODEL && cmd.includes(process.env.CVC_WHISPER_MODEL));
 const capture = (bin: string, args: string[]) => new Promise<string>((resolve) => execFile(bin, args, (_e, out) => resolve(out ?? '')));
-const listening = async (port: number): Promise<number[]> => (await capture('lsof', ['-nP', '-t', `-iTCP:${port}`, '-sTCP:LISTEN'])).split(/\s+/).map(Number).filter((p) => p > 0);
+/** Windows has neither lsof nor ps (T-283): netstat's TCP table gives who listens on a port, by the remote address a listening socket has
+ *  (0.0.0.0:0, [::]:0), since the state's word is in the system's language; a process's command line comes from CIM (wmic is gone from
+ *  recent Windows 11). Pure: tests/windows-voice.test.ts. */
+export const netstatListeners = (out: string, port: number): number[] => [...new Set(out.split(/\r?\n/).map((l) => l.trim().split(/\s+/))
+  .filter((f) => f[0] === 'TCP' && f.length >= 5 && /^(0\.0\.0\.0|\[::\]):0$/.test(f[2] ?? '') && (f[1] ?? '').endsWith(`:${port}`)).map((f) => Number(f[f.length - 1])).filter((p) => p > 0))];
+const viaPowerShell = (command: string) => capture('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command]);
+const listening = async (port: number): Promise<number[]> => WIN ? netstatListeners(await capture('netstat', ['-ano']), port) : (await capture('lsof', ['-nP', '-t', `-iTCP:${port}`, '-sTCP:LISTEN'])).split(/\s+/).map(Number).filter((p) => p > 0);
+const commandOf = (pid: number): Promise<string> => WIN ? viaPowerShell(`(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`) : capture('ps', ['-o', 'command=', '-p', String(pid)]);
+const nameOf = (pid: number): Promise<string> => WIN ? viaPowerShell(`(Get-Process -Id ${pid}).ProcessName`) : capture('ps', ['-o', 'comm=', '-p', String(pid)]);
 export async function stopLeftovers(port: number): Promise<number[]> {
   const pids = (await listening(port)).filter((p) => p !== process.pid && p !== whisper?.pid && p !== live?.pid);
   const stopped: number[] = [];
-  for (const pid of pids) { const cmd = await capture('ps', ['-o', 'command=', '-p', String(pid)]); if (!/(^|\/)whisper-server\b/.test(cmd) || !cmd.includes(`--port ${port}`)) continue; if (!ownModel(cmd)) { debug.log('note', `port ${port} is taken by another install's whisper-server (pid ${pid}): left alone`, { by: 'app' }); continue; } try { process.kill(pid, 'SIGTERM'); stopped.push(pid); } catch { /* already gone */ } }
+  for (const pid of pids) { const cmd = await commandOf(pid); if (!/(^|[\\/])whisper-server\b/.test(cmd) || !cmd.includes(`--port ${port}`)) continue; if (!ownModel(cmd)) { debug.log('note', `port ${port} is taken by another install's whisper-server (pid ${pid}): left alone`, { by: 'app' }); continue; } try { process.kill(pid, 'SIGTERM'); stopped.push(pid); } catch { /* already gone */ } }
   if (stopped.length) { debug.log('note', `stopped ${stopped.length} whisper-server${stopped.length > 1 ? 's' : ''} left on port ${port} by a previous run (pid ${stopped.join(', ')})`, { by: 'app' }); await new Promise((r) => setTimeout(r, 300)); }
   return stopped;
 }
@@ -71,7 +82,7 @@ export async function stopLeftovers(port: number): Promise<number[]> {
 async function portHolder(port: number, leaving: number[]): Promise<string> {
   for (let i = 0; i < 6; i++) {
     const pids = await listening(port); const other = pids.find((p) => !leaving.includes(p));
-    if (other) return `${path.basename((await capture('ps', ['-o', 'comm=', '-p', String(other)])).trim()) || 'another program'} (pid ${other})`;
+    if (other) return `${path.basename((await nameOf(other)).trim()) || 'another program'} (pid ${other})`;
     if (!pids.length) return '';
     await new Promise((r) => setTimeout(r, 250));
   }
@@ -117,7 +128,7 @@ async function startWhisper(): Promise<void> {
   if (whisper && whisperState === 'starting') { await waitForServer(60_000, whisper); return; }
   if (whisper) { const hung = whisper; whisper = null; hung.removeAllListeners('exit'); hung.kill('SIGKILL'); } // one that never came up
   const bin = findOnPath('whisper-server');
-  if (!bin) { whisperState = 'missing-binary'; whisperDetail = `whisper-server not found. ${process.platform === 'darwin' ? 'Install with: brew install whisper-cpp' : 'Build whisper.cpp and put whisper-server on your PATH (see README)'}`; return; }
+  if (!bin) { whisperState = 'missing-binary'; whisperDetail = `whisper-server not found. ${process.platform === 'darwin' ? 'Install with: brew install whisper-cpp' : WIN ? 'Run start.ps1 again: it downloads whisper.cpp\'s Windows build' : 'Build whisper.cpp and put whisper-server on your PATH (see README)'}`; return; }
   const model = findModel();
   if (!model) { whisperState = 'missing-model'; whisperDetail = `No Whisper model in ${path.join(ROOT, 'models')}. See README for the one-line download.`; return; }
   whisperState = 'starting'; whisperDetail = path.basename(model); running = { ...want };
@@ -255,7 +266,7 @@ function ensureKokoro(retry = false): Kokoro | null {
   if (kokoro) return kokoro;
   if (kokoroFailed && !retry) return null;
   kokoroFailed = false;
-  if (!kokoroInstalled()) { kokoroFailed = true; debug.log('note', `no spoken voice: Kokoro is not installed in ${KOKORO_DIR} (sh start.sh installs it)`, { by: 'app' }); return null; }
+  if (!kokoroInstalled()) { kokoroFailed = true; debug.log('note', `no spoken voice: Kokoro is not installed in ${KOKORO_DIR} (${WIN ? 'start.ps1' : 'sh start.sh'} installs it)`, { by: 'app' }); return null; }
   // Electron's own Node runs it (process.execPath is the Electron binary in the app, node in the backend checks).
   const proc = spawn(process.execPath, [path.join(KOKORO_DIR, 'server.mjs'), path.join(ROOT, 'models')], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
   let err = ''; proc.stderr?.on('data', (d: Buffer) => { err = (err + d.toString()).slice(-4000); });

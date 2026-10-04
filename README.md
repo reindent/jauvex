@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.6.0, for macOS and Linux (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.7.0, for macOS, and Linux and Windows (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -397,6 +397,20 @@ offer is for the Mac app only). What differs from the Mac, all handled by `start
    Kokoro speaks English only (its voices are American and British English): a reply in another language is read with English sounds.
 5. **The window** has the system's own frame and no menu bar (Alt is push-to-talk). Where Chromium refuses the GPU, or there is
    none (a virtual screen), the orb is drawn by its software renderer.
+
+## On Windows, from source (T-283)
+
+Windows 10 or 11, 64-bit, with Node.js 22.18 or newer (`winget install OpenJS.NodeJS.22`), Git, and Microsoft's Visual C++ runtime
+(`winget install Microsoft.VCRedist.2015+.x64`: Electron's own install step loads a native module that needs it, and a fresh Windows has
+none; `npm install` fails with "Cannot find native binding" without it). From the folder: `start.cmd` (double-click, or in a terminal), or
+`powershell -ExecutionPolicy Bypass -File .\start.ps1 [-InstallOnly]`. It does what `start.sh` does: the packages (again when the lockfile
+changed), Electron, the voice and the build, then launches the app. The voice: Kokoro speaks (its package in `kokoro\`, its model), and
+whisper-server listens: whisper.cpp's own Windows build (v1.9.2, `whisper-bin-x64.zip`, checked against its SHA-256) goes into `whisper\`,
+where the app looks for `whisper-server.exe`; the models come from `scripts/models.ts`, which reads `scripts/models.sh`'s list, sizes and
+SHA-256s (one list for every system; `tests/models-script.test.ts` runs both). Leftover whisper-servers are found with `netstat` and
+Windows' own process list instead of `lsof` and `ps`, and stopped by their pid (`tests/windows-voice.test.ts`). Use `npm.cmd`, not `npm`,
+in Windows PowerShell: its default policy blocks `npm.ps1` (or allow it for yourself: `Set-ExecutionPolicy -Scope CurrentUser
+RemoteSigned`). Not there yet: a package and an installer, the update offer, and the checks on Windows.
 
 ## Voice
 Press the white round button in the message box. All local except the two Claude calls:

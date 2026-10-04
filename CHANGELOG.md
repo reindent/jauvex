@@ -3,6 +3,12 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.7.0: 2026-10-04
+
+- **Windows**: the app runs on Windows 10 and 11 (64-bit), from source: `start.cmd` (or `start.ps1`) installs what it needs, builds and
+  launches it, as `start.sh` does on macOS and Linux. The voice works there too: Kokoro speaks, and whisper.cpp's own Windows build listens.
+  It needs Node.js 22.18 or newer, Git and Microsoft's Visual C++ runtime; the README says how to get them.
+
 ## 1.6.0: 2026-10-04
 
 - **Spanish**: the app speaks English and Spanish (neutral Latin American). It follows your system's language, or the one you pick in
