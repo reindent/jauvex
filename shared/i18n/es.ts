@@ -508,6 +508,7 @@ export const es: Record<keyof typeof en, string> = {
   'welcome.check.whisper.notInstalled': 'whisper-server no está instalado, así que todavía no puedo oírte.',
   'welcome.check.whisper.notInstalledHintMac': 'brew install whisper-cpp, luego descarga un modelo en la carpeta models (mira el README)',
   'welcome.check.whisper.notInstalledHint': 'Compila whisper.cpp, pon whisper-server en tu PATH y vuelve a ejecutar sh start.sh (mira el README)',
+  'welcome.check.whisper.notInstalledHintWindows': 'Vuelve a ejecutar start.ps1: descarga la versión de whisper.cpp para Windows y los modelos',
   'welcome.check.whisper.noModel': 'whisper-server está aquí, pero no hay un modelo para escuchar.',
   'welcome.check.whisper.noModelHint': 'Descarga un modelo en la carpeta models (mira el README)',
   'welcome.check.whisper.ready.one': 'Whisper está listo con {count} modelo.',

@@ -508,6 +508,7 @@ export const en = {
   'welcome.check.whisper.notInstalled': 'whisper-server is not installed, so I cannot hear you yet.',
   'welcome.check.whisper.notInstalledHintMac': 'brew install whisper-cpp, then download a model into the models folder (see the README)',
   'welcome.check.whisper.notInstalledHint': 'Build whisper.cpp, put whisper-server on your PATH, then run sh start.sh again (see the README)',
+  'welcome.check.whisper.notInstalledHintWindows': 'Run start.ps1 again: it downloads whisper.cpp\'s Windows build and the models',
   'welcome.check.whisper.noModel': 'whisper-server is here, but there is no model to listen with.',
   'welcome.check.whisper.noModelHint': 'Download a model into the models folder (see the README)',
   'welcome.check.whisper.ready.one': 'Whisper is ready with {count} model.',

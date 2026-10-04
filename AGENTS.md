@@ -6,7 +6,7 @@ The product name may change: say "the app" in code comments, prompts and docs, a
 
 ## What it is
 
-A macOS desktop app (Electron + React 19 + Vite + TypeScript), also run from source on Linux (README, "Setting up on Linux"), in which one person runs several coding agents side by
+A macOS desktop app (Electron + React 19 + Vite + TypeScript), also run from source on Linux (README, "Setting up on Linux") and on Windows (`start.ps1`, README "On Windows, from source"), in which one person runs several coding agents side by
 side, by voice or by text. Providers today: Claude (Claude Agent SDK, `electron/chat.ts`), Codex
 (`codex app-server` over JSON-RPC, `electron/codex.ts`) and Grok (`grok agent stdio`, the Agent Client Protocol, `electron/grok.ts`).
 A session belongs to one provider for life. Jev agents
@@ -220,6 +220,13 @@ debug panel.
   spoken voice there is Kokoro (`kokoro/`, its own package and lockfile, Linux only; `KOKORO` in `voice.ts`, `tests/kokoro-speech.test.ts`;
   `CVC_TTS=kokoro` picks it on a Mac). Find the app there by `node_modules/electron/dist/electron`, not `Electron.app`; `scripts/restart.sh`
   uses setsid instead of launchd.
+- Windows (T-283, from source): a fresh Windows 11 has no Visual C++ runtime, and Electron's install step failed with "Cannot find native
+  binding" (its zip extractor's native module needs `vcruntime140.dll`); PATH's folders are split by ";" and a program is `name.exe`
+  (`findOnPath` in `voice.ts` takes both); there is no `lsof` or `ps` (`netstatListeners`, CIM for a command line), and netstat's state word
+  is in the system's language, so a listener is told by its remote address. Windows PowerShell 5.1 blocks `npm.ps1` by default (call
+  `npm.cmd`), reads a script without a byte order mark in the system's code page (`start.ps1` is ASCII), makes a program's stderr line an
+  error record (`'Stop'` would fail a step on npm's warnings), and writes UTF-16 with `>>`. Over SSH a program runs in session 0, with no
+  desktop and no sound device: the window renders (read it over CDP), the microphone is "not found".
 - Languages (i18n, 2026-10-03): every string a person reads in the window goes through `t('key')` (`shared/i18n/`), never a literal: add the
   key to `en.ts` and `es.ts` (the typecheck refuses a missing one; `tests/i18n-keys.test.ts` also catches empty values, changed
   `{placeholders}` and keys the code names that do not exist). Whole sentences with placeholders, never translated pieces glued together; a
