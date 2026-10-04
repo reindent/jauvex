@@ -59,6 +59,9 @@ feature and why it works the way it does: read the relevant part before changing
 8. Stay inside this repository. Tests use `tmp/scratch` as their project folder and `tmp/testdata*` as data folders.
 9. **The spoken voice stays the system's default** (`voice: ''`). Never switch it for speed or anything else unless the
    user asks: a faster-rendering voice was tried and sounded robotic.
+10. **The licence and the owner are Diego's alone.** Jauvex Personal is open source under Apache-2.0 and owned by Reindent LLC, its sole
+   copyright holder. No agent changes `LICENSE`, `NOTICE`, the `license` or `author` fields in `package.json`, or any copyright line
+   without Diego's explicit word (Reindent's workspace conventions, CONVENTIONS.md §5, Licences). When unsure, ask before committing.
 
 ## Who decides what (the voice channel)
 
