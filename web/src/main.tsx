@@ -3,8 +3,10 @@ import { createRoot } from 'react-dom/client';
 import App, { Mini } from './App';
 import './styles.css';
 import { applySavedTheme } from './theme';
+import { applySavedLanguage } from './language';
 
 applySavedTheme(); // the look it had last time, before the first paint (T-248)
+applySavedLanguage(); // and its words (i18n): before any string is drawn
 
 const mini = location.hash === '#mini';
 if (mini) document.documentElement.classList.add('is-mini');

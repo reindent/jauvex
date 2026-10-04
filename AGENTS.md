@@ -59,6 +59,9 @@ feature and why it works the way it does: read the relevant part before changing
 8. Stay inside this repository. Tests use `tmp/scratch` as their project folder and `tmp/testdata*` as data folders.
 9. **The spoken voice stays the system's default** (`voice: ''`). Never switch it for speed or anything else unless the
    user asks: a faster-rendering voice was tried and sounded robotic.
+10. **The licence and the owner are Diego's alone.** Jauvex Personal is open source under Apache-2.0 and owned by Reindent LLC, its sole
+   copyright holder. No agent changes `LICENSE`, `NOTICE`, the `license` or `author` fields in `package.json`, or any copyright line
+   without Diego's explicit word (Reindent's workspace conventions, CONVENTIONS.md §5, Licences). When unsure, ask before committing.
 
 ## Who decides what (the voice channel)
 
@@ -217,5 +220,12 @@ debug panel.
   spoken voice there is Kokoro (`kokoro/`, its own package and lockfile, Linux only; `KOKORO` in `voice.ts`, `tests/kokoro-speech.test.ts`;
   `CVC_TTS=kokoro` picks it on a Mac). Find the app there by `node_modules/electron/dist/electron`, not `Electron.app`; `scripts/restart.sh`
   uses setsid instead of launchd.
+- Languages (i18n, 2026-10-03): every string a person reads in the window goes through `t('key')` (`shared/i18n/`), never a literal: add the
+  key to `en.ts` and `es.ts` (the typecheck refuses a missing one; `tests/i18n-keys.test.ts` also catches empty values, changed
+  `{placeholders}` and keys the code names that do not exist). Whole sentences with placeholders, never translated pieces glued together; a
+  string computed at module load freezes the language, so call `t()` where it is drawn. Never translate what reaches a model or an agent
+  (prompts, briefings, `(from the app)` messages, names agents address each other by), logs, or text the code compares against; never test
+  a translated string to decide something (compare a flag). Spanish words: `shared/i18n/GLOSSARY.md`, shared with Jauvex Pro. Window checks
+  run in English (`--lang=en-US` in `run.sh`); `tests/window/language.test.ts` switches to Spanish and back.
 - Third-party commands, packages and APIs: verify against the live source (registry, `--help`, generated protocol types
   via `codex app-server generate-ts --out tmp/codex-proto`) before relying on them.

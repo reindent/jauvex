@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { PROVIDER_LABEL, type Provider } from '../../shared/types';
 import { contextLevel, contextPercent, tokens, type ContextUsage } from '../../shared/context';
+import { t } from '../../shared/i18n';
 
 // How full this agent's context is (T-74): sheets piling up in a small tray as the conversation grows, one sheet per fifth of the window
 // (an empty tray at 0 %; no outline for a sheet that is not there), white, then yellow from half full, red from 80 %, with the percentage. A click opens the numbers and a Compact button: nothing is
@@ -16,13 +17,13 @@ export function ContextMeter({ usage, provider, compacting, running, autoPct, ha
     window.addEventListener('mousedown', off); window.addEventListener('keydown', off); return () => { window.removeEventListener('mousedown', off); window.removeEventListener('keydown', off); }; }, [open]);
   const pct = contextPercent(usage); const lit = pct === null ? 0 : pct <= 0 ? 0 : Math.min(5, Math.ceil(pct / 20));
   const level = pct === null ? 'unknown' : contextLevel(pct); const name = PROVIDER_LABEL[provider];
-  const nums = pct !== null && usage ? `${tokens(usage.used)} of ${tokens(usage.window)} tokens (${pct} %)` : usage ? `${tokens(usage.used)} tokens; the window's size comes with the end of the turn` : 'Nothing measured yet: the numbers come with the next answer';
-  const auto = autoPct > 0 ? `Compacts by itself at ${autoPct} % (Jauvex settings).` : `Compaction is left to ${name}: it compacts near the limit.`;
+  const nums = pct !== null && usage ? t('misc.context.usedOf', { used: tokens(usage.used), window: tokens(usage.window), pct }) : usage ? t('misc.context.usedOnly', { used: tokens(usage.used) }) : t('misc.context.nothingYet');
+  const auto = autoPct > 0 ? t('misc.context.autoAt', { pct: autoPct }) : t('misc.context.leftTo', { name });
   const canCompact = hasSession && !running && !compacting;
   return (
     <span className="ctx-wrap" ref={box}>
-      <button className={`ctx-meter ${level}${compacting ? ' busy' : ''}`} /* not "ctx": the session menu is "menu ctx", and this pill's style laid its items out in a row */ onClick={() => setOpen((x) => !x)} aria-label={`Context: ${pct === null ? 'not measured yet' : `${pct}% full`}`} aria-expanded={open}
-        title={compacting ? `${name} is compacting the conversation…` : `Context: ${nums}.\n${auto}\nClick for details and to compact now.`}>
+      <button className={`ctx-meter ${level}${compacting ? ' busy' : ''}`} /* not "ctx": the session menu is "menu ctx", and this pill's style laid its items out in a row */ onClick={() => setOpen((x) => !x)} aria-label={pct === null ? t('misc.context.ariaUnknown') : t('misc.context.ariaPct', { pct })} aria-expanded={open}
+        title={compacting ? t('misc.context.compactingTitle', { name }) : t('misc.context.title', { nums, auto })}>
         <svg className="ctx-pile" viewBox="0 0 18 16" width="18" height="16" aria-hidden="true">
           <path className="ctx-tray" d="M1.6 11.4V14.6H16.4V11.4" />
           {SHEETS.slice(0, lit).map((y, i) => <rect key={i} className="ctx-sheet" style={{ animationDelay: `${i * 120}ms` }} x="3.4" y={y} width="11.2" height="1.7" rx="0.6" />)}
@@ -30,14 +31,14 @@ export function ContextMeter({ usage, provider, compacting, running, autoPct, ha
         <span className="ctx-pct">{compacting ? '…' : pct === null ? '–' : `${pct}%`}</span>
       </button>
       {open && (
-        <div className="ctx-pop" role="dialog" aria-label="Context">
-          <div className="ctx-head"><strong>Context</strong><span>{usage?.model || name}</span></div>
-          <div className={`ctx-bar ${level}`}><span style={{ width: `${pct ?? 0}%` }} />{autoPct > 0 && autoPct < 100 && <i style={{ left: `${autoPct}%` }} title={`Compacts by itself at ${autoPct} %`} />}</div>
-          <p>{nums}.</p>
+        <div className="ctx-pop" role="dialog" aria-label={t('misc.context.heading')}>
+          <div className="ctx-head"><strong>{t('misc.context.heading')}</strong><span>{usage?.model || name}</span></div>
+          <div className={`ctx-bar ${level}`}><span style={{ width: `${pct ?? 0}%` }} />{autoPct > 0 && autoPct < 100 && <i style={{ left: `${autoPct}%` }} title={t('misc.context.autoMark', { pct: autoPct })} />}</div>
+          <p>{t('misc.context.numsLine', { nums })}</p>
           <p className="ctx-note">{auto}</p>
-          {last && <p className="ctx-note">{last.ok ? `Last compacted at ${new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${last.before ? `: ${tokens(last.before)}${last.after !== undefined ? ` → ${tokens(last.after)}` : ''} tokens` : ''}.` : `The last compaction failed (${new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}).`}</p>}
-          <div className="ctx-actions"><button className="btn" disabled={!canCompact} title={!hasSession ? 'Nothing to compact yet' : running && !compacting ? 'After this turn' : undefined} onClick={() => { setOpen(false); onCompact(); }}>{compacting ? 'Compacting…' : 'Compact now'}</button></div>
-          <p className="ctx-foot">Compacting replaces the conversation so far with a summary written by the model: the agent keeps the gist, not every word. It takes a minute or two on a full context.</p>
+          {last && <p className="ctx-note">{last.ok ? (last.before ? (last.after !== undefined ? t('misc.context.lastAtFromTo', { time: new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), before: tokens(last.before), after: tokens(last.after) }) : t('misc.context.lastAtFrom', { time: new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), before: tokens(last.before) })) : t('misc.context.lastAt', { time: new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })) : t('misc.context.lastFailed', { time: new Date(last.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}</p>}
+          <div className="ctx-actions"><button className="btn" disabled={!canCompact} title={!hasSession ? t('misc.context.nothingToCompact') : running && !compacting ? t('misc.context.afterTurn') : undefined} onClick={() => { setOpen(false); onCompact(); }}>{compacting ? t('misc.context.compacting') : t('misc.context.compactNow')}</button></div>
+          <p className="ctx-foot">{t('misc.context.foot')}</p>
         </div>
       )}
     </span>

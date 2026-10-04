@@ -17,5 +17,5 @@ check('Start closes the welcome and opens the Jauvex agent', !(await js("!!docum
 check('with voice on', await js(`!!${V}?.querySelector('.voice-dock')`));
 check('the choice is the default agent', (await js("localStorage.getItem('cvc.provider')")) === 'codex');
 await js("document.querySelector('button[title=\"Jauvex settings\"]').click()"); await sleep(300);
-check('and shows in Jauvex settings', (await js("document.querySelector('.modal.settings select').value")) === 'codex');
+check('and shows in Jauvex settings', (await js("[...document.querySelectorAll('.modal.settings select')].find((x) => [...x.options].some((o) => o.value === 'codex')).value")) === 'codex');
 done(close);

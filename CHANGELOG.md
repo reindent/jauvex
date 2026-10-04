@@ -3,6 +3,16 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.6.0: 2026-10-04
+
+- **Spanish**: the app speaks English and Spanish (neutral Latin American). It follows your system's language, or the one you pick in
+  Settings, General, Language, and the window changes at once. Only the app's own words change: what your agents write stays in the
+  language you write to them in. Adding another language is one file.
+- **A step of yours shows what to decide on**: when a workflow waits for you, its pane shows what the step before it found (its whole
+  reply, folded, with "Show all"), the files it wrote or named in the run's folder, which open beside, and a button to its agent's chat.
+  The options it offers are buttons that fill in your answer; you still press continue. The notification and the dashboard carry the
+  question, and the run's record keeps what the step found, not how it started.
+
 ## 1.5.0: 2026-10-01
 
 - **A dashboard on the Jauvex agent's chat**: what needs you (a workflow step waiting for you, an agent asking for permission, new
