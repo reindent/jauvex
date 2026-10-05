@@ -19,7 +19,7 @@ import { codexUsage, tooLong, type ContextUsage } from '../shared/context.js';
  * by hand. One server process is started on first use and shared by every Codex chat in the app.
  * The protocol types for the installed version come from `codex app-server generate-ts`.
  */
-const ROOT = process.env.CVC_ROOT ?? process.cwd();
+const ROOT = APP_ROOT; // the app's folder, wherever it was started from (paths.ts)
 
 type Rpc = { id?: number | string; method?: string; params?: unknown; result?: unknown; error?: { code?: number; message?: string } };
 type Server = { child: ChildProcess; ready: Promise<void>; nextId: number; waiting: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }> };

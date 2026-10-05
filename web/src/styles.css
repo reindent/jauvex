@@ -1,7 +1,7 @@
 :root {
   --bg: #141413; --side: #0f0f0e; --line: #232321; --row: #2a2a28; --row-hover: #1d1d1b; --bubble: #232322;
   --fg: #eceae3; --fg-2: #c9c7bf; --muted: #8a8882; --faint: #5f5e59; --accent: #979dff; --code-bg: #262624; --code-fg: #c3c6ff; --claude: #d97757; --codex: #4cc9a4; --err: #e5695e;
-  --tb: 46px; --side-w: 330px; --pane-w: 520px; --ok: #7dcf8a; --warn: #e8c46a;
+  --tb: 46px; --side-w: 330px; --pane-w: 440px; --ok: #7dcf8a; --warn: #e8c46a;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -12,8 +12,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 .app { display: grid; grid-template-columns: var(--side-w) 1fr; grid-template-rows: var(--tb) 1fr; grid-template-areas: "tb tb" "side main"; height: 100%; }
 .app.no-sidebar { grid-template-columns: 0 1fr; }
-.app.with-pane { grid-template-columns: var(--side-w) 1fr var(--pane-w); grid-template-areas: "tb tb tb" "side main pane"; }
-.app.no-sidebar.with-pane { grid-template-columns: 0 1fr var(--pane-w); }
+.app.with-pane { grid-template-columns: var(--side-w) 1fr min(var(--pane-w), 34vw); grid-template-areas: "tb tb tb" "side main pane"; }
+.app.no-sidebar.with-pane { grid-template-columns: 0 1fr min(var(--pane-w), 34vw); }
 .app.with-pane.with-debug { grid-template-areas: "tb tb tb" "side main pane" "side debug pane"; }
 /* The right pane: files, images, pages an agent shows; later terminals and browsers. */
 .pane { grid-area: pane; position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--line); background: var(--bg); }
@@ -491,3 +491,4 @@ html.is-mini, html.is-mini body, html.is-mini #root { background: transparent; }
 .theme-picks { display: flex; gap: 8px; flex-wrap: wrap; } .theme-pick { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--bubble); color: var(--fg); font: inherit; font-size: 13px; cursor: pointer; }
 .theme-pick.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; } .theme-pick i { width: 16px; height: 16px; border-radius: 5px; border: 1px solid var(--line); }
 .theme-pick.dark i { background: #141413; } .theme-pick.light i { background: #ffffff; } .theme-pick.system i { background: linear-gradient(135deg, #ffffff 50%, #141413 50%); } .theme-pick.custom i { background: conic-gradient(var(--accent) 0 25%, var(--side) 0 50%, var(--fg) 0 75%, var(--bg) 0); } /* Custom (T-278): the colours on now */
+.toast-report { margin-left: 10px; border: 1px solid currentColor; background: none; color: inherit; border-radius: 6px; padding: 1px 8px; font: inherit; font-size: 12px; cursor: pointer; } /* Report this, on an error (2026-10-04) */

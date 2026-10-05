@@ -1,7 +1,7 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.7.0, for macOS, and Linux and Windows (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+decisions. Jauvex Personal, version 1.7.1, for macOS, and Linux and Windows (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
 [jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
@@ -42,6 +42,15 @@ lookup by the agent's own key alone opened a second, hidden chat of the same ses
 once, the newest releases from this copy's `CHANGELOG.md`, under a line that says what the check found: the latest already, a newer one
 that this copy (a clone) updates with git, or the site out of reach. A newer version on the app the install command made opens the Jauvex
 agent's chat instead: it says what that version brings and asks. While one is out its notice takes What's new's place and does the same.
+
+**Feedback** (Diego, 2026-10-04): the icon beside Settings opens the Jauvex agent with a note (`FEEDBACK_HELLO`); it asks whether it is an
+idea, feedback, a bug or a question, gathers the report by voice or text, shows it, asks before attaching a screenshot or the app's recent
+log (`feedback --preview`: the screenshot is kept in the data folder's `feedback-screenshot.png`, the one the person saw is the one sent; the
+log loses keys, tokens, emails, long ids and the home folder, `shared/feedback.ts`, `tests/feedback.test.ts`), and sends it with the
+`feedback` order to jauvex.reindent.com/api/feedback as the Personal edition, with an anonymous id kept in the data folder's
+`feedback-installation`. It also offers to whenever the person says something is broken or has an idea, and "Report this" on the app's
+error messages opens it with the error filled in. Never the person's files, chats or keys.
+
 Only the app the install command made updates itself; a clone updates with git (T-165). To remove it, quit it and delete
 `Jauvex.app` and `~/.jauvex/personal/app`; its settings stay in `~/.jauvex/personal`. To work on the code, clone this
 repository instead: `npm start` runs it from the clone, and `npm run app` makes the same app in `tmp/mac-app/Jauvex.app`

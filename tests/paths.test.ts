@@ -14,6 +14,13 @@ const plain = load({});
 check('with nothing set, the home is ~/.jauvex and the data ~/.jauvex/personal', plain.JAUVEX_HOME === path.join(home, '.jauvex') && plain.DATA_DIR === path.join(home, '.jauvex', 'personal'), JSON.stringify(plain));
 check('CVC_DATA_DIR moves the data alone (the checks, a server\'s launcher)', load({ CVC_DATA_DIR: path.join(home, 'elsewhere') }).DATA_DIR === path.join(home, 'elsewhere'));
 check('a home moved with CVC_JAUVEX_HOME takes its data along', load({ CVC_JAUVEX_HOME: path.join(home, 'h') }).DATA_DIR === path.join(home, 'h', 'personal'));
+// The app's folder (APP_ROOT), not the working folder (2026-10-04): Windows' Start menu or a desktop entry may start the app anywhere, and
+// voice.ts and codex.ts read process.cwd() before main.ts set CVC_ROOT: Speech and Whisper were not found.
+const rootFrom = (cwd: string, env: Record<string, string> = {}) => execFileSync(process.execPath, ['--import', import.meta.resolve('tsx'), '--input-type=module', '-e', // tsx by its path: the child starts elsewhere
+  `const m = await import(${JSON.stringify(path.resolve('electron/paths.ts'))}); console.log(m.APP_ROOT)`], { cwd, env: { PATH: process.env.PATH ?? '', HOME: home, ...env }, encoding: 'utf8' }).trim();
+check('the app\'s folder is where it is installed, whatever folder started it', rootFrom(home) === path.resolve('.'), rootFrom(home));
+check('...even when the app was started with another app\'s CVC_ROOT (an agent of Jauvex Pro starting it)', rootFrom(home, { CVC_ROOT: '/opt/jauvex-pro/resources/app' }) === path.resolve('.'));
+for (const f of ['electron/voice.ts', 'electron/codex.ts', 'electron/backend.ts', 'electron/account.ts']) check(`${f} never takes the working folder for the app's`, !/process\.cwd\(\)/.test(readFileSync(f, 'utf8')));
 const cli = readFileSync('scripts/jauvex.ts', 'utf8');
 check('the command line looks for its command files in the same data folder', /CVC_DATA_DIR \|\| path\.join\(process\.env\.CVC_JAUVEX_HOME \|\| path\.join\(os\.homedir\(\), '\.jauvex'\), 'personal'\)/.test(cli));
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

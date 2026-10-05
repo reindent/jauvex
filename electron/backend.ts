@@ -4,8 +4,7 @@ import { inSlots } from '../shared/folder-order.js';
 import path from 'node:path';
 import os from 'node:os';
 import * as debug from './debug.js';
-import { DATA_DIR, JAUVEX_HOME } from './paths.js';
-import { fileURLToPath } from 'node:url';
+import { APP_ROOT, DATA_DIR, JAUVEX_HOME } from './paths.js';
 import { randomUUID } from 'node:crypto';
 import { listSessions, getSessionMessages, getSessionInfo, renameSession, type SessionMessage } from '@anthropic-ai/claude-agent-sdk';
 import { type BoardChat, type JauvexEntry, JEV_TEMPLATE, providerOf, type SessionPrefs, type JevAgent, type JevAnswer, type JevRun, type AppState, type Block, type ChatMessage, type MessagesPage, type ModelOption, type Project, type Provider, type SessionInfo, type UiState } from '../shared/types.js';
@@ -17,16 +16,14 @@ import { listBoards, readBoardFiles, setBoardStatus, newBoard, deleteBoard, list
 import { moveClaudeSession } from './move.js';
 import { DASHBOARD_FILE, dashboardDue, type DashboardDue } from '../shared/dashboard.js';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-// CVC_ROOT is set by the Electron main process (its bundle lives in dist-electron/).
-const ROOT = process.env.CVC_ROOT || path.resolve(here, '..');
+const ROOT = APP_ROOT; // the app's folder (paths.ts)
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const JAUVEX_LOG = path.join(path.dirname(STATE_FILE), 'jauvex-transcript.json');
 /** The home of the app's own agent (Jauvex): ~/.jauvex, whatever happens to the folder the app is installed in. Its sessions are filed
  * by Claude Code under its working folder; with the install folder as its home, renaming that folder lost its session and left it
  * pointing at a folder that no longer existed. CVC_JAUVEX_HOME moves it (the checks). */
 export { JAUVEX_HOME };
-export const APP_ROOT = ROOT;
+export { APP_ROOT };
 async function ensureHome(dir: string, readme: string): Promise<void> { await fs.mkdir(dir, { recursive: true }); const f = path.join(dir, 'README.md'); await fs.access(f).catch(() => fs.writeFile(f, readme)); }
 const jauvexReadme = () => `# The Jauvex agent\n\nThe home of the app's own agent: its notes go here, and it stays here whatever happens to the app's folder.\nThe app is installed at ${ROOT} (its source, README.md, AGENTS.md); its settings and this agent's transcript are in ${path.dirname(STATE_FILE)}.\n`;
 /** A Jauvex agent left at an old home moves to JAUVEX_HOME; a second one (made by a moved install) goes. True when the state changed. */

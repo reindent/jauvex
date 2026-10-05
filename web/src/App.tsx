@@ -12,14 +12,15 @@ import { AUTO_COMPACT_CHOICES, AUTO_COMPACT_DEFAULT, autoCompactPct, shouldCompa
 import { Accounts } from './Accounts';
 import { Welcome } from './Welcome';
 import typesafeMark from '../../assets/typesafe.png'; // TypeSafe's mark, on Jev agent rows: whose agent it is, like the provider marks
-import { Glasses, Copy, EyeOff as HideIcon, Pencil, Bug, Logs, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Paperclip, Settings, Move, Keyboard, ChevronRight, Eye, FolderPlus, Folder, FolderOpen, Laptop, Mic, PanelLeft, Plus, RotateCw, Search, SlidersHorizontal, Settings2, Square, SquarePen, Trash2, MicOff, Volume2, VolumeX, AudioLines, Wrench, Brain, X, Check, ShieldQuestion } from 'lucide-react';
+import { Glasses, Copy, EyeOff as HideIcon, Pencil, Bug, Logs, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Paperclip, Settings, MessageSquareWarning, Move, Keyboard, ChevronRight, Eye, FolderPlus, Folder, FolderOpen, Laptop, Mic, PanelLeft, Plus, RotateCw, Search, SlidersHorizontal, Settings2, Square, SquarePen, Trash2, MicOff, Volume2, VolumeX, AudioLines, Wrench, Brain, X, Check, ShieldQuestion } from 'lucide-react';
 import { localSrc, md } from './md';
 import { Pane, type PaneTarget } from './Pane';
 import { findAgents, findFolderIn, matchSession, shortIds, shortTitle } from '../../shared/roster';
+import { FEEDBACK_TYPES, type FeedbackType } from '../../shared/feedback';
 import { checkLine, justUpdated, offersUpdate, shouldAsk, updatedNote, updateNote, type CheckedStatus, type UpdateStatus } from '../../shared/update';
 import { changelogSince, recentNotes } from '../../shared/changelog';
 import { answerIs, stopSaysMore } from '../../shared/orders';
-import { ACK_MODEL_KEY, DICTATED_TAG, JAUVEX_HELLO, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
+import { ACK_MODEL_KEY, DICTATED_TAG, JAUVEX_HELLO, FEEDBACK_HELLO, feedbackOnError, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
 import { ago, api, pickFolder, size } from './api';
 import { VoiceEngine, clean, type VoicePhase } from './voice';
 import { Orb } from './Orb';
@@ -223,6 +224,11 @@ export default function App() {
           if (c.language !== undefined) { if (c.language !== 'auto' && !(c.language in LANGUAGES)) return { ok: false, error: `--language takes auto (the system's) or ${Object.keys(LANGUAGES).join(', ')}` }; void chooseLanguage(langSettingOf(c.language)); return { ok: true, language: c.language }; }
           if (!Object.keys(ui).length) { const cur = (await api.state()).ui; return { ok: true, workflowMissed: cur?.workflowMissed ?? MISSED_DEFAULT }; }
           await api.setUi(ui); return { ok: true, ...ui }; }
+        case 'feedback': { // a person's report to Reindent, gathered by the Jauvex agent (Diego, 2026-10-04); preview: what would be attached, for them to see first
+          if (c.preview) { const p = await window.desktop.feedbackPreview({ screenshot: !!c.screenshot, log: !!c.log }); return { ok: true, ...(p.screenshotFile ? { screenshot: p.screenshotFile } : {}), ...(c.log ? { log: p.log ?? '' } : {}) }; }
+          const kind = (FEEDBACK_TYPES as readonly string[]).includes(c.kind ?? '') ? (c.kind as FeedbackType) : null; if (!kind) return { ok: false, error: `--type is one of ${FEEDBACK_TYPES.join(', ')}` };
+          const r = await window.desktop.feedbackSend({ type: kind, title: c.title ?? '', description: c.description ?? '', contact: c.contact ?? '', screenshot: !!c.screenshot, log: !!c.log });
+          return r.ok ? { ok: true, id: r.id } : { ok: false, error: r.error === 'too-many' ? 'too many sent from here in the last hour: try later' : r.error === 'offline' ? "Reindent's server could not be reached" : `not sent: ${r.error}` }; }
         case 'update': { // the app the install command made, to the latest version
           const s = await window.desktop.appUpdateStatus(); if (c.check) return { ok: true, ...s };
           const busy = roster().filter((a) => a.busy && a.sessionId !== jauvexSession).map((a) => a.name); // the Jauvex agent's own turn ends with its order
@@ -360,6 +366,10 @@ export default function App() {
    *  was on screen again by its session). Looked for by its key alone, a message after an update opened a second, hidden chat of the same
    *  session, which took the turn: the one on screen said "active moments ago, possibly in another window" and never showed it. */
   const jauvexOpen = (): Sel | undefined => (jauvex ? openedRef.current.find((x) => x.projectId === jauvex.id && !x.kind && (x.key === `${jauvex.id}:jauvex` || (!!jauvexSession && x.sessionId === jauvexSession))) : undefined);
+  // The feedback icon (Diego, 2026-10-04): the Jauvex agent takes the report, by voice or text, and sends it with the feedback order
+  const openFeedback = (error?: string) => { if (!jauvex) return; const hello = error ? feedbackOnError(error) : FEEDBACK_HELLO;
+    open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex', ...(jauvexSession ? {} : { kickoff: hello }) });
+    if (jauvexSession) void reachJauvex(hello); };
   const reachJauvex = async (text: string, replyTo?: Sel): Promise<boolean> => {
     if (!jauvex) return false; const at = jauvexOpen(); const key = at?.key ?? `${jauvex.id}:jauvex`;
     if (!at) setOpened((all) => (all.some((x) => x.key === key) ? all : [...all, { projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' }]));
@@ -391,7 +401,7 @@ export default function App() {
   // ideas ... of colors"): Settings close, the Jauvex agent's chat opens, and it is told, with the palette on now, to ask and propose.
   const customTheme = async () => { setSettingsOpen(false); if (!jauvex) return; open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex' });
     const ui = (await api.state()).ui; await reachJauvexRef.current(customThemeNote(ui?.customTheme ?? null)); };
-  const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>(null); const [checking, setChecking] = useState(false);
+const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>(null); const [checking, setChecking] = useState(false);
   const openWhatsNew = async () => {
     if (checking) return; setChecking(true);
     try {
@@ -671,8 +681,8 @@ export default function App() {
               <div className="side-voice-text"><button className="side-voice-name" onClick={() => { if (o) open(o); }}>{name}</button><span className="side-voice-phase">{voiceUi.micMuted ? t('app.voice.muted') : PHASE_LABEL()[voiceUi.phase]}</span></div>
               <div className="side-voice-btns"><button className={`${voiceUi.micMuted ? 'muted' : ''}${voiceUi.muteIn != null ? ' counting' : ''}`} title={voiceUi.muteIn != null ? t('app.voice.mutingIn', { s: voiceUi.muteIn }) : voiceUi.micMuted ? t('app.voice.unmuteMic') : t('app.voice.muteMic')} onClick={voiceUi.toggleMic}>{voiceUi.micMuted ? <MicOff size={15} /> : <Mic size={15} />}{voiceUi.muteIn != null && <span className="mute-count" key={voiceUi.muteIn}>{voiceUi.muteIn}</span>}</button><button className={voiceUi.speakerOff ? 'muted' : ''} title={voiceUi.speakerOff ? t('app.voice.speakerOn') : t('app.voice.speakerOff')} onClick={voiceUi.toggleSpeaker}>{voiceUi.speakerOff ? <VolumeX size={15} /> : <Volume2 size={15} />}</button><button title={t('app.voice.end')} onClick={voiceUi.end}><X size={15} /></button></div>
             </div>); })()}
-          <footer className="side-foot"><button className="foot-btn" title={SIGN_IN_IN_APP ? t('app.footer.accountsInApp') : t('app.footer.accountsCli')} onClick={() => setAccountsOpen(true)}>Jauvex <em>{__APP_VERSION__}</em></button>{update?.available && update.installed ? <button className="foot-update" disabled={checking} title={t('app.footer.updateOutTitle', { version: update.latest ?? '' })} onClick={() => void openWhatsNew()}>{t('app.footer.updateOut', { version: update.latest ?? '' })}</button>
-            : <button className="foot-news" disabled={checking} title={t('app.footer.whatsNewTitle')} onClick={() => void openWhatsNew()}>{checking ? t('app.footer.checking') : t('app.footer.whatsNew')}</button>}{/* while a newer version is out its notice takes this place, and a click asks about it (T-245) */}<button className="icon-btn sm" title={t('app.footer.settings')} onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
+          <footer className="side-foot"><button className="foot-btn" title={SIGN_IN_IN_APP ? t('app.footer.accountsInApp') : t('app.footer.accountsCli')} onClick={() => setAccountsOpen(true)}>Jauvex <em>{__APP_VERSION__}</em></button>{update?.available && (update.installed || update.reinstall) ? <button className="foot-update" disabled={checking} title={update.installed ? t('app.footer.updateOutTitle', { version: update.latest ?? '' }) : t('update.outReinstall', { version: update.latest ?? '', command: update.reinstall ?? '' })} onClick={() => void openWhatsNew()}>{t('app.footer.updateOut', { version: update.latest ?? '' })}</button>
+            : <button className="foot-news" disabled={checking} title={t('app.footer.whatsNewTitle')} onClick={() => void openWhatsNew()}>{checking ? t('app.footer.checking') : t('app.footer.whatsNew')}</button>}{/* while a newer version is out its notice takes this place, and a click asks about it (T-245) */}<button className="icon-btn sm" title={t('app.footer.feedback')} aria-label={t('app.footer.feedback')} onClick={() => openFeedback()}><MessageSquareWarning size={14} /></button>{/* Diego, 2026-10-04: send Reindent feedback or report a problem, through the Jauvex agent */}<button className="icon-btn sm" title={t('app.footer.settings')} onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
           {whatsNew && <WhatsNew line={whatsNew.line} notes={whatsNew.notes} onClose={() => setWhatsNew(null)} />}
           {settingsOpen && <SettingsPanel dashOn={dashEnabled} onDashOn={dashSet} onCustomTheme={() => void customTheme()} autoCompact={autoCompact} onAutoCompact={changeAutoCompact} signedIn={signedIn} welcomeNext={welcomeNext} onWelcomeNext={(on) => { setWelcomeNext(on); void api.setUi({ welcomed: !on }); }} onOpenWelcome={() => { setSettingsOpen(false); setWelcomeOpen(true); }} defaultProvider={defaultProvider} onDefaultProvider={(p) => { setDefaultProvider(p); localStorage.setItem('cvc.provider', p); void api.setUi({ defaultProvider: p }); }} showJauvex={showJauvex} onShowJauvex={(on) => { setShowJauvex(on); void api.setUi({ showJauvex: on }); }} jauvexMove={jauvexMove} onJauvexMove={(m) => { setJauvexMove(m); void api.setUi({ jauvexMove: m }); }} onClose={() => setSettingsOpen(false)} />}
           {accountsOpen && <Accounts onClose={() => setAccountsOpen(false)} />}
@@ -682,7 +692,7 @@ export default function App() {
       )}
 
       <main className="main" onClickCapture={catchLinks}>
-        {error && <div className="toast" onClick={() => setError(null)}>{error}<X size={14} /></div>}
+        {error && <div className="toast" onClick={() => setError(null)}>{error}{jauvex && <button className="toast-report" onClick={(e) => { e.stopPropagation(); const er = error; setError(null); openFeedback(er); }}>{t('app.reportThis')}</button>}<X size={14} /></div>}{/* Report this (Diego, 2026-10-04): the error goes to Reindent through the Jauvex agent, shown to the person first */}
         {opened.map((o) => { const proj = projects.find((x) => x.id === o.projectId); if (!proj) return null; const active = o.key === sel?.key;
           if (o.kind === 'workflow' && o.file) return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}><WorkflowView project={proj} file={o.file} showPane={showPane} paneShows={(k) => pane?.kind === 'view' && pane.key === k} paneOpen={() => !!pane} openFile={(f) => setPane({ kind: 'file', path: f })} agents={agentProviders} control={runControl(proj, o.file)} active={active} showMeta={metaOn} chatProvider={(jauvexProvider ?? defaultProvider ?? 'claude') as Provider} defaultAgent={DEFAULT_AGENT} stepAgents={() => stepAgents(proj)} mail={mail} /></div>;
           if (o.kind === 'board' && o.file) return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}><BoardView project={proj} file={o.file} mail={mail} onChanged={() => void loadBoards(proj)} active={active} showMeta={metaOn} chatProvider={jauvexProvider ?? defaultProvider ?? 'claude'} /></div>;

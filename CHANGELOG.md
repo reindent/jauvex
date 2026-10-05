@@ -3,6 +3,13 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.7.1: 2026-10-04
+
+- **Send feedback to Reindent**: the icon beside Settings opens the Jauvex agent, which takes an idea, feedback, a bug or a question by
+  voice or text, writes it up, shows it to you and sends it when you say so. It asks before attaching a screenshot of the window or the
+  app's recent log (cleaned of keys, tokens, emails and your home folder), and never sends your files or chats. "Report this" on one of the
+  app's error messages starts a bug report with the error filled in, and the agent also offers whenever you tell it something is broken.
+
 ## 1.7.0: 2026-10-04
 
 - **Windows**: the app runs on Windows 10 and 11 (64-bit), from source: `start.cmd` (or `start.ps1`) installs what it needs, builds and

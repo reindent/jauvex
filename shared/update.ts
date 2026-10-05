@@ -1,5 +1,6 @@
 // Updates (T-165): jauvex.reindent.com says which version of Jauvex is the latest, and the copy the install command made, when it runs
 // an older one, asks the user in words, through its own agent, whether to update. Pure: tests/update.test.ts.
+import { t } from './i18n/index.js';
 export const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
 /** a is a newer version than b (both x.y.z); false when either is not a version. */
@@ -11,8 +12,21 @@ export function newer(a: string | null | undefined, b: string | null | undefined
 }
 
 /** current: this copy's version; latest: the site's, once known; installed: a copy that can update itself (the Mac app the install
- *  command made; a copy run from a clone updates with git). */
-export type UpdateStatus = { current: string; latest?: string; available: boolean; installed: boolean; notes?: string /* what the newer version brings: its changelog's sections since this one (T-218), when the site sent them */ };
+ *  command made; a copy run from a clone updates with git); reinstall: the install command, on a Linux or Windows copy that command made
+ *  (it updates by running it again). */
+export type UpdateStatus = { current: string; latest?: string; available: boolean; installed: boolean; reinstall?: string; notes?: string /* what the newer version brings: its changelog's sections since this one (T-218), when the site sent them */ };
+
+export const INSTALL_UNIX = 'curl -fsSL https://jauvex.reindent.com/install | sh';
+export const INSTALL_WINDOWS = 'irm https://jauvex.reindent.com/install/windows | iex';
+/** The install command that made this copy, when the Linux or Windows installer made it (it updates by running that command again): on Linux
+ *  the source in the data folder's app/, on Windows in %LOCALAPPDATA%\Jauvex\app\jauvex. Undefined on a Mac (Jauvex.app updates itself) and
+ *  for a clone (git). */
+export function reinstallCommand(platform: string, appRoot: string, dataDir: string, localAppData?: string): string | undefined {
+  const plain = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (platform === 'linux') return plain(appRoot) === plain(`${dataDir}/app`) ? INSTALL_UNIX : undefined;
+  if (platform === 'win32' && localAppData) return plain(appRoot).toLowerCase() === plain(`${localAppData}/Jauvex/app/jauvex`).toLowerCase() ? INSTALL_WINDOWS : undefined;
+  return undefined;
+}
 
 /** The app tells its own agent once per version: a newer one, on a copy that can take it, not asked about before. */
 export const shouldAsk = (s: UpdateStatus | null | undefined, asked: string | undefined): boolean =>
@@ -26,9 +40,9 @@ export type CheckedStatus = UpdateStatus & { reached: boolean };
 export const offersUpdate = (s: UpdateStatus | null | undefined): boolean => !!s && s.available && s.installed && !!s.latest;
 /** The line above the notes: what the check found. */
 export const checkLine = (s: CheckedStatus | null | undefined, current: string): string =>
-  !s || !s.reached ? `The update server could not be reached, so this copy (${current}) could not check for a newer version.`
-    : s.available && !s.installed ? `Jauvex ${s.latest} is out. This copy updates the way it was made: from a clone, with git pull and a build.`
-      : s.available ? `Jauvex ${s.latest} is out.` : `This copy runs the latest version, ${s.current}.`;
+  !s || !s.reached ? t('update.unreached', { current })
+    : s.available && !s.installed ? (s.reinstall ? t('update.outReinstall', { version: s.latest ?? '', command: s.reinstall }) : t('update.outClone', { version: s.latest ?? '' }))
+      : s.available ? t('update.out', { version: s.latest ?? '' }) : t('update.latest', { version: s.current });
 
 /** What the app tells its own agent when a new version is out: the agent asks the user in words, never a dialog. */
 export const updateNote = (current: string, latest: string, notes = ''): string =>

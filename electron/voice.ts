@@ -11,7 +11,7 @@ import { JEV_MIN_CONFIDENCE, orderVerdict } from '../shared/orders.js';
 import { reflectionOnly, smallTalk, weak } from '../shared/reflection.js';
 import * as codex from './codex.js';
 import * as grok from './grok.js';
-import { DATA_DIR } from './paths.js';
+import { APP_ROOT, DATA_DIR } from './paths.js';
 import * as jev from './jev.js';
 import * as debug from './debug.js';
 import { claudeExe } from './account.js';
@@ -24,7 +24,7 @@ import { claudeExe } from './account.js';
  *   voice  - a small fast model from the session's own provider (Claude or Codex) that acknowledges while the selected
  *            model thinks, and afterwards says briefly what happened. The selected model's full answer is never read aloud; it stays on screen.
  */
-const ROOT = process.env.CVC_ROOT ?? process.cwd();
+const ROOT = APP_ROOT; // the app's folder, wherever it was started from (paths.ts)
 const WHISPER_PORT = Number(process.env.CVC_WHISPER_PORT || 4341);
 // small first: ~0.4 s per utterance on Apple Silicon, which fits inside the end-of-turn pause. CVC_WHISPER_MODEL overrides.
 const MODEL_CANDIDATES = ['ggml-small-q5_1.bin', 'ggml-small.bin', 'ggml-base-q5_1.bin', 'ggml-base.bin', 'ggml-large-v3-turbo-q5_0.bin', 'ggml-large-v3-turbo.bin'];

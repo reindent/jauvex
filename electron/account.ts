@@ -4,6 +4,7 @@ import type { AccountEvent, AccountStatus, Provider } from '../shared/types.js';
 import * as codex from './codex.js';
 import * as grok from './grok.js';
 import * as debug from './debug.js';
+import { APP_ROOT } from './paths.js';
 
 /**
  * Who each provider is signed in as, and switching that account from inside the app.
@@ -16,7 +17,7 @@ import * as debug from './debug.js';
  *           the agent's `x.ai/auth/logout`.
  * Only what the panel shows leaves here (signed in or not, the e-mail, the plan). Tokens and keys are never read.
  */
-const ROOT = process.env.CVC_ROOT || path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const ROOT = APP_ROOT; // the app's folder (paths.ts)
 // CVC_CLAUDE_BIN replaces the Claude CLI everywhere (sessions, the voice helper, usage, sign-in): the checks run the stand-in in
 // tests/mock/claude (and tests/mock/codex for CVC_CODEX_BIN), which answers every message with a short canned reply and no account.
 export const claudeExe = (): { pathToClaudeCodeExecutable?: string } => (process.env.CVC_CLAUDE_BIN ? { pathToClaudeCodeExecutable: process.env.CVC_CLAUDE_BIN } : {});

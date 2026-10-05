@@ -6,7 +6,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync, statSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { newer, shouldAsk, updateNote, justUpdated, updatedNote, checkLine, offersUpdate } from '../shared/update.ts';
+import { newer, shouldAsk, updateNote, justUpdated, updatedNote, checkLine, offersUpdate, reinstallCommand, INSTALL_UNIX, INSTALL_WINDOWS } from '../shared/update.ts';
 import { updater, appBundleOf, madeByInstaller, RUNNER } from '../electron/updater.ts';
 let failed = 0; const ok = (c: boolean, what: string, detail = '') => { console.log(`${c ? 'PASS' : 'FAIL'} ${what}${!c && detail ? ` ${detail}` : ''}`); if (!c) failed++; };
 const root = path.join(process.env.CVC_DATA_DIR ?? path.join(process.cwd(), 'tmp', 'testdata-update'), 'update-check'); rmSync(root, { recursive: true, force: true }); mkdirSync(root, { recursive: true });
@@ -57,6 +57,16 @@ for (const [what, f] of [['an answer that is not a version', answer({ latest_ver
   ok(/^This copy runs the latest version, 1\.3\.3\.$/.test(checkLine({ ...base, latest: '1.3.3' }, '1.3.3')) && !offersUpdate({ ...base, latest: '1.3.3' }), 'the latest already: the notes, under "this copy runs the latest version"');
   ok(/could not be reached, so this copy \(1\.3\.3\) could not check/.test(checkLine({ ...base, reached: false }, '1.3.3')) && /could not be reached/.test(checkLine(null, '1.3.3')), 'the site out of reach, or no answer at all: the notes, under a line that says so');
   ok(offersUpdate({ ...base, latest: '9.9.0', available: true }) && !offersUpdate({ ...base, latest: '9.9.0', available: true, installed: false }) && /9\.9\.0 is out\. This copy updates the way it was made: from a clone/.test(checkLine({ ...base, latest: '9.9.0', available: true, installed: false }, '1.3.3')), 'a newer version: the update question on the installed copy; on a clone, the notes under a line that says how it updates'); }
+
+// A Linux or Windows copy the install command made updates by running it again (2026-10-04): it says so, never "git pull".
+ok(reinstallCommand('linux', '/home/u/.jauvex/personal/app', '/home/u/.jauvex/personal') === INSTALL_UNIX && reinstallCommand('linux', '/home/u/src/jauvex', '/home/u/.jauvex/personal') === undefined, 'Linux: the installer\'s copy (the data folder\'s app/) gets the install command; a clone does not');
+ok(reinstallCommand('win32', 'C:\\Users\\u\\AppData\\Local\\Jauvex\\app\\jauvex', 'C:\\Users\\u\\.jauvex\\personal', 'C:\\Users\\u\\AppData\\Local') === INSTALL_WINDOWS && reinstallCommand('win32', 'C:\\src\\jauvex', 'C:\\x', 'C:\\Users\\u\\AppData\\Local') === undefined, 'Windows: the installer\'s copy (%LOCALAPPDATA%\\Jauvex\\app\\jauvex) gets its command; a clone does not');
+ok(reinstallCommand('darwin', '/Users/u/.jauvex/personal/app', '/Users/u/.jauvex/personal') === undefined, 'a Mac: Jauvex.app updates itself');
+{ const line = checkLine({ current: '1.7.0', latest: '1.7.1', available: true, installed: false, reinstall: INSTALL_UNIX, reached: true }, '1.7.0');
+  ok(line.includes(INSTALL_UNIX) && !/git/.test(line), 'a newer version on that copy: run the install command again, not git', line); }
+{ const r = await updater({ dataDir: root, version: '1.1.0', pid: 1, appBundle: null, quit: () => {}, installed: false, reinstall: INSTALL_WINDOWS, fetcher: (async () => new Response('')) as unknown as typeof fetch });
+  r.note('1.2.0'); const st = await r.status(); const run = await r.run();
+  ok(st.reinstall === INSTALL_WINDOWS && !run.ok && (run.error ?? '').includes(INSTALL_WINDOWS), 'its update order names the command to run again', JSON.stringify(run)); }
 
 // the order
 const script = (v: string) => `#!/bin/sh\n# Jauvex Personal installer.\nset -eu\nmain() {\n  version='${v}'\n}\nmain "$@"\n`;

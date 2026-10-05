@@ -100,9 +100,11 @@ session is working: do not restart.
   `__ROOT__` stands for this repository. Add a check with every feature and every bug fix (reproduce the bug first, then
   show the same check passing), a pure one where it can be (a decision taken out into `shared/`): a fix without a
   reproduction is a guess.
-- **How long checks may take:** before every commit, `npm run check` (= `sh tests/run.sh --quick`: the backend and pure
-  checks, all at once, seconds). The whole suite (`npm test`, minutes of window checks) runs before a release; while
-  working on a part of the window, run that part's window check by name (`sh tests/run.sh <name>`).
+- **How long checks may take (Diego, 2026-10-04, for the Jauvex Personal Development Agent and every agent here: "they don't need to
+  test the whole software every time they develop a feature. It's only before deploying or releasing a version"):** while building
+  a feature or a fix, run only quick checks for what changed: `npm run typecheck` and that part's checks by name
+  (`sh tests/run.sh <name>`, backend or window), or a quick look at it working. The full suite (`npm test`, `npm run check`), the
+  full app check, packaging audits and other slow checks run once, right before a release is packaged. No new checks only to satisfy this.
 - **Stand-ins:** `tests/mock/claude`, `tests/mock/codex` and `tests/mock/grok` answer like Claude Code, `codex app-server` and
   `grok agent stdio` with canned replies and no account (`CVC_CLAUDE_BIN`, `CVC_CODEX_BIN`, `CVC_GROK_BIN` point the app at them).
   When `chat.ts`, `codex.ts` or `grok.ts` starts reading a new message or method, teach the stand-in too. `run.sh` gives every check

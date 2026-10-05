@@ -5,7 +5,9 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { SHELL_VARS, parseShellVars } from './shellenv.js';
 import { DATA_DIR } from './paths.js';
-import { updater, appBundleOf } from './updater.js';
+import { updater, appBundleOf, SITE } from './updater.js';
+import { reinstallCommand } from '../shared/update.js';
+import { cleanLog, formProblem, SHOT_FILE, type FeedbackForm } from '../shared/feedback.js';
 import { execFileSync } from 'node:child_process';
 import { watch as fsWatch, existsSync, unlinkSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { Attachment, ChatEvent, ChatStart, DebugEvent, PermissionDecision, Provider } from '../shared/types.js';
@@ -136,7 +138,26 @@ app.whenReady().then(async () => {
   // installed app; nothing else can.
   const updates = updater({ dataDir: DATA_DIR, version: app.getVersion(), pid: process.pid, appBundle: appBundleOf(process.execPath),
     quit: () => { app.releaseSingleInstanceLock(); app.exit(0); }, installed: HIDDEN && process.env.CVC_UPDATE_INSTALLED === '1' ? true : undefined,
+    reinstall: reinstallCommand(process.platform, ROOT, DATA_DIR, process.env.LOCALAPPDATA),
     ...(HIDDEN ? { site: process.env.CVC_UPDATE_SITE || 'http://127.0.0.1:9' } : {}) }); // a check never reaches the real site
+  // Feedback from inside the app (Diego, 2026-10-04, as Jauvex Pro): what the person agreed to attach, shown to them first, then sent to
+  // Reindent at jauvex.reindent.com/api/feedback as the Personal edition, with an anonymous id kept in the data folder (no key: the site
+  // limits Personal per address and per installation)
+  const feedbackLog = async () => { let text = ''; try { text = readFileSync(path.join(DATA_DIR, 'voice-debug.log'), 'utf8'); } catch { /* no log yet */ } return cleanLog(text, os.homedir()); };
+  const feedbackShot = async (): Promise<string> => { if (!win || win.isDestroyed()) return ''; let img = await win.webContents.capturePage(); const w = img.getSize().width;
+    if (w > 1600) img = img.resize({ width: 1600 }); let png = img.toPNG(); if (png.length > 2_000_000) png = img.resize({ width: 1000 }).toPNG(); return png.toString('base64'); };
+  const feedbackId = (): string => { const f = path.join(DATA_DIR, 'feedback-installation'); try { const id = readFileSync(f, 'utf8').trim(); if (id) return id; } catch { /* made below */ } const id = randomUUID(); try { writeFileSync(f, id, { mode: 0o600 }); } catch { /* a new one next time */ } return id; };
+  ipcMain.handle('feedback:preview', async (_e, what: { screenshot?: boolean; log?: boolean }) => { const shot = what?.screenshot ? await feedbackShot() : '';
+    if (shot) { try { writeFileSync(path.join(DATA_DIR, SHOT_FILE), Buffer.from(shot, 'base64'), { mode: 0o600 }); } catch { /* sent fresh then */ } } // the one the person saw is the one sent
+    return { ...(shot ? { screenshot: shot, screenshotFile: path.join(DATA_DIR, SHOT_FILE) } : {}), ...(what?.log ? { log: await feedbackLog() } : {}) }; });
+  ipcMain.handle('feedback:send', async (_e, form: FeedbackForm): Promise<{ ok: boolean; id?: string; error?: string }> => {
+    if (formProblem(form)) return { ok: false, error: formProblem(form)! };
+    const body = { type: form.type, edition: 'personal', title: form.title.trim(), description: form.description.trim(), version: app.getVersion(), os: `${MAC ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux'} ${os.release()} ${process.arch}`,
+      installation: feedbackId(), ...(form.contact.trim() ? { contact: form.contact.trim() } : {}),
+      ...(form.screenshot ? { screenshot: await (async () => { try { return readFileSync(path.join(DATA_DIR, SHOT_FILE)).toString('base64'); } catch { return feedbackShot(); } })() } : {}), ...(form.log ? { log: await feedbackLog() } : {}) };
+    try { const r = await fetch(`${process.env.CVC_FEEDBACK_SITE || SITE}/api/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+      const j = await r.json().catch(() => ({})) as { id?: string; error?: string }; if (r.ok) try { unlinkSync(path.join(DATA_DIR, SHOT_FILE)); } catch { /* none */ } return r.ok ? { ok: true, id: j.id } : { ok: false, error: r.status === 429 ? 'too-many' : j.error ?? `HTTP ${r.status}` };
+    } catch { return { ok: false, error: 'offline' }; } });
   const offerUpdate = () => void updates.status().then((s) => { if (s.available) win?.webContents.send('app:update', s); });
   if (HIDDEN) { if (process.env.CVC_UPDATE_LATEST) updates.note(process.env.CVC_UPDATE_LATEST); }
   else { const check = () => void updates.check().then((known) => { if (known) offerUpdate(); }); check(); setInterval(check, 6 * 3600_000).unref(); }

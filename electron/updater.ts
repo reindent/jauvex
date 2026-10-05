@@ -2,7 +2,7 @@
 // install command made (Jauvex.app in Applications, built from ~/.jauvex/personal/app) updates itself on the user's yes: it fetches the
 // same installer, checks that it installs the version offered, hands a one-shot launchd job the work (wait for the app to quit, run the
 // installer, which rebuilds the app on this Mac and opens it, or open the app as it was if the installer fails), then quits. A copy run
-// from a clone updates with git: it only says so.
+// from a clone updates with git, and a Linux or Windows copy the installer made by running the install command again: it only says so.
 import { spawn, execFile } from 'node:child_process';
 import { openSync, closeSync, readFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
@@ -76,6 +76,7 @@ export type UpdaterDeps = {
   launch?: (dir: string, label: string, args: string[], env: NodeJS.ProcessEnv) => Promise<void>;
   env?: NodeJS.ProcessEnv;
   installed?: boolean; // the checks' stand-in for the installed app (CVC_UPDATE_INSTALLED, hidden copies only)
+  reinstall?: string; // reinstallCommand(...): a Linux or Windows copy the install command made updates by running it again
   quitAfterMs?: number;
 };
 
@@ -83,7 +84,7 @@ export function updater(deps: UpdaterDeps) {
   let latest: string | undefined; let notes = ''; // notes: what the latest brings since this version, from the changelog the site serves (T-218)
   const site = deps.site ?? SITE, get = deps.fetcher ?? fetch;
   const dir = path.join(deps.dataDir, 'update');
-  const status = async (): Promise<UpdateStatus> => ({ current: deps.version, latest, available: newer(latest, deps.version), installed: deps.installed ?? madeByInstaller(deps.appBundle, deps.dataDir), ...(notes ? { notes } : {}) });
+  const status = async (): Promise<UpdateStatus> => ({ current: deps.version, latest, available: newer(latest, deps.version), installed: deps.installed ?? madeByInstaller(deps.appBundle, deps.dataDir), ...(deps.reinstall ? { reinstall: deps.reinstall } : {}), ...(notes ? { notes } : {}) });
   /** What the latest brings: the site's changelog (the live package's CHANGELOG.md), its sections since this version. Nothing when it has none. */
   const readNotes = async (to: string): Promise<void> => { try { const r = await get(`${site}/api/personal/changelog`, { redirect: 'error', signal: AbortSignal.timeout(15_000) }); if (!r.ok) { await r.body?.cancel(); return; } const md = await r.text(); if (md.length < 400_000) notes = changelogSince(md, deps.version, to).slice(0, 8000); } catch { /* the offer goes without it */ } };
   return {
@@ -103,7 +104,7 @@ export function updater(deps: UpdaterDeps) {
     /** On the user's yes: fetches the installer, hands the update to launchd, and quits the app. */
     async run(): Promise<{ ok: boolean; error?: string; updating?: string; log?: string }> {
       const s = await status();
-      if (!s.installed) return { ok: false, error: 'This copy updates the way it was installed: a copy run from a clone with git pull and a build. Only the Jauvex.app the install command made updates itself.' };
+      if (!s.installed) return { ok: false, error: s.reinstall ? `This copy updates the way it was installed: close the app, then run the install command again: ${s.reinstall}` : 'This copy updates the way it was installed: a copy run from a clone with git pull and a build. Only the Jauvex.app the install command made updates itself.' };
       if (!s.available) return { ok: false, error: s.latest ? `There is no newer version: this copy runs ${s.current}, the latest is ${s.latest}.` : 'No newer version is known yet: the app asks jauvex.reindent.com at launch and every six hours.' };
       let script: string;
       try {

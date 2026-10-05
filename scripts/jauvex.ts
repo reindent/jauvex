@@ -6,6 +6,8 @@
 //           settings [--default-provider claude|codex|grok] [--show-jauvex yes|no] [--welcome-next yes|no] [--jauvex-move unified|handoff] [--auto-compact <percent>|provider] [--workflow-missed run|alert|nothing] [--language auto|en|es] [--permission-provider claude|codex|grok --permission-mode ask|auto|yolo|session] | welcome | reload | restart
 //           run --workflow file|name [--folder ..] | runs --workflow .. | decide --workflow .. --outcome ".." [--note ".."] (the user's decision at a gate, on their word) | stop-run --workflow .. | resend-run --workflow ..
 //           move-workflow --workflow file|name --to <folder> [--folder ..] (with its chat's session) | move-session --session id|title --to <folder> [--folder ..]
+//           feedback --preview [--screenshot] [--log] | --type bug|feature|idea|feedback|question --title <t> --description <d> [--contact <email>] [--screenshot] [--log]
+//             (the Jauvex agent: a person's report to Reindent; preview gives the screenshot's path and the cleaned log, to show first)
 //           update [--check] [--now] (the app the install command made, to the latest version: it closes, rebuilds and opens again)
 //           theme [--custom '<palette JSON>' | --set light|dark|system] (the app's colours: a palette of the user's own, or one of the app's themes)
 // Prints the JSON result; exits 1 when the app said no or did not answer (is it running? same data folder?).
@@ -37,6 +39,7 @@ const shapes = {
   send: () => ({ type: 'send', folder: flags.folder, session: flags.session, text: flags.text ?? bare.join(' ') }),
   rename: () => ({ type: 'rename', folder: flags.folder, session: flags.session, title: flags.title ?? bare.join(' ') }),
   settings: () => ({ type: 'settings', permissionProvider: flags['permission-provider'], permissionMode: flags['permission-mode'], defaultProvider: flags['default-provider'], showJauvex: bool('show-jauvex'), welcomeNext: bool('welcome-next'), jauvexMove: flags['jauvex-move'], autoCompact: flags['auto-compact'] === undefined ? undefined : /^provider$/i.test(String(flags['auto-compact'])) ? 0 : Number(String(flags['auto-compact']).replace('%', '')), workflowMissed: flags['workflow-missed'], language: flags.language }), // provider: the provider decides
+  feedback: () => ({ type: 'feedback', ...(flags.preview ? { preview: true } : {}), ...(typeof flags.type === 'string' ? { kind: flags.type } : {}), ...(typeof flags.title === 'string' ? { title: flags.title } : {}), ...(typeof flags.description === 'string' ? { description: flags.description } : {}), ...(typeof flags.contact === 'string' ? { contact: flags.contact } : {}), ...(flags.screenshot ? { screenshot: true } : {}), ...(flags.log ? { log: true } : {}) }), // a person's report to Reindent (2026-10-04)
   update: () => ({ type: 'update', check: flags.check ? true : undefined, now: flags.now ? true : undefined }), // the installed app, to the latest version
   theme: () => ({ type: 'theme', custom: typeof flags.custom === 'string' ? flags.custom : undefined, set: flags.set }), // T-278
   welcome: () => ({ type: 'welcome' }), reload: () => ({ type: 'reload-ui' }), restart: () => ({ type: 'restart-app' }),
