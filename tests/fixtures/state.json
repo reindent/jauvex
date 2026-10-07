@@ -456,7 +456,7 @@
   "voice": {
    "voice": "",
    "rate": 185,
-   "pauseMs": 800,
+   "pauseMs": 800, "pauseSet": true,
    "ack": true,
    "ackModel": "claude-haiku-4-5",
    "codexAckModel": "",

@@ -18,7 +18,7 @@ export function Accounts({ onClose }: { onClose: () => void }) {
     if (e.type === 'done') { setBusy((m) => ({ ...m, [e.provider]: undefined })); void load(e.provider); }
   }), []);
   const signOut = async (p: Provider) => { setBusy((m) => ({ ...m, [p]: t('accounts.busy.signingOut') })); try { setStatus((m) => ({ ...m, [p]: undefined })); const s = await window.desktop.accountLogout(p); setStatus((m) => ({ ...m, [p]: s })); } finally { setBusy((m) => ({ ...m, [p]: undefined })); } };
-  const signIn = async (p: Provider) => { setFlows((m) => ({ ...m, [p]: { lines: [] } })); setBusy((m) => ({ ...m, [p]: t('accounts.busy.signingIn') })); const ok = await window.desktop.accountLogin(p); if (!ok) setBusy((m) => ({ ...m, [p]: undefined })); };
+  const signIn = async (p: Provider, withCode = false) => { setFlows((m) => ({ ...m, [p]: { lines: [] } })); setBusy((m) => ({ ...m, [p]: t('accounts.busy.signingIn') })); const ok = await window.desktop.accountLogin(p, withCode); if (!ok) setBusy((m) => ({ ...m, [p]: undefined })); };
   const switchTo = async (p: Provider) => { await signOut(p); await signIn(p); };
   return (
     <div className="overlay" onClick={onClose}>
@@ -34,7 +34,7 @@ export function Accounts({ onClose }: { onClose: () => void }) {
               {!SIGN_IN_IN_APP ? <code className="account-cli" title={s?.signedIn ? t('accounts.cli.title', { tool: SIGN_IN_CLI[p].tool }) : t('accounts.cli.titleInstall', { tool: SIGN_IN_CLI[p].tool, install: SIGN_IN_CLI[p].install })}>{s?.signedIn ? SIGN_IN_CLI[p].logout : SIGN_IN_CLI[p].login}</code>
                 : b ? <button onClick={() => void window.desktop.accountCancel(p)}>{t('accounts.action.cancel')}</button>
                 : s?.signedIn ? <><button onClick={() => void switchTo(p)}>{t('accounts.action.switch')}</button><button onClick={() => void signOut(p)}>{t('accounts.action.signOut')}</button></>
-                : <button onClick={() => void signIn(p)}>{t('accounts.action.signIn')}</button>}
+                : <><button onClick={() => void signIn(p)}>{t('accounts.action.signIn')}</button>{p === 'codex' && <button title={t('accounts.withCodeTitle')} onClick={() => void signIn(p, true)}>{t('accounts.withCode')}</button>}</>}
               <button onClick={() => void load(p)} title={t('accounts.action.refreshTitle')}>{t('accounts.action.refresh')}</button>
             </div>
             {f && (f.lines.length > 0 || f.url || f.done) && (

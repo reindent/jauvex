@@ -1,4 +1,4 @@
-// Updates (T-165): the version jauvex.reindent.com names against this copy's; the app's own agent is told once per version; the check
+// Updates (T-165): the version jauvex.ai names against this copy's; the app's own agent is told once per version; the check
 // asks the site and takes only a version; the update order refuses on a copy that cannot update itself, with nothing new, or with an
 // installer that is not the one expected; with the right one it leaves the installer and its runner in the data folder, hands the runner
 // to launchd and quits; the runner waits for the app to quit, runs the installer and removes it. No network, no launchd: stand-ins for
@@ -27,7 +27,7 @@ ok(appBundleOf('/Applications/Jauvex.app/Contents/MacOS/Electron') === '/Applica
 // the check: the site's answer, a version only
 const answer = (body: unknown, status = 200) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
 { const seen: string[] = []; const u = updater({ dataDir: root, version: '1.1.0', pid: 1, appBundle: null, quit: () => {}, fetcher: (async (url: string) => { seen.push(url); return new Response('{"latest_version":"1.2.0"}'); }) as unknown as typeof fetch });
-  ok(await u.check() && seen[0] === 'https://jauvex.reindent.com/api/personal/version' && (await u.status()).latest === '1.2.0', 'the check asks the site\'s version address and keeps the version it names', JSON.stringify(seen)); }
+  ok(await u.check() && seen[0] === 'https://jauvex.ai/api/personal/version' && (await u.status()).latest === '1.2.0', 'the check asks the site\'s version address and keeps the version it names', JSON.stringify(seen)); }
 for (const [what, f] of [['an answer that is not a version', answer({ latest_version: '1.2; rm -rf ~' })], ['an error', answer({}, 503)], ['no network', (async () => { throw new Error('offline'); }) as unknown as typeof fetch]] as const) {
   const u = updater({ dataDir: root, version: '1.1.0', pid: 1, appBundle: null, quit: () => {}, fetcher: f }); ok(!(await u.check()) && (await u.status()).latest === undefined, `${what}: nothing is known, nothing breaks`); }
 
@@ -36,7 +36,7 @@ for (const [what, f] of [['an answer that is not a version', answer({ latest_ver
 { const log = '# Changelog\n\n## 1.2.0: 2026-10-01\n\n- **Timers.** Agents that wake up.\n\n## 1.1.1: 2026-09-30\n\n- A fix.\n\n## 1.1.0: 2026-09-27\n\n- Old.\n';
   const seen: string[] = []; const u = updater({ dataDir: root, version: '1.1.0', pid: 1, appBundle: null, quit: () => {}, fetcher: (async (url: string) => { seen.push(url); return new Response(url.endsWith('/changelog') ? log : '{"latest_version":"1.2.0"}'); }) as unknown as typeof fetch });
   await u.check(); const n = (await u.status()).notes ?? '';
-  ok(seen[1] === 'https://jauvex.reindent.com/api/personal/changelog' && /^## 1\.2\.0: 2026-10-01\n\n- \*\*Timers/.test(n) && /## 1\.1\.1/.test(n) && !/Old\./.test(n), 'a newer version: the check also reads what it brings, since this copy\'s version', JSON.stringify([seen, n]));
+  ok(seen[1] === 'https://jauvex.ai/api/personal/changelog' && /^## 1\.2\.0: 2026-10-01\n\n- \*\*Timers/.test(n) && /## 1\.1\.1/.test(n) && !/Old\./.test(n), 'a newer version: the check also reads what it brings, since this copy\'s version', JSON.stringify([seen, n]));
   const note = updateNote('1.1.0', '1.2.0', n);
   ok(/what it brings/.test(note) && note.indexOf('what it brings') < note.indexOf('ask') && /What 1\.2\.0 brings, from its changelog:\n## 1\.2\.0/.test(note) && /`update` order/.test(note), 'the offer tells what the version brings, then asks', note); }
 { const u = updater({ dataDir: root, version: '1.2.0', pid: 1, appBundle: null, quit: () => {}, fetcher: (async (url: string) => (url.endsWith('/changelog') ? new Response('x', { status: 404 }) : new Response('{"latest_version":"1.3.0"}'))) as unknown as typeof fetch });
@@ -89,7 +89,7 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 { const quits = { n: 0 }, launched: unknown[][] = []; const { u, requests } = make({ quits, launched }); u.note('1.2.0'); const st = await u.status(); const r = await u.run(); await wait(40);
   const dir = path.join(root, 'update'), req = requests[0];
   ok(st.available && st.installed && st.latest === '1.2.0', 'the status says a newer version is out, on a copy that can take it', JSON.stringify(st));
-  ok(req?.url === 'https://jauvex.reindent.com/install' && req.init.redirect === 'error', 'the installer is the site\'s own install command', JSON.stringify(req?.url));
+  ok(req?.url === 'https://jauvex.ai/install' && req.init.redirect === 'error', 'the installer is the site\'s own install command', JSON.stringify(req?.url));
   ok(r.ok && r.updating === '1.2.0' && readFileSync(path.join(dir, 'install.sh'), 'utf8') === script('1.2.0') && (statSync(path.join(dir, 'install.sh')).mode & 0o777) === 0o600 && readFileSync(path.join(dir, 'run.sh'), 'utf8') === RUNNER, 'the installer (readable by this user only) and its runner wait in the data folder', JSON.stringify(r));
   const a = launched[0] as [string, string, string[]] | undefined;
   ok(!!a && a[0] === dir && JSON.stringify(a[2].slice(0, 3)) === JSON.stringify([path.join(dir, 'run.sh'), '4242', '/Applications/Jauvex.app']) && a[2][3] === a[1] && /^com\.reindent\.jauvex-personal\.update-\d+$/.test(a[1]), 'the runner goes to launchd with the app\'s pid and bundle', JSON.stringify(a));

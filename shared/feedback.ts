@@ -1,4 +1,4 @@
-// Feedback from inside the app (Diego, 2026-10-04): a bug report, feature request or idea, sent to Reindent through jauvex.reindent.com
+// Feedback from inside the app (Diego, 2026-10-04): a bug report, feature request or idea, sent to Reindent through jauvex.ai
 // (POST /api/feedback; the site's feedback.py checks every field). Pure: what the person typed, checked as the site checks it, and the
 // log they agreed to attach, cleaned of anything secret first. Never a workspace's files, chats or keys.
 export const FEEDBACK_TYPES = ['bug', 'feature', 'idea', 'feedback', 'question'] as const; // Diego, 2026-10-04: Idea, Feedback, Bug, Question

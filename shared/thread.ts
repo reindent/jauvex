@@ -6,7 +6,7 @@ import type { Block, ChatMessage } from './types.js';
 
 /** A tool call or a thought (b), or a whole system event. */
 export type WorkPart = { m: ChatMessage; b?: Block };
-export type ThreadUnit = { kind: 'msg'; key: string; m: ChatMessage } | { kind: 'work'; key: string; parts: WorkPart[] } | { kind: 'media'; key: string; src: string };
+export type ThreadUnit = { kind: 'msg'; key: string; m: ChatMessage } | { kind: 'work'; key: string; parts: WorkPart[] } | { kind: 'media'; key: string; src: string } | { kind: 'agents'; key: string; names: string[]; units: ThreadUnit[] };
 
 /** A picture a tool made (Grok's imagine): its path. */
 export const toolImage = (b: Block): string | null => { if (b.type !== 'tool_use') return null; const image = (b.input as { image?: unknown } | null)?.image; return typeof image === 'string' && image.startsWith('/') ? image : null; };
@@ -29,4 +29,21 @@ export function threadUnits(messages: ChatMessage[], showMeta: boolean): ThreadU
     said();
   }
   flush(); return out;
+}
+
+/** Agent-to-agent traffic folded into one line in the person's chat (FB-14, as Jauvex Pro; a Pro user, 2026-10-05: a lead's reply to them was buried under its
+ *  messages with other agents): each run of messages from agents, answers to them and the work between, as one `agents` unit naming them.
+ *  `agentOf` says whose a message unit is (an agent's name), or null when it is the person's or for the person. A run that holds no agent
+ *  message is left as it was; work at a run's edges stays outside it. */
+export function foldAgents(units: ThreadUnit[], agentOf: (u: ThreadUnit) => string | null): ThreadUnit[] {
+  const out: ThreadUnit[] = []; let run: ThreadUnit[] = []; let names: string[] = [];
+  const close = () => { let tail: ThreadUnit[] = []; while (run.length && run[run.length - 1]!.kind === 'work') tail = [run.pop()!, ...tail];
+    if (names.length) out.push({ kind: 'agents', key: `agents:${run[0]!.key}`, names, units: run }); else out.push(...run); out.push(...tail); run = []; names = []; };
+  for (const u of units) {
+    const who = u.kind === 'msg' ? agentOf(u) : null;
+    if (who) { run.push(u); if (!names.includes(who)) names.push(who); continue; }
+    if (u.kind === 'work' && names.length) { run.push(u); continue; }
+    close(); out.push(u);
+  }
+  close(); return out;
 }

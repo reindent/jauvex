@@ -6,11 +6,12 @@ contextBridge.exposeInMainWorld('desktop', {
   chatStart: (req: unknown): Promise<boolean> => ipcRenderer.invoke('chat:start', req),
   accountStatus: (provider: string): Promise<unknown> => ipcRenderer.invoke('account:status', provider),
   accountLogout: (provider: string): Promise<unknown> => ipcRenderer.invoke('account:logout', provider),
-  accountLogin: (provider: string): Promise<boolean> => ipcRenderer.invoke('account:login', provider),
+  accountLogin: (provider: string, withCode?: boolean): Promise<boolean> => ipcRenderer.invoke('account:login', provider, withCode),
   accountReply: (provider: string, text: string): Promise<boolean> => ipcRenderer.invoke('account:reply', provider, text),
   accountCancel: (provider: string): Promise<boolean> => ipcRenderer.invoke('account:cancel', provider),
   readFile: (p: string): Promise<unknown> => ipcRenderer.invoke('file:read', p),
   openPath: (p: string): Promise<boolean> => ipcRenderer.invoke('file:open', p),
+  urlPeek: (url: string): Promise<unknown> => ipcRenderer.invoke('url:peek', url), // a web link's Markdown or text, for the right pane
   onPaneOpen: (cb: (url: string) => void): (() => void) => { const h = (_e: IpcRendererEvent, url: string) => cb(url); ipcRenderer.on('pane:open', h); return () => ipcRenderer.removeListener('pane:open', h); },
   onAgentRequest: (cb: (r: unknown) => void): (() => void) => { const h = (_e: IpcRendererEvent, r: unknown) => cb(r); ipcRenderer.on('agent:request', h); return () => ipcRenderer.removeListener('agent:request', h); },
   agentRequestDone: (id: string, text: string): void => ipcRenderer.send('agent:request:done', id, text),

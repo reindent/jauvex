@@ -28,10 +28,16 @@ let server: Server | null = null;
 // The npm package ships the native binary per platform, plus the tools it expects on its PATH (rg).
 function findCodex(): { bin: string; pathDir: string | null } {
   if (process.env.CVC_CODEX_BIN) return { bin: process.env.CVC_CODEX_BIN, pathDir: null }; // the stand-in (tests/mock/codex): checks with no account
-  const triple = `${process.arch === 'arm64' ? 'aarch64' : 'x86_64'}-${process.platform === 'darwin' ? 'apple-darwin' : 'unknown-linux-musl'}`;
+  const win = process.platform === 'win32', arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
+  // The triple and the program's name as @openai/codex's own launcher (bin/codex.js) has them. Windows (a workshop tester, 2026-10-06): the app
+  // looked for the Mac or Linux build only, never found the one npm put here, and fell back to a `codex` on PATH, which a WinGet install of
+  // Codex does not give (its program is codex-x86_64-pc-windows-msvc.exe): Codex was "not installed" until they made a codex.exe by hand.
+  const triple = `${arch}-${process.platform === 'darwin' ? 'apple-darwin' : win ? 'pc-windows-msvc' : 'unknown-linux-musl'}`;
   const vendor = path.join(ROOT, 'node_modules', '@openai', `codex-${process.platform}-${process.arch}`, 'vendor', triple);
-  const bin = path.join(vendor, 'bin', 'codex');
-  return existsSync(bin) ? { bin, pathDir: path.join(vendor, 'codex-path') } : { bin: 'codex', pathDir: null }; // else: whatever `codex` the shell PATH has
+  const bin = path.join(vendor, 'bin', win ? 'codex.exe' : 'codex');
+  if (existsSync(bin)) { const p = path.join(vendor, 'codex-path'); return { bin, pathDir: existsSync(p) ? p : null }; }
+  if (win) for (const dir of (process.env.PATH ?? '').split(path.delimiter)) for (const n of ['codex.exe', `codex-${triple}.exe`]) { const p = path.join(dir, n); if (dir && existsSync(p)) return { bin: p, pathDir: null }; } // a Codex of the system's (WinGet)
+  return { bin: 'codex', pathDir: null }; // else: whatever `codex` the shell PATH has
 }
 
 function boot(): Server {
@@ -70,6 +76,8 @@ type Account = { type: 'apiKey' } | { type: 'chatgpt'; email: string | null; pla
 export function account(): Promise<{ account: Account | null; requiresOpenaiAuth: boolean }> { return call('account/read', {}); }
 export function logout(): Promise<unknown> { return call('account/logout', {}); }
 export function loginStart(): Promise<{ loginId: string; authUrl: string }> { return call('account/login/start', { type: 'chatgpt' }); }
+/** Signing in with a one-time code instead (FB-19, as Jauvex Pro: the browser sign-in failed on a tester's Windows, a code worked): a page to open, a code to type there. */
+export function loginStartCode(): Promise<{ loginId: string; verificationUrl: string; userCode: string }> { return call('account/login/start', { type: 'chatgptDeviceCode' }); }
 export function loginCancel(loginId: string): Promise<unknown> { return call('account/login/cancel', { loginId }); }
 let loginDone: ((ok: boolean, error: string | null) => void) | null = null;
 export function onLoginCompleted(fn: (ok: boolean, error: string | null) => void): void { loginDone = fn; }

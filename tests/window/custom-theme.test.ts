@@ -18,7 +18,7 @@ const v = (k: string) => js(`getComputedStyle(document.documentElement).getPrope
 const openSettings = async () => { await until("!!document.querySelector('button[title=\"Jauvex settings\"]')"); await js("document.querySelector('button[title=\"Jauvex settings\"]').click()"); await until("!!document.querySelector('.theme-pick')"); };
 
 await openSettings();
-check('Appearance has four choices: Same as the Mac, Light, Dark, Custom', (await js("[...document.querySelectorAll('.theme-pick')].map((b) => b.textContent).join(', ')")) === 'Same as the Mac, Light, Dark, Custom', await js("[...document.querySelectorAll('.theme-pick')].map((b) => b.textContent).join(', ')"));
+check('Appearance has four choices: Same as the system, Light, Dark, Custom', (await js("[...document.querySelectorAll('.theme-pick')].map((b) => b.textContent).join(', ')")) === 'Same as the system, Light, Dark, Custom', await js("[...document.querySelectorAll('.theme-pick')].map((b) => b.textContent).join(', ')"));
 await js("document.querySelector('.theme-pick.custom').click()");
 check('Custom closes Settings and opens the Jauvex agent\'s chat', !!(await until("!document.querySelector('.theme-pick') && !!document.querySelector('.jauvex-row.on')")));
 let t = false; for (let i = 0; i < 60 && !(t = told()); i++) await sleep(250);

@@ -492,3 +492,7 @@ html.is-mini, html.is-mini body, html.is-mini #root { background: transparent; }
 .theme-pick.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; } .theme-pick i { width: 16px; height: 16px; border-radius: 5px; border: 1px solid var(--line); }
 .theme-pick.dark i { background: #141413; } .theme-pick.light i { background: #ffffff; } .theme-pick.system i { background: linear-gradient(135deg, #ffffff 50%, #141413 50%); } .theme-pick.custom i { background: conic-gradient(var(--accent) 0 25%, var(--side) 0 50%, var(--fg) 0 75%, var(--bg) 0); } /* Custom (T-278): the colours on now */
 .toast-report { margin-left: 10px; border: 1px solid currentColor; background: none; color: inherit; border-radius: 6px; padding: 1px 8px; font: inherit; font-size: 12px; cursor: pointer; } /* Report this, on an error (2026-10-04) */
+
+.agent-fold { margin: 2px 0; } /* FB-14: agent-to-agent traffic, folded into one line in the person's chat */
+.agent-fold > summary { cursor: pointer; list-style: none; font-size: 12.5px; color: var(--muted); padding: 3px 0; } .agent-fold > summary::before { content: '▸ '; } .agent-fold[open] > summary::before { content: '▾ '; }
+.agent-fold[open] { border-left: 2px solid var(--line); padding-left: 10px; }

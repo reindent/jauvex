@@ -55,12 +55,14 @@ export async function logout(provider: Provider): Promise<AccountStatus> {
 
 // ---------- signing in: one flow per provider at a time
 const flows = new Map<Provider, ChildProcess | { cancel: () => void }>();
-export async function login(provider: Provider): Promise<boolean> {
+export async function login(provider: Provider, withCode = false /* Codex: a one-time code instead of the browser's sign-in (FB-19) */): Promise<boolean> {
   if (flows.has(provider)) return false;
   debug.log('note', `${provider}: sign-in started`, { by: 'app' });
   if (provider === 'codex') {
-    const r = await codex.loginStart(); flows.set('codex', { cancel: () => { void codex.loginCancel(r.loginId); } });
-    emit({ provider, type: 'url', url: r.authUrl }); emit({ provider, type: 'line', text: 'Sign in with ChatGPT in the browser window that just opened. This waits for it to finish.' });
+    if (withCode) { const c = await codex.loginStartCode(); flows.set('codex', { cancel: () => { void codex.loginCancel(c.loginId); } });
+      emit({ provider, type: 'url', url: c.verificationUrl }); emit({ provider, type: 'line', text: `Open the page and type this code there: ${c.userCode}. This waits for it to finish.` }); }
+    else { const r = await codex.loginStart(); flows.set('codex', { cancel: () => { void codex.loginCancel(r.loginId); } });
+    emit({ provider, type: 'url', url: r.authUrl }); emit({ provider, type: 'line', text: 'Sign in with ChatGPT in the browser window that just opened. This waits for it to finish. If it fails, sign in with a code instead.' }); }
     codex.onLoginCompleted((ok, error) => { flows.delete('codex'); emit({ provider, type: 'done', ok, ...(error ? { error } : {}) }); });
     return true;
   }

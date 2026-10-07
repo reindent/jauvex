@@ -1,8 +1,8 @@
 # Jauvex
 
 Your coding agents, side by side, by voice. Claude, Codex and Grok in one desktop app, with Jev (TypeSafe) for the fast
-decisions. Jauvex Personal, version 1.7.1, for macOS, and Linux and Windows (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
-[jauvex.reindent.com](https://jauvex.reindent.com). Made by Reindent (one human and agents).
+decisions. Jauvex Personal, version 1.7.2, for macOS, and Linux and Windows (run from source); Apache License 2.0. Source: [github.com/reindent/jauvex](https://github.com/reindent/jauvex); site:
+[jauvex.ai](https://jauvex.ai). Made by Reindent (one human and agents).
 
 Jauvex is an Electron client for the Claude Code, Codex and Grok Build sessions on your Mac. Add a folder, pick up any of its
 sessions or start new ones with either provider, and talk to them: a voice channel that answers in three beats (a quick
@@ -17,14 +17,14 @@ What changed in each release: [CHANGELOG.md](CHANGELOG.md).
 One command in Terminal:
 
 ```
-curl -fsSL https://jauvex.reindent.com/install | sh
+curl -fsSL https://jauvex.ai/install | sh
 ```
 
 It needs Node 22.18 or newer. It downloads this source, checks its SHA-256 and builds Jauvex on your Mac: nothing
 prebuilt is downloaded, so there is nothing for Apple to notarize. Jauvex lands in Applications (`~/Applications` when
 `/Applications` is not writable), a real app with its own name, icon and microphone permission; the source and the build
 stay in `~/.jauvex/personal/app`. Run the command again to update, with Jauvex closed, or let Jauvex do it: it asks
-jauvex.reindent.com which version is the latest (`/api/personal/version`), at launch and every six hours, and when a newer one is out
+jauvex.ai which version is the latest (`/api/personal/version`), at launch and every six hours, and when a newer one is out
 the sidebar's footer says so ("1.2.0 is out") and the Jauvex agent tells you what it brings, from the changelog the site serves
 (`/api/personal/changelog`: this repository's `CHANGELOG.md`, the sections since your version), and asks you, once per version, whether
 to update now. On a yes
@@ -38,16 +38,16 @@ it was opened under (T-262; the user, 2026-10-01: "This session was active momen
 agent ... after an update, and the new chat history wont show"): the window opens again on the chat that was on screen by its session, and a
 lookup by the agent's own key alone opened a second, hidden chat of the same session, which took the turn (`jauvexOpen`,
 `tests/window/jauvex-one-chat.test.ts`).
-**What's new**, at the foot of the sidebar, asks jauvex.reindent.com right then whether a newer version is out (T-245). Its notes open at
+**What's new**, at the foot of the sidebar, asks jauvex.ai right then whether a newer version is out (T-245). Its notes open at
 once, the newest releases from this copy's `CHANGELOG.md`, under a line that says what the check found: the latest already, a newer one
 that this copy (a clone) updates with git, or the site out of reach. A newer version on the app the install command made opens the Jauvex
 agent's chat instead: it says what that version brings and asks. While one is out its notice takes What's new's place and does the same.
 
-**Feedback** (Diego, 2026-10-04): the icon beside Settings opens the Jauvex agent with a note (`FEEDBACK_HELLO`); it asks whether it is an
-idea, feedback, a bug or a question, gathers the report by voice or text, shows it, asks before attaching a screenshot or the app's recent
+**Feedback** (Diego, 2026-10-04): the icon beside Settings opens the Jauvex agent with a note (`feedbackHello`): it opens with the app's own
+line (`feedback.opening`, in the app's language, word for word; a second click within ten minutes only brings its chat forward), gathers the report by voice or text, shows it, asks before attaching a screenshot or the app's recent
 log (`feedback --preview`: the screenshot is kept in the data folder's `feedback-screenshot.png`, the one the person saw is the one sent; the
 log loses keys, tokens, emails, long ids and the home folder, `shared/feedback.ts`, `tests/feedback.test.ts`), and sends it with the
-`feedback` order to jauvex.reindent.com/api/feedback as the Personal edition, with an anonymous id kept in the data folder's
+`feedback` order to jauvex.ai/api/feedback as the Personal edition, with an anonymous id kept in the data folder's
 `feedback-installation`. It also offers to whenever the person says something is broken or has an idea, and "Report this" on the app's
 error messages opens it with the error filled in. Never the person's files, chats or keys.
 

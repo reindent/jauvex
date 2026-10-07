@@ -7,6 +7,7 @@ import { SHELL_VARS, parseShellVars } from './shellenv.js';
 import { DATA_DIR } from './paths.js';
 import { updater, appBundleOf, SITE } from './updater.js';
 import { reinstallCommand } from '../shared/update.js';
+import { pageKindOf } from '../shared/page-kind.js';
 import { cleanLog, formProblem, SHOT_FILE, type FeedbackForm } from '../shared/feedback.js';
 import { execFileSync } from 'node:child_process';
 import { watch as fsWatch, existsSync, unlinkSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -132,7 +133,7 @@ app.setName('Jauvex');
 // is drawn with WebGL. A GPU it accepts is still used first.
 if (!MAC) app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 app.whenReady().then(async () => {
-  // Updates (T-165): the app asks jauvex.reindent.com which version is the latest, at launch and every six hours; the copy the install
+  // Updates (T-165): the app asks jauvex.ai which version is the latest, at launch and every six hours; the copy the install
   // command made, when it runs an older one, tells the window, whose Jauvex agent asks the user; on a yes the `update` order hands the
   // work to launchd and the app quits. A hidden copy (the checks) never asks the site: it may stand in for its answer and for the
   // installed app; nothing else can.
@@ -141,7 +142,7 @@ app.whenReady().then(async () => {
     reinstall: reinstallCommand(process.platform, ROOT, DATA_DIR, process.env.LOCALAPPDATA),
     ...(HIDDEN ? { site: process.env.CVC_UPDATE_SITE || 'http://127.0.0.1:9' } : {}) }); // a check never reaches the real site
   // Feedback from inside the app (Diego, 2026-10-04, as Jauvex Pro): what the person agreed to attach, shown to them first, then sent to
-  // Reindent at jauvex.reindent.com/api/feedback as the Personal edition, with an anonymous id kept in the data folder (no key: the site
+  // Reindent at jauvex.ai/api/feedback as the Personal edition, with an anonymous id kept in the data folder (no key: the site
   // limits Personal per address and per installation)
   const feedbackLog = async () => { let text = ''; try { text = readFileSync(path.join(DATA_DIR, 'voice-debug.log'), 'utf8'); } catch { /* no log yet */ } return cleanLog(text, os.homedir()); };
   const feedbackShot = async (): Promise<string> => { if (!win || win.isDestroyed()) return ''; let img = await win.webContents.capturePage(); const w = img.getSize().width;
@@ -196,7 +197,7 @@ app.whenReady().then(async () => {
   const account = await import('./account.js'); account.setSink((e) => win?.webContents.send('account:event', e));
   ipcMain.handle('account:status', (_e, provider: Provider) => account.status(provider));
   ipcMain.handle('account:logout', (_e, provider: Provider) => account.logout(provider));
-  ipcMain.handle('account:login', (_e, provider: Provider) => account.login(provider));
+  ipcMain.handle('account:login', (_e, provider: Provider, withCode?: boolean) => account.login(provider, withCode === true));
   ipcMain.handle('account:reply', (_e, provider: Provider, text: string) => account.reply(provider, text));
   ipcMain.handle('account:cancel', (_e, provider: Provider) => account.cancel(provider));
   // The app relaunches itself with the build that is on disk (the same arguments, the same data folder); every turn dies with it.
@@ -214,13 +215,21 @@ app.whenReady().then(async () => {
     setTimeout(() => app.exit(0), auto ? 1500 : 200); return true;
   });
   ipcMain.handle('app:restart', () => { app.releaseSingleInstanceLock(); app.relaunch(); setTimeout(() => app.exit(0), 300); return true; });
-  ipcMain.handle('open:external', (_e, url: string) => (/^(https:\/\/|x-apple\.systempreferences:)/.test(url) ? shell.openExternal(url).then(() => true) : false)); // web pages, and System Settings panes (the welcome opens Spoken Content)
+  ipcMain.handle('open:external', (_e, url: string) => (/^(https?:\/\/|x-apple\.systempreferences:)/.test(url) ? shell.openExternal(url).then(() => true) : false)); // web pages, and System Settings panes (the welcome opens Spoken Content)
   ipcMain.handle('chat:start', (_e, req: ChatStart) => { void chat.startChat(req, (ev: ChatEvent) => win?.webContents.send('chat:event', ev)).catch((err: Error) => win?.webContents.send('chat:event', { chatId: req.chatId, type: 'done', ok: false, error: err.message } satisfies ChatEvent)); return true; });
   ipcMain.handle('usage:get', (_e, provider: Provider, force?: boolean) => usage.get(provider, force));
   ipcMain.handle('chat:running', (_e, chatId: string) => chat.isRunning(chatId));
   ipcMain.handle('chat:live', () => chat.liveList());
   // A soft restart: the window reloads the UI build on disk; the main process, its servers and every running turn stay.
   // A file for the right pane. Text as is (markdown rendered by the window), images as data, pages and PDFs framed by the window itself.
+  // A web link for the right pane (2026-10-06): Markdown, or a text Chromium would download, comes back as text for the window to draw; anything
+  // else, an error or a page too slow to answer goes to the webview as before (shared/page-kind.ts)
+  ipcMain.handle('url:peek', async (_e, url: string): Promise<{ kind: 'markdown' | 'text'; text: string; url: string } | { kind: 'web' }> => {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return { kind: 'web' };
+    try { const r = await fetch(url, { signal: AbortSignal.timeout(8000) }); const kind = r.ok ? pageKindOf(r.headers.get('content-type'), r.url || url) : 'web';
+      if (kind === 'web' || Number(r.headers.get('content-length') ?? 0) > 2_000_000) { await r.body?.cancel(); return { kind: 'web' }; }
+      const text = await r.text(); return text.length > 2_000_000 ? { kind: 'web' } : { kind, text, url: r.url || url };
+    } catch { return { kind: 'web' }; } });
   ipcMain.handle('file:read', async (_e, p: string) => {
     const { readFile, stat } = await import('node:fs/promises'); const file = p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p; const name = path.basename(file);
     try { const st = await stat(file); if (st.isDirectory()) { const names = readdirSync(file).sort(); return { ok: true, kind: 'text', name, path: file, size: st.size, mediaType: 'text/plain', text: names.join('\n') }; }

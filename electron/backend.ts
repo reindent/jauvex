@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { noResponse } from '../shared/delivery.js';
 import { shortTitle } from '../shared/roster.js';
 import { inSlots } from '../shared/folder-order.js';
 import path from 'node:path';
@@ -129,7 +130,7 @@ export function normalize(m: Pick<SessionMessage, 'type' | 'uuid' | 'message'> &
   if (!blocks.length) return null;
   const role = m.type === 'assistant' ? 'assistant' : m.type === 'system' ? 'system' : 'user';
   const onlyToolResults = role === 'user' && blocks.every((b) => b.type === 'tool_result');
-  const meta = role === 'system' || onlyToolResults || (role === 'user' && m.isSynthetic === true) || (role === 'user' && blocks.every((b) => b.type !== 'text' || META.test(b.text)));
+  const meta = role === 'system' || onlyToolResults || (role === 'assistant' && blocks.every((b) => b.type !== 'text' || noResponse(b.text)) && blocks.some((b) => b.type === 'text')) /* "No response requested.": no answer (shared/delivery.ts) */ || (role === 'user' && m.isSynthetic === true) || (role === 'user' && blocks.every((b) => b.type !== 'text' || META.test(b.text)));
   return { uuid: m.uuid, role, blocks, meta };
 }
 

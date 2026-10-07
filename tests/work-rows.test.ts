@@ -1,7 +1,7 @@
 // Developer mode off (T-247; the user, 2026-09-30: "When it's disabled, then the users will not see bash and all these tool calls ... They
 // would just see ... working ... unless they click it ... it's for non-technical users"): what was said and written stays, the pictures a tool
 // made stay, and each run of tool calls, thoughts and system events between them is one unit, a Working row.
-const { threadUnits } = await import('../shared/thread.ts');
+const { threadUnits, foldAgents } = await import('../shared/thread.ts');
 import type { Block, ChatMessage } from '../shared/types.ts';
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${!ok && got ? `: ${got}` : ''}`); if (!ok) failed++; };
 const msg = (uuid: string, role: ChatMessage['role'], blocks: Block[], meta = false): ChatMessage => ({ uuid, role, blocks, meta });
@@ -16,7 +16,7 @@ const thread: ChatMessage[] = [
   msg('7', 'user', [{ type: 'text', text: 'Again' }]),
   msg('8', 'assistant', [tool('t4', 'Bash', { command: 'pwd' }), { type: 'text', text: 'Here.' }]),
 ];
-const show = (u: ReturnType<typeof threadUnits>[number]): string => (u.kind === 'msg' ? `msg:${u.m.blocks.map((b) => (b.type === 'text' ? b.text : b.type)).join('+')}` : u.kind === 'media' ? `media:${u.src}` : `work:${u.parts.map((p) => (p.b ? (p.b.type === 'tool_use' ? p.b.name : p.b.type) : 'event')).join('+')}`);
+const show = (u: ReturnType<typeof threadUnits>[number]): string => (u.kind === 'msg' ? `msg:${u.m.blocks.map((b) => (b.type === 'text' ? b.text : b.type)).join('+')}` : u.kind === 'media' ? `media:${u.src}` : u.kind === 'agents' ? 'agents' : `work:${u.parts.map((p) => (p.b ? (p.b.type === 'tool_use' ? p.b.name : p.b.type) : 'event')).join('+')}`);
 const off = threadUnits(thread, false).map(show).join(' | ');
 check('what was said and written stays; each run of tool calls and thoughts is one unit; a picture a tool made stays, after its run',
   off === 'msg:Make the video | msg:On it. | work:Bash+thinking+Read+imagine | media:/tmp/a.png | msg:Done. | msg:Again | work:Bash | msg:Here.', off);
@@ -24,4 +24,11 @@ const withEvents = threadUnits(thread, true).map(show).join(' | ');
 check('with system events shown (the eye), they join the run they fall in', withEvents.startsWith('msg:Make the video | msg:On it. | work:Bash+event+thinking+Read+imagine | media:'), withEvents);
 const keys = threadUnits(thread, false).map((u) => u.key);
 check('every unit has its own key, and a run keeps its key as it grows', new Set(keys).size === keys.length && threadUnits(thread.slice(0, 4), false).find((u) => u.kind === 'work')?.key === threadUnits(thread, false).find((u) => u.kind === 'work')?.key, keys.join(','));
+// FB-14 (as Jauvex Pro; a Pro user, 2026-10-05: a lead's reply to them was buried under its messages with other agents): agent traffic folds into one line
+{ const m = (uuid: string, role: 'user' | 'assistant', text: string) => ({ uuid, role, blocks: [{ type: 'text' as const, text }], meta: false });
+  const msgs = [m('1', 'user', 'Diego asks'), m('2', 'user', '(from agent "Coding Agent") done'), m('3', 'assistant', 'Thanks, noted.'), m('4', 'user', '(from agent "Designer Agent") logo ready'), m('5', 'assistant', 'Diego, both are done.')];
+  const toAgent = new Set(['3']);
+  const who = (u: ReturnType<typeof threadUnits>[number]) => { if (u.kind !== 'msg') return null; const tx = u.m.blocks.map((b) => (b.type === 'text' ? b.text : '')).join(''); const f = /^\(from agent "([^"]+)"/.exec(tx)?.[1]; return f ?? (toAgent.has(u.m.uuid.split(':')[0]!) ? 'Coding Agent' : null); };
+  const f = foldAgents(threadUnits(msgs as never, false), who);
+  check('agent-to-agent traffic folds into one line naming the agents; the messages to and from the person stay', f.length === 3 && f[0]!.kind === 'msg' && f[1]!.kind === 'agents' && (f[1] as { names: string[] }).names.join() === 'Coding Agent,Designer Agent' && (f[1] as { units: unknown[] }).units.length === 3 && f[2]!.kind === 'msg', JSON.stringify(f.map((u) => u.kind))); }
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

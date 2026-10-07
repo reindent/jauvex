@@ -42,3 +42,6 @@ export function claudeCompactEnv(pct: number, known?: ContextUsage | null): Reco
 
 /** The request did not fit the window: Claude's result (`terminal_reason`, or its text), Codex's error (`contextWindowExceeded`). */
 export const tooLong = (reason?: string | null, text?: string | null): boolean => reason === 'prompt_too_long' || reason === 'blocking_limit' || /prompt is too long|context window|contextWindowExceeded/i.test(text ?? '');
+/** A chat idle this long, past ten points under the setting (80 % at the default 90), compacts then (Diego, 2026-10-07, as Jauvex Pro): not mid-conversation. */
+export const IDLE_COMPACT_MS = 180_000;
+export const idleCompactPct = (pct: number): number => Math.max(40, pct - 10);

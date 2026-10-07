@@ -1,4 +1,4 @@
-// Updates (T-165): jauvex.reindent.com says which version of Jauvex is the latest, and the copy the install command made, when it runs
+// Updates (T-165): jauvex.ai says which version of Jauvex is the latest, and the copy the install command made, when it runs
 // an older one, asks the user in words, through its own agent, whether to update. Pure: tests/update.test.ts.
 import { t } from './i18n/index.js';
 export const VERSION_RE = /^\d+\.\d+\.\d+$/;
@@ -16,8 +16,8 @@ export function newer(a: string | null | undefined, b: string | null | undefined
  *  (it updates by running it again). */
 export type UpdateStatus = { current: string; latest?: string; available: boolean; installed: boolean; reinstall?: string; notes?: string /* what the newer version brings: its changelog's sections since this one (T-218), when the site sent them */ };
 
-export const INSTALL_UNIX = 'curl -fsSL https://jauvex.reindent.com/install | sh';
-export const INSTALL_WINDOWS = 'irm https://jauvex.reindent.com/install/windows | iex';
+export const INSTALL_UNIX = 'curl -fsSL https://jauvex.ai/install | sh';
+export const INSTALL_WINDOWS = 'irm https://jauvex.ai/install/windows | iex';
 /** The install command that made this copy, when the Linux or Windows installer made it (it updates by running that command again): on Linux
  *  the source in the data folder's app/, on Windows in %LOCALAPPDATA%\Jauvex\app\jauvex. Undefined on a Mac (Jauvex.app updates itself) and
  *  for a clone (git). */
@@ -47,7 +47,7 @@ export const checkLine = (s: CheckedStatus | null | undefined, current: string):
 /** What the app tells its own agent when a new version is out: the agent asks the user in words, never a dialog. */
 export const updateNote = (current: string, latest: string, notes = ''): string =>
   `(from the app) Jauvex ${latest} is out; this copy runs ${current}. ` +
-  (notes.trim() ? 'First tell the user, in one or two short lines, what it brings: the main change first, in plain words (its changelog is below; the whole list is at jauvex.reindent.com/changelog). Then ask' : 'Ask') +
+  (notes.trim() ? 'First tell the user, in one or two short lines, what it brings: the main change first, in plain words (its changelog is below; the whole list is at jauvex.ai/changelog). Then ask' : 'Ask') +
   ' the user, in one short line, whether to update now: the app ' +
   'closes, rebuilds itself on this Mac with the install command (a few minutes) and opens again, and any agent still working stops. On a ' +
   'yes, run the app\'s `update` order as the last thing you do (it refuses while other agents work; `--now` updates anyway, only on the ' +
@@ -68,7 +68,7 @@ export function justUpdated(s: UpdateStatus | null | undefined, ui: { lastVersio
  *  is about"): say it is updated, what the new version brings, from its changelog, then check the app and report. */
 export const updatedNote = (from: string | null, to: string, notes = ''): string =>
   `(from the app) The app has just been updated${from ? ` from ${from}` : ''} to Jauvex ${to} and opened again. Tell the user in one short ` +
-  `line that it is updated to ${to}${notes.trim() ? ', then in two or three short lines what it brings, the main change first, in plain words (its changelog is below; the whole list is at jauvex.reindent.com/changelog)' : ''}. ` +
+  `line that it is updated to ${to}${notes.trim() ? ', then in two or three short lines what it brings, the main change first, in plain words (its changelog is below; the whole list is at jauvex.ai/changelog)' : ''}. ` +
   `Then check that it works: run the app's \`list\` (its folders and agents are all there) and \`update --check\` (it names ${to} as the version ` +
   'running), and say in one line what you found. If something is wrong, say what, and offer to help: the update\'s log is ' +
   '~/.jauvex/personal/update/update.log, and the install command installs this version again.' +

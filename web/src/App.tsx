@@ -8,7 +8,9 @@ import { keep } from '../../shared/agent-log';
 import { ProviderIcon } from './ProviderIcon';
 import { UsageBattery } from './UsageBattery';
 import { ContextMeter, type LastCompact } from './ContextMeter';
-import { AUTO_COMPACT_CHOICES, AUTO_COMPACT_DEFAULT, autoCompactPct, shouldCompact, tokens, type ContextUsage } from '../../shared/context';
+import { AUTO_COMPACT_CHOICES, AUTO_COMPACT_DEFAULT, IDLE_COMPACT_MS, autoCompactPct, idleCompactPct, shouldCompact, tokens, type ContextUsage } from '../../shared/context';
+import { confirmStop } from '../../shared/stop';
+const fromAgent = (text: string): boolean => /^\(from agent "/.test(text.trim()); // another agent's message, as it is handed to a chat
 import { Accounts } from './Accounts';
 import { Welcome } from './Welcome';
 import typesafeMark from '../../assets/typesafe.png'; // TypeSafe's mark, on Jev agent rows: whose agent it is, like the provider marks
@@ -20,7 +22,7 @@ import { FEEDBACK_TYPES, type FeedbackType } from '../../shared/feedback';
 import { checkLine, justUpdated, offersUpdate, shouldAsk, updatedNote, updateNote, type CheckedStatus, type UpdateStatus } from '../../shared/update';
 import { changelogSince, recentNotes } from '../../shared/changelog';
 import { answerIs, stopSaysMore } from '../../shared/orders';
-import { ACK_MODEL_KEY, DICTATED_TAG, JAUVEX_HELLO, FEEDBACK_HELLO, feedbackOnError, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
+import { ACK_MODEL_KEY, DICTATED_TAG, JAUVEX_HELLO, settledVoice, PAUSE_MAX_MS, feedbackHello, feedbackOnError, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
 import { ago, api, pickFolder, size } from './api';
 import { VoiceEngine, clean, type VoicePhase } from './voice';
 import { Orb } from './Orb';
@@ -30,8 +32,8 @@ import { WorkflowView, type RunControl, type StepAgents, type EmbeddedMail } fro
 import { Runner } from './runner';
 import { parseWorkflow, parseRun, formatRun, stamp, parseTrigger, isDue, windowDue, firesAfter, stepTitle, workflowBase, SCHEDULE_TICK_MS, DEFAULT_TRIES, missedSlot, missedBy, missedNote, MISSED_DEFAULT, MISSED_OPTIONS, type MissedPolicy, type Run, type WorkflowInfo, realSteps } from '../../shared/workflow';
 import { doneFileOf, type BoardInfo } from '../../shared/board';
-import { closesWaitingStep, ownTurn } from '../../shared/delivery';
-import { threadUnits, toolImage, type WorkPart } from '../../shared/thread';
+import { closesWaitingStep, ownTurn, replyBack, waitsFor, noResponse } from '../../shared/delivery';
+import { foldAgents, type ThreadUnit, threadUnits, toolImage, type WorkPart } from '../../shared/thread';
 import { applyTheme, themeOf, type Theme } from './theme';
 import { badgeText, counted, seen, countOf, unreadFrom, type Unread } from '../../shared/unread';
 import { inSlots, moveFolder } from '../../shared/folder-order';
@@ -41,7 +43,7 @@ const tr = t; // t() inside code where a local named t (a transcript, a timer) h
 
 
 // One mounted chat, as the app's agent router sees it: it can be handed a message (steered into a running turn, or sent as a new one).
-type ChatBridge = { deliver: (text: string, replyTo?: Sel) => Promise<void> }; // replyTo: the reply to this message goes back to that agent by itself
+type ChatBridge = { deliver: (text: string, replyTo?: Sel) => Promise<void>; note?: (text: string) => void /* a line for the person, no turn (FB-09) */ }; // replyTo: the reply to this message goes back to that agent by itself
 type SideVoice = { muteIn?: number | null; phase: VoicePhase; level: React.RefObject<number>; micMuted: boolean; speakerOff: boolean; hush: () => void; toggleMic: () => void; toggleSpeaker: () => void; end: () => void };
 type QueueItem = { text: string; images: Attachment[]; spoken?: boolean; shown?: boolean; replyTo?: Sel /* an agent's or a workflow step's: its answer goes there (T-228) */ }; // shown: already in the thread (a stop's words, a message handed to a turn that never read it): sent without a second bubble // one queued message: its text, the images pasted with it, and whether it was dictated (it goes out tagged)
 type Sel = { projectId: string; sessionId: string | null; key: string; kind?: 'jev' | 'board' | 'workflow' | 'run'; file?: string /* a workflow's or a board's file, relative to the folder */; step?: number /* kind run: the step whose reply this is */; voice?: boolean; name?: string; kickoff?: string; purpose?: string; detailsId?: string; adopt?: string; provider?: Provider /* a new agent's, named by an order: the chat takes it over any fallback (T-229) */ }; // adopt: a turn already running in the main process (the window was reloaded); its chat id // detailsId: the model is still reading the order; name and kickoff may still change // kickoff: the first message of an agent opened by an order to the app, sent by itself // name: given by a spoken command ("... named X"), applied once the session exists // voice: opened by a spoken command, so voice mode carries on there // kind jev: sessionId is a Jev agent's id, and the view is its pad, not a chat
@@ -224,6 +226,14 @@ export default function App() {
           if (c.language !== undefined) { if (c.language !== 'auto' && !(c.language in LANGUAGES)) return { ok: false, error: `--language takes auto (the system's) or ${Object.keys(LANGUAGES).join(', ')}` }; void chooseLanguage(langSettingOf(c.language)); return { ok: true, language: c.language }; }
           if (!Object.keys(ui).length) { const cur = (await api.state()).ui; return { ok: true, workflowMissed: cur?.workflowMissed ?? MISSED_DEFAULT }; }
           await api.setUi(ui); return { ok: true, ...ui }; }
+        case 'wait': { // FB-09: a lead woken when the agents it waits for have finished a turn
+          const one = (n: string) => { const h = findAgents(roster(), n.trim()); return h.length === 1 && h[0]!.sessionId ? h[0]! : null; };
+          const lead = c.agent ? one(c.agent) : null; if (!lead) return { ok: false, error: 'wait --agent "<your name, as in list>" --for "<agent>, <agent>"' };
+          if (c.off) { const n = waits.current.length; waits.current = waits.current.filter((w) => w.lead.sessionId !== lead.sessionId); saveWaits(); return { ok: true, stopped: n - waits.current.length }; }
+          const names = (c.for ?? '').split(',').map((x) => x.trim()).filter(Boolean); if (!names.length) return { ok: false, error: '--for "<agent>, <agent>": whom you wait for' };
+          const left = new Map<string, string>(); for (const n of names) { const a = one(n); if (!a) return { ok: false, error: `no single agent named "${n}"` }; if (a.sessionId === lead.sessionId) return { ok: false, error: 'you cannot wait for yourself' }; left.set(a.sessionId!, a.name); }
+          startWait({ projectId: lead.projectId, sessionId: lead.sessionId!, name: lead.name }, left, 'the wait order');
+          return { ok: true, waiting: [...left.values()], note: 'End your turn now: the app wakes you with their last answers once every one of them has finished a turn.' }; }
         case 'feedback': { // a person's report to Reindent, gathered by the Jauvex agent (Diego, 2026-10-04); preview: what would be attached, for them to see first
           if (c.preview) { const p = await window.desktop.feedbackPreview({ screenshot: !!c.screenshot, log: !!c.log }); return { ok: true, ...(p.screenshotFile ? { screenshot: p.screenshotFile } : {}), ...(c.log ? { log: p.log ?? '' } : {}) }; }
           const kind = (FEEDBACK_TYPES as readonly string[]).includes(c.kind ?? '') ? (c.kind as FeedbackType) : null; if (!kind) return { ok: false, error: `--type is one of ${FEEDBACK_TYPES.join(', ')}` };
@@ -367,16 +377,33 @@ export default function App() {
    *  session, which took the turn: the one on screen said "active moments ago, possibly in another window" and never showed it. */
   const jauvexOpen = (): Sel | undefined => (jauvex ? openedRef.current.find((x) => x.projectId === jauvex.id && !x.kind && (x.key === `${jauvex.id}:jauvex` || (!!jauvexSession && x.sessionId === jauvexSession))) : undefined);
   // The feedback icon (Diego, 2026-10-04): the Jauvex agent takes the report, by voice or text, and sends it with the feedback order
-  const openFeedback = (error?: string) => { if (!jauvex) return; const hello = error ? feedbackOnError(error) : FEEDBACK_HELLO;
-    open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex', ...(jauvexSession ? {} : { kickoff: hello }) });
-    if (jauvexSession) void reachJauvex(hello); };
+  const feedbackAt = useRef(0); // a second click while one is starting or open only brings it forward (Diego, 2026-10-05)
+  const openFeedback = (error?: string) => { if (!jauvex) return; const again = !error && Date.now() - feedbackAt.current < 10 * 60_000; if (!error) feedbackAt.current = Date.now();
+    const hello = error ? feedbackOnError(error) : feedbackHello(t('feedback.opening'));
+    open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex', ...(jauvexSession || again ? {} : { kickoff: hello }) });
+    if (jauvexSession && !again) void reachJauvex(hello); }; // already asked: just its chat, brought forward
+  // FB-09 (as Jauvex Pro; a Pro user, 2026-10-05: a lead says it will wait for other agents, its turn ends, and nothing wakes it): `wait --agent
+  // <lead> --for "A, B"`, or a lead's reply that says it waits for working agents. Each turn the agents waited for finish is noted with its last
+  // words; when all have, the lead gets one message with them. The waits are kept in this window's storage, so a reload keeps them.
+  const waits = useRef<{ lead: { projectId: string; sessionId: string; name: string }; left: Map<string, string>; got: { name: string; text: string }[] }[]>([]);
+  const saveWaits = () => { try { localStorage.setItem('cvc.waits', JSON.stringify(waits.current.map((w) => ({ lead: w.lead, left: [...w.left], got: w.got })))); } catch { /* kept for this window only */ } };
+  useEffect(() => { try { const l = JSON.parse(localStorage.getItem('cvc.waits') ?? '[]') as { lead: { projectId: string; sessionId: string; name: string }; left: [string, string][]; got: { name: string; text: string }[] }[]; waits.current = l.map((w) => ({ ...w, left: new Map(w.left) })); } catch { /* none kept */ } }, []);
+  /** Starts a lead's wait (the wait order, or what its own reply says): its chat says for whom, the window keeps it. */
+  const startWait = (lead: { projectId: string; sessionId: string; name: string }, left: Map<string, string>, why: string) => {
+    waits.current = [...waits.current.filter((w) => w.lead.sessionId !== lead.sessionId), { lead, left, got: [] }]; saveWaits();
+    const o = openedRef.current.find((x) => x.sessionId === lead.sessionId); const b = o ? bridges.current.get(o.key) : undefined;
+    b?.note?.(t('chat.waitingFor', { names: [...left.values()].join(', ') })); window.desktop.debugPush('note', `wait: ${lead.name} waits for ${[...left.values()].join(', ')} (${why})`); };
+  const turnFinished = (sid: string | null | undefined, text: string) => { if (!sid) return; for (const w of [...waits.current]) { const name = w.left.get(sid); if (name === undefined) continue;
+      w.left.delete(sid); w.got.push({ name, text: replyBack(text).replace(/\s+/g, ' ').slice(0, 600) });
+      saveWaits(); if (!w.left.size) { waits.current = waits.current.filter((x) => x !== w); saveWaits(); window.desktop.debugPush('note', `wait: ${w.lead.name} woken, ${w.got.map((g) => g.name).join(', ')} finished`);
+        void deliverTo(w.lead.projectId, w.lead.sessionId, `(from the app) The agents you were waiting for have finished: ${w.got.map((g) => `${g.name}${g.text ? ` (its last answer: "${g.text}")` : ''}`).join('; ')}. Go on with your plan.`); } } };
   const reachJauvex = async (text: string, replyTo?: Sel): Promise<boolean> => {
     if (!jauvex) return false; const at = jauvexOpen(); const key = at?.key ?? `${jauvex.id}:jauvex`;
     if (!at) setOpened((all) => (all.some((x) => x.key === key) ? all : [...all, { projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' }]));
     for (let i = 0; i < 60 && !bridges.current.get(key); i++) await new Promise((r) => setTimeout(r, 150));
     const b = bridges.current.get(key); if (!b) return false; await b.deliver(text, replyTo); return true;
   };
-  // A new version (T-165): the main process learns it from jauvex.reindent.com and says so here; the footer shows it, and the Jauvex agent
+  // A new version (T-165): the main process learns it from jauvex.ai and says so here; the footer shows it, and the Jauvex agent
   // is told once per version and asks the user in words (never a dialog); their yes runs the `update` order.
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   useEffect(() => { void window.desktop.appUpdateStatus().then(setUpdate); return window.desktop.onAppUpdate(setUpdate); }, []);
@@ -703,7 +730,7 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
               onSession={(sid, prov) => { const named = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: sid } : x); setSel((cur) => (cur ? named(cur) : cur)); setOpened((all) => all.map(named)); setHistory((h) => h.map(named)); if (proj.builtin === 'jauvex') { setJauvexSession(sid); setJauvexProvider(prov ?? null); void api.setUi({ jauvexSession: sid, ...(prov ? { jauvexProvider: prov } : {}) }); } void refresh(); }}
               hybrid={proj.builtin === 'jauvex' ? { provider: jauvexProvider ?? defaultProvider ?? 'claude', mode: jauvexMove, onProvider: (p) => { setJauvexProvider(p); setJauvexSession(null); void api.setUi({ jauvexProvider: p, jauvexSession: null }); const unbind = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: null } : x); setOpened((all) => all.map(unbind)); setSel((cur) => (cur ? unbind(cur) : cur)); setHistory((h) => h.map(unbind)); },
                 onLost: () => { setJauvexSession(null); void api.setUi({ jauvexSession: null }); const unbind = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: null } : x); setOpened((all) => all.map(unbind)); setSel((cur) => (cur ? unbind(cur) : cur)); setHistory((h) => h.map(unbind)); } } : undefined}
-              onTurnEnd={() => void refresh()} onReply={(text, replyTo, takenBack) => { const sid = opened.find((x) => x.key === o.key)?.sessionId ?? o.sessionId; setUnread((u) => counted(u, sid, !!sid && selNow.current?.sessionId === sid)); /* a new reply on its agent, unless it is on screen (T-226) */ void routeAgentBlocks(o, text); if (replyTo?.kind === 'run') void onRunReply(replyTo, text); else { if (replyTo) void returnReply(o, replyTo, text); if (takenBack) void routeToWaitingRun(o, text, takenBack.queued); } }} onBridge={(b) => { if (b) bridges.current.set(o.key, b); else bridges.current.delete(o.key); }} onNew={() => open({ projectId: proj.id, sessionId: null, key: `${proj.id}:new:${Date.now()}` })} /></div>; })}
+              onTurnEnd={() => void refresh()} onReply={(text, replyTo, takenBack) => { const sid = opened.find((x) => x.key === o.key)?.sessionId ?? o.sessionId; turnFinished(sid, text); /* FB-09: a lead waiting for this agent */ if (sid && !waits.current.some((w) => w.lead.sessionId === sid)) { const others = roster().filter((a) => a.busy && a.sessionId && a.sessionId !== sid); const named = waitsFor(text, others.map((a) => a.name)); if (named.length) { const me2 = roster().find((a) => a.sessionId === sid); startWait({ projectId: o.projectId, sessionId: sid, name: me2?.name ?? o.name ?? 'agent' }, new Map(others.filter((a) => named.includes(a.name)).map((a) => [a.sessionId, a.name])), 'its reply says it waits'); } } /* FB-09: a reply that says it waits for working agents waits by itself */ setUnread((u) => counted(u, sid, !!sid && selNow.current?.sessionId === sid)); /* a new reply on its agent, unless it is on screen (T-226) */ void routeAgentBlocks(o, text); if (replyTo?.kind === 'run') void onRunReply(replyTo, text); else { if (replyTo) void returnReply(o, replyTo, text); if (takenBack) void routeToWaitingRun(o, text, takenBack.queued); } }} onBridge={(b) => { if (b) bridges.current.set(o.key, b); else bridges.current.delete(o.key); }} onNew={() => open({ projectId: proj.id, sessionId: null, key: `${proj.id}:new:${Date.now()}` })} /></div>; })}
         {sel && project ? null
           : <div className="empty"><Mark /><h2>{t('app.empty.title')}</h2><p>{t('app.empty.body')}</p></div>}
       </main>
@@ -801,7 +828,7 @@ function ProjectGroup({ onMoveHere, unread, project, infos, sel, working, listen
         <button className="icon-btn sm" title={t('app.sidebar.addSessions')} onClick={onAdd}><Plus size={16} /></button>
         <button className="icon-btn sm" title={t('app.sidebar.filter')} onClick={() => setFilter((f) => (f === null ? '' : null))}><Search size={15} /></button>
         <button className="icon-btn sm" title={t('app.sidebar.folderOptions')} onClick={() => setMenu((v) => !v)}><SlidersHorizontal size={15} /></button>
-        {menu && <div className="menu" onMouseLeave={() => setMenu(false)}><div className="menu-path">{project.path}</div><button onClick={() => { setMenu(false); onNewWorkflow(); }}><Plus size={14} />{t('app.sidebar.newWorkflow')}</button><button onClick={() => { setMenu(false); onNewBoard(); }}><Plus size={14} />{t('app.sidebar.newBoard')}</button><button onClick={() => { setMenu(false); onRemove(); }}><Trash2 size={14} />{t('app.sidebar.removeFolder')}</button></div>}
+        {menu && <div className="menu" onMouseLeave={() => setMenu(false)}><div className="menu-path">{project.path}</div><button onClick={() => { setMenu(false); void window.desktop.openPath(project.path); }}><FolderOpen size={14} />{t('files.openHere')}</button>{/* the folder in Finder, Files or Explorer (as Jauvex Pro) */}<button onClick={() => { setMenu(false); onNewWorkflow(); }}><Plus size={14} />{t('app.sidebar.newWorkflow')}</button><button onClick={() => { setMenu(false); onNewBoard(); }}><Plus size={14} />{t('app.sidebar.newBoard')}</button><button onClick={() => { setMenu(false); onRemove(); }}><Trash2 size={14} />{t('app.sidebar.removeFolder')}</button></div>}
       </div>
       {!folded && <>
       {filter !== null && <input className="group-filter" autoFocus placeholder={t('app.sidebar.filterSessions')} value={filter} onChange={(e) => setFilter(e.target.value)} />}
@@ -927,8 +954,8 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   // How full this session's context is (T-74): the numbers kept for it, then every request's. It is compacted by the meter's button or a typed
   // /compact, between turns once it passes the auto-compact setting, and at once when a message did not fit (that message then goes again).
   const [ctx, setCtx] = useState<ContextUsage | null>(() => (sessionId ? project.context?.[sessionId] ?? null : null)); const ctxRef = useRef(ctx);
-  const [compacting, setCompacting] = useState(false); const [lastCompact, setLastCompact] = useState<LastCompact | null>(null);
-  const compactTurn = useRef<'manual' | 'auto' | 'too-long' | null>(null); // the turn running now only compacts: its end is not an answer
+  const [compacting, setCompacting] = useState(false); const compactingNow = useRef(false); const markCompacting = (on: boolean) => { compactingNow.current = on; setCompacting(on); }; /* a compaction under way, whoever started it (the provider's own included): nothing is handed to it */ const [lastCompact, setLastCompact] = useState<LastCompact | null>(null);
+  const compactTurn = useRef<'manual' | 'auto' | 'idle' | 'too-long' | null>(null); // the turn running now only compacts: its end is not an answer
   const [autoPct, setAutoPct] = useState(AUTO_COMPACT_DEFAULT); const autoPctRef = useRef(autoPct); autoPctRef.current = autoPct;
   const lastVoiced = useRef(false); // a compaction goes out with the last turn's settings, so the provider's cached prompt still applies
   // Said or typed while the main thread is busy: it keeps working, and this goes in as the next message when the turn ends.
@@ -945,7 +972,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   const onReplyRef = useRef(onReply); onReplyRef.current = onReply;
   // A message from another agent (or from the app) lands here: into the running turn if there is one, as a new turn otherwise.
   const onBridgeRef = useRef(onBridge); onBridgeRef.current = onBridge; const pendingReplyTo = useRef<Sel | undefined>(undefined); const takenBack = useRef(!!adopt); // the turn under way was taken back after a reload: this window does not know whom it answers (T-253)
-  useEffect(() => { onBridgeRef.current?.({ deliver: async (text, replyTo) => { if (v.current.running && replyTo && ownTurn(replyTo, pendingReplyTo.current)) { enqueueForMain(text, undefined, false, replyTo); return; } /* it wants its own answer: a turn of its own (T-228) */ const was = pendingReplyTo.current; if (replyTo) pendingReplyTo.current = replyTo; if (v.current.running) { const ok = !compactTurn.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${text}` : text).catch(() => false); if (ok) { turnSteers.current.push({ text, images: [], shown: true }); setMessages((m) => [...m, { uuid: `local-${Date.now()}`, role: 'user', blocks: [{ type: 'text', text }], meta: false, steered: true }]); record('user', text, { steered: true }); /* the Jauvex agent's own copy keeps it (an app's word handed to a running turn) */ toBottom(); return; } pendingReplyTo.current = was; enqueueForMain(text, undefined, false, replyTo); return; } await sendRef.current(text, false); } }); return () => onBridgeRef.current?.(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onBridgeRef.current?.({ note: (text) => { const m: ChatMessage = { uuid: `local-note-${Date.now()}`, role: 'user', blocks: [{ type: 'text', text: `(from the app) ${text}` }], meta: false }; setMessages((ms) => [...ms, m]); void keepNotes([m]); }, deliver: async (text, replyTo) => { if (v.current.running && replyTo && ownTurn(replyTo, pendingReplyTo.current)) { enqueueForMain(text, undefined, false, replyTo); return; } /* it wants its own answer: a turn of its own (T-228) */ const was = pendingReplyTo.current; if (replyTo) pendingReplyTo.current = replyTo; if (v.current.running) { const ok = !compactTurn.current && !compactingNow.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${text}` : text).catch(() => false); if (ok) { turnSteers.current.push({ text, images: [], shown: true }); setMessages((m) => [...m, { uuid: `local-${Date.now()}`, role: 'user', blocks: [{ type: 'text', text }], meta: false, steered: true }]); record('user', text, { steered: true }); /* the Jauvex agent's own copy keeps it (an app's word handed to a running turn) */ toBottom(); return; } pendingReplyTo.current = was; enqueueForMain(text, undefined, false, replyTo); return; } await sendRef.current(text, false); } }); return () => onBridgeRef.current?.(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [turns, setTurns] = useState(0); // a finished turn has used some of the plan: the battery looks again
   const mountedAt = useRef(Date.now()); const ownWrite = useRef(0); // the session file's writes that are this chat's own (its turns) are not "another window"
   const emptyInterims = useRef(0); // live-word passes in a row that found no words in the sound being heard
@@ -1005,7 +1032,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   const micLevel = useRef(0);
   const v = useRef({ engine: null as VoiceEngine | null, gen: 0, starts: 0 /* speech segments begun, so the end of one never clears hearing once the next has started */, asked: '', answer: '', mainStarted: false, speakTurn: false, chain: Promise.resolve(), spec: null as { id: number; p: Promise<{ text: string; ms: number; dropped?: string }>; ackAudio: Promise<Spoken | null>; busy: boolean; triage: Promise<BusyTriage | null> | null } | null, running: !!adopt, stopped: false, speakerOff: false, hearing: false, wording: false, lastHeard: 0, pendingSummary: null as { words: Promise<string> } | null, playing: null as { id: number; label: string; text: string; at: number; ms: number } | null, playId: 0, bridges: new Map<string, ArrayBuffer | null>(), cfg: VOICE_DEFAULTS });
   v.current.cfg = cfg; speaker.current = { provider, model: cfg[ACK_MODEL_KEY[provider]] ?? '' };
-  useEffect(() => { void api.state().then((st) => { const saved = { ...VOICE_DEFAULTS, ...(st.ui?.voice ?? {}) }; if (/\bClaudex\b/.test(saved.vocabulary)) saved.vocabulary = saved.vocabulary.replace(/\bClaudex\b/g, 'Jauvex'); /* the old name in a saved vocabulary would keep biasing Whisper */ setCfg(saved.voice === 'Samantha' ? { ...saved, voice: '' } : saved); }); }, []);
+  useEffect(() => { void api.state().then((st) => { const saved = { ...VOICE_DEFAULTS, ...(st.ui?.voice ?? {}) }; if (/\bClaudex\b/.test(saved.vocabulary)) saved.vocabulary = saved.vocabulary.replace(/\bClaudex\b/g, 'Jauvex'); /* the old name in a saved vocabulary would keep biasing Whisper */ const settled = settledVoice(saved.voice === 'Samantha' ? { ...saved, voice: '' } : saved); setCfg(settled.voice); if (settled.moved) void api.setUi({ voice: settled.voice }); /* the old 0.8 s default moves to 2.0 s once */ }); }, []);
   const stt = (c: VoiceSettings) => ({ model: c.sttModel, vocabulary: [c.vocabulary, project.name].filter(Boolean).join(', ') }); // the folder's name is a word it should know too
   const applyFromElsewhere = useRef<(next: VoiceSettings) => void>(() => {});
   useEffect(() => { const h = (e: Event) => { const d = (e as CustomEvent<{ cfg: VoiceSettings; from: string }>).detail; if (d && d.from !== chatId.current) applyFromElsewhere.current(d.cfg); }; window.addEventListener('cvc-voice-settings', h); return () => window.removeEventListener('cvc-voice-settings', h); }, []);
@@ -1049,18 +1076,18 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
     else if (ev.type === 'done') { setStatusLine(''); if (compactTurn.current) { endCompactRef.current(ev); return; } setTurns((n) => n + 1); ownWrite.current = Date.now();
       // Handed to the turn but never read (stopped, or ended, before the model took it up): it goes again, first, before anything queued after it.
       // A stopped (or replaced) turn sends again everything handed to it: Claude Code drops what it had not taken up yet, and twice is better than never.
-      { const lost = v.current.stopped ? turnSteers.current : ev.unsent ? turnSteers.current.slice(-ev.unsent) : []; if (lost.length) { queue.current.unshift(...lost); setQueued([...queue.current]); persistQueue(); window.desktop.debugPush('queue', `${lost.length} message(s) handed to the turn were never read (the turn ${v.current.stopped ? 'was stopped' : 'ended'} first): sent again: ${lost.map(qLabel).join(' | ')}`); } } turnSteers.current = [];
+      { const lost = v.current.stopped ? turnSteers.current.filter((x) => fromAgent(x.text)) /* a stop is the person's: another agent's message handed to the stopped turn still gets its answer (2026-10-07, as Jauvex Pro) */ : ev.unsent ? turnSteers.current.slice(-ev.unsent) : []; if (lost.length) { queue.current.unshift(...lost); setQueued([...queue.current]); persistQueue(); window.desktop.debugPush('queue', `${lost.length} message(s) handed to the turn were never read (the turn ${v.current.stopped ? 'was stopped' : 'ended'} first): sent again: ${lost.map(qLabel).join(' | ')}`); } } turnSteers.current = [];
       // A name given when the agent was ordered ("... named X") is written once its first turn is over: by then the provider has the session on disk.
       if (sid.current && (pendingName.current || bornFromOrder.current)) { const name = pendingName.current || `${PROVIDER_LABEL[provider]} agent`; pendingName.current = ''; bornFromOrder.current = false; void api.rename(project.id, sid.current, name).then(() => onNamedRef.current?.()).catch(() => {}); } /* an agent born from an order never keeps its first message as its title */
       const reply = turnText.current; turnText.current = ''; if (pendingMove.current) { const to = pendingMove.current; pendingMove.current = null; handover.current = { to, note: reply.trim() }; void api.jauvexHandover(reply.trim(), provider, to).catch(() => {}); setTimeout(() => doSwitch(to), 50); } /* the note is also a file the next agent can read: data/jauvex-handover.md */ const replyTo = pendingReplyTo.current; pendingReplyTo.current = undefined; const back = takenBack.current ? { queued: queue.current.flatMap((q) => (q.replyTo?.kind === 'run' ? [q.replyTo.key] : [])) } : undefined; takenBack.current = false; v.current.running = false; /* over before the reply is routed: what it triggers starts its own turn instead of steering a turn that is gone */
       // A Claude turn that ends at once with no answer was swallowed: when an agent left a background job running (a shell command in the
       // background, a monitor), the next turn first gets the job's "stopped" notice and the CLI answers only that, in under a second. The
       // message was never read. It goes again, once, with its reply address (an agent's message still gets its answer back).
-      const ls = lastSent.current; const swallowed = ev.ok && provider === 'claude' && !reply.trim() && (ev.durationMs ?? 1e9) < 2500 && !!ls && !ls.resent && Date.now() - ls.at < 60_000 && !v.current.stopped;
-      if (swallowed && ls) { ls.resent = true; pendingReplyTo.current = replyTo; window.desktop.debugPush('note', `a turn ended in ${ev.durationMs} ms with no answer (the provider answered a stopped background job, not the message): sending the message again`); setRunning(false); setTimeout(() => void sendRef.current(ls.text, false, undefined, true, ls.images, true, !!ls.dictated), 150); return; }
+      const ls = lastSent.current; const blank = noResponse(reply); const swallowed = ev.ok && provider === 'claude' && (!reply.trim() || blank) && ((ev.durationMs ?? 1e9) < 2500 || blank) && !!ls && !ls.resent && Date.now() - ls.at < 60_000 && !v.current.stopped;
+      if (swallowed && ls) { ls.resent = true; pendingReplyTo.current = replyTo; window.desktop.debugPush('note', blank ? `a turn ended with only "No response requested." (${ev.durationMs} ms): no answer, so the message goes again` : `a turn ended in ${ev.durationMs} ms with no answer (the provider answered a stopped background job, not the message): sending the message again`); setRunning(false); setTimeout(() => void sendRef.current(ls.text, false, undefined, true, ls.images, true, !!ls.dictated), 150); return; }
       // A message that did not fit the context: compacted at once, then sent again (once). Past the auto-compact setting: compacted before the next message.
       const recover = !ev.ok && !!ev.tooLong && !v.current.stopped && !!ls && !ls.resent && !!sid.current; if (recover && ls) ls.replyTo = replyTo; /* it goes again after the compaction, its answer still to whoever asked (a step's to its run: T-253) */ const due = ev.ok && !v.current.stopped && shouldCompact(ctxRef.current, autoPctRef.current);
-      if (ev.ok && reply.trim()) { embedRef.current?.onReply(reply); onReplyRef.current?.(reply, replyTo, back); } if (v.current.speakTurn) { v.current.speakTurn = false; if (ev.ok && !v.current.stopped) sayWhatHappened(); else settle(); } setRunning(false); setCompacting(false); setLiveText(''); setAsks([]); setNote(v.current.stopped ? t('app.chat.interrupted') : ev.ok ? (ev.durationMs ? `${(ev.durationMs / 1000).toFixed(1)} s` : '') : t('app.chat.stoppedWith', { error: ev.error ?? t('app.chat.error') })); if (!ev.ok && !v.current.stopped && !recover) { const why = ev.error ?? t('app.chat.turnFailed'); setMessages((m) => [...m, { uuid: `local-err-${Date.now()}`, role: 'system', blocks: [{ type: 'text', text: why }], meta: false, error: true }]); toBottom(); if (v.current.engine && v.current.cfg.ack && !v.current.speakerOff) enqueue(say(t('app.voice.couldNotAnswer', { provider: PROVIDER_LABEL[provider], why: why.replace(/\s+/g, ' ').slice(0, 140) })), v.current.gen); } /* a failure is a red card in the thread and one spoken line, never a summary */ v.current.stopped = false; onTurnEnd();
+      if (ev.ok && reply.trim()) { embedRef.current?.onReply(reply); onReplyRef.current?.(reply, replyTo, back); } if (v.current.speakTurn) { v.current.speakTurn = false; if (ev.ok && !v.current.stopped) sayWhatHappened(); else settle(); } setRunning(false); markCompacting(false); setLiveText(''); setAsks([]); setNote(v.current.stopped ? t('app.chat.interrupted') : ev.ok ? (ev.durationMs ? `${(ev.durationMs / 1000).toFixed(1)} s` : '') : t('app.chat.stoppedWith', { error: ev.error ?? t('app.chat.error') })); if (!ev.ok && !v.current.stopped && !recover) { const why = ev.error ?? t('app.chat.turnFailed'); setMessages((m) => [...m, { uuid: `local-err-${Date.now()}`, role: 'system', blocks: [{ type: 'text', text: why }], meta: false, error: true }]); toBottom(); if (v.current.engine && v.current.cfg.ack && !v.current.speakerOff) enqueue(say(t('app.voice.couldNotAnswer', { provider: PROVIDER_LABEL[provider], why: why.replace(/\s+/g, ' ').slice(0, 140) })), v.current.gen); } /* a failure is a red card in the thread and one spoken line, never a summary */ v.current.stopped = false; onTurnEnd();
       if (recover) startCompactRef.current('too-long'); else if (due && startCompactRef.current('auto')) { /* the queue goes out when the compaction is over */ } else if (flushQueue('turn ended')) { /* the next queued message is on its way */ }
       else if (byeAfter.current) { const bye = byeAfter.current; byeAfter.current = ''; const gen = v.current.gen; enqueue(say(bye), gen); v.current.chain = v.current.chain.then(() => { if (v.current.engine && gen === v.current.gen) void commands.current.toggleVoice(); }); } }
   }), [onSession, onTurnEnd]);
@@ -1139,7 +1166,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   // Steering: the running turn gets this now, at its next step, and keeps working. If the turn cannot take it (it just ended, or it has not started), it waits in the queue like everything else.
   const steer = async (text: string, images?: Attachment[], dictated = false) => {
     const said = dictated ? `${DICTATED_TAG}${text}` : text; /* the model is told, every time, which words were dictated (T-76) */
-    const ok = v.current.running && !compactTurn.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${said}` : said, images).catch(() => false); /* a compaction takes nothing in: it waits in the queue */ if (ok) record('user', text + (images?.length ? ` [${images.length} image${images.length > 1 ? 's' : ''} attached]` : ''), { steered: true }); /* in the Jauvex agent's own copy too: this record sat inside the comment before it, and a message handed to a running turn was missing from that chat after a reload */
+    const ok = v.current.running && !compactTurn.current && !compactingNow.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${said}` : said, images).catch(() => false); /* a compaction takes nothing in: it waits in the queue */ if (ok) record('user', text + (images?.length ? ` [${images.length} image${images.length > 1 ? 's' : ''} attached]` : ''), { steered: true }); /* in the Jauvex agent's own copy too: this record sat inside the comment before it, and a message handed to a running turn was missing from that chat after a reload */
     if (!ok) { enqueueForMain(text, undefined, dictated); if (v.current.running && !(await window.desktop.chatRunning(chatId.current).catch(() => true))) staleTurnEnded(); return false; }
     setDraft(null);
     turnSteers.current.push({ text, images: images ?? [], ...(dictated ? { spoken: true } : {}), shown: true });
@@ -1148,22 +1175,22 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   };
   // The window believed a turn was running but the main process has none (its end was never heard): end it here, so what was
   // queued goes out instead of waiting for ever.
-  const staleTurnEnded = () => { window.desktop.debugPush('note', 'the turn had ended without the window hearing it: ending it now and sending what was queued'); v.current.running = false; v.current.speakTurn = false; compactTurn.current = null; setRunning(false); setCompacting(false); setLiveText(''); setAsks([]); setNote('');
+  const staleTurnEnded = () => { window.desktop.debugPush('note', 'the turn had ended without the window hearing it: ending it now and sending what was queued'); v.current.running = false; v.current.speakTurn = false; compactTurn.current = null; setRunning(false); markCompacting(false); setLiveText(''); setAsks([]); setNote('');
     if (!flushQueue('the turn had ended')) settle(); };
   // ---- compaction (T-74): a turn of its own, Claude Code's /compact or Codex's thread/compact/start, with the last turn's settings
   const compactNote = useRef(''); // the note a compaction shows while it runs: replaced when it found nothing to compact
-  const startCompact = (why: 'manual' | 'auto' | 'too-long', text = '/compact'): boolean => {
+  const startCompact = (why: 'manual' | 'auto' | 'idle' | 'too-long', text = '/compact'): boolean => {
     if (v.current.running || !sid.current) return false;
-    compactTurn.current = why; v.current.running = true; v.current.stopped = false; setRunning(true); setCompacting(true); setLiveText('');
-    compactNote.current = why === 'manual' ? t('app.compact.manual') : why === 'auto' ? t('app.compact.auto', { pct: autoPctRef.current }) : t('app.compact.full'); setNote(compactNote.current);
-    const c = ctxRef.current; window.desktop.debugPush('note', `compacting ${why === 'manual' ? 'as asked' : why === 'auto' ? `(auto-compact at ${autoPctRef.current} %)` : '(a message did not fit the context)'}${c ? `: ${tokens(c.used)} of ${c.window ? tokens(c.window) : 'an unknown window'} tokens` : ''}`);
+    compactTurn.current = why; v.current.running = true; v.current.stopped = false; setRunning(true); markCompacting(true); setLiveText('');
+    compactNote.current = why === 'manual' ? t('app.compact.manual') : why === 'idle' ? t('chat.compactingIdle', { pct: idleCompactPct(autoPctRef.current) }) : why === 'auto' ? t('app.compact.auto', { pct: autoPctRef.current }) : t('app.compact.full'); setNote(compactNote.current);
+    const c = ctxRef.current; window.desktop.debugPush('note', `compacting ${why === 'manual' ? 'as asked' : why === 'idle' ? `while idle (past ${idleCompactPct(autoPctRef.current)} %)` : why === 'auto' ? `(auto-compact at ${autoPctRef.current} %)` : '(a message did not fit the context)'}${c ? `: ${tokens(c.used)} of ${c.window ? tokens(c.window) : 'an unknown window'} tokens` : ''}`);
     void window.desktop.chatStart({ chatId: chatId.current, projectId: project.id, sessionId: sid.current, provider, permissions, ...(embed ? { hidden: true } : {}), ...(project.builtin === 'jauvex' ? { steward: true } : {}), text, compact: true, ...(model ? { model } : {}), ...(effort && efforts.includes(effort) ? { effort } : {}), ...(lastVoiced.current ? { voice: true, vocabulary: stt(v.current.cfg).vocabulary } : {}) });
     return true;
   };
   const compactEvent = (ev: Extract<ChatEvent, { type: 'compact' }>) => {
     const auto = ev.trigger === 'auto' || (!!compactTurn.current && compactTurn.current !== 'manual'); // the provider's own, or the app's (the setting, a message that did not fit)
-    if (ev.phase === 'start') { setCompacting(true); if (!compactTurn.current) { compactNote.current = t('app.compact.nearlyFull'); setNote(compactNote.current); } window.desktop.debugPush('note', `${PROVIDER_LABEL[provider]} started compacting ${auto ? 'on its own' : 'as asked'}${ev.before ? ` at ${tokens(ev.before)} tokens` : ''}`); return; }
-    setCompacting(false); setLastCompact({ at: Date.now(), ok: ev.ok !== false, ...(ev.before ? { before: ev.before } : {}), ...(ev.after !== undefined ? { after: ev.after } : {}) });
+    if (ev.phase === 'start') { markCompacting(true); if (!compactTurn.current) { compactNote.current = t('app.compact.nearlyFull'); setNote(compactNote.current); } window.desktop.debugPush('note', `${PROVIDER_LABEL[provider]} started compacting ${auto ? 'on its own' : 'as asked'}${ev.before ? ` at ${tokens(ev.before)} tokens` : ''}`); return; }
+    markCompacting(false); setLastCompact({ at: Date.now(), ok: ev.ok !== false, ...(ev.before ? { before: ev.before } : {}), ...(ev.after !== undefined ? { after: ev.after } : {}) });
     const what = ev.ok === false ? `The conversation could not be compacted${ev.error ? `: ${ev.error}` : ''}` : `Conversation compacted${auto ? ' automatically' : ''}${ev.before ? `: ${tokens(ev.before)}${ev.after !== undefined ? ` → ${tokens(ev.after)}` : ''} tokens` : ''}`;
     const shown = ev.ok === false ? (ev.error ? t('app.compact.failedWith', { error: ev.error }) : t('app.compact.failed')) : ev.before ? t(auto ? 'app.compact.doneAutoTokens' : 'app.compact.doneTokens', { tokens: `${tokens(ev.before)}${ev.after !== undefined ? ` → ${tokens(ev.after)}` : ''}` }) : t(auto ? 'app.compact.doneAuto' : 'app.compact.done');
     window.desktop.debugPush('note', what); setNote(shown);
@@ -1172,7 +1199,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   };
   const endCompactTurn = (ev: Extract<ChatEvent, { type: 'done' }>) => {
     const why = compactTurn.current; compactTurn.current = null; ownWrite.current = Date.now(); turnText.current = ''; setTurns((n) => n + 1);
-    v.current.running = false; setRunning(false); setCompacting(false); setLiveText(''); setAsks([]);
+    v.current.running = false; setRunning(false); markCompacting(false); setLiveText(''); setAsks([]);
     const stopped = v.current.stopped; v.current.stopped = false;
     if (stopped) setNote(t('app.compact.interrupted'));
     else if (!ev.ok) { const err = ev.error ?? t('app.compact.errDefault'); setNote(t('app.compact.couldNot', { error: err })); setMessages((m) => [...m, { uuid: `local-err-${Date.now()}`, role: 'system', blocks: [{ type: 'text', text: t('app.compact.couldNotConversation', { error: err }) }], meta: false, error: true }]); toBottom(); }
@@ -1182,6 +1209,13 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
     if (why === 'too-long' && ev.ok && !stopped && ls) { pendingReplyTo.current = ls.replyTo; window.desktop.debugPush('note', 'compacted after a message that did not fit: sending it again'); setTimeout(() => void sendRef.current(ls.text, false, undefined, true, ls.images, true, !!ls.dictated), 150); return; }
     if (!flushQueue('compaction ended')) settle();
   };
+  // Compacted while nobody waits on it (Diego, 2026-10-07, as Jauvex Pro: a compaction at 90 %, in the middle of a conversation, took the messages
+  // sent meanwhile out of sight): once a chat has been idle IDLE_COMPACT_MS with its context past ten points under the setting, it compacts then.
+  const idleFrom = useRef(Date.now()); useEffect(() => { if (!running) idleFrom.current = Date.now(); }, [running]);
+  useEffect(() => { const id = setInterval(() => { const pct = autoPctRef.current;
+    if (v.current.running || queue.current.length || !sid.current || Date.now() - idleFrom.current < IDLE_COMPACT_MS) return;
+    if (!pct || !shouldCompact(ctxRef.current, idleCompactPct(pct))) return; startCompactRef.current('idle'); }, 30_000);
+    return () => clearInterval(id); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const startCompactRef = useRef(startCompact); startCompactRef.current = startCompact; const compactEventRef = useRef(compactEvent); compactEventRef.current = compactEvent; const endCompactRef = useRef(endCompactTurn); endCompactRef.current = endCompactTurn;
   // Queued messages leave one at a time, each as its own turn, in the order they were typed: nothing is ever merged into another message.
   const qLabel = (q: QueueItem) => `${q.text}${q.images.length ? ` (+${q.images.length} image${q.images.length > 1 ? 's' : ''})` : ''}`;
@@ -1273,7 +1307,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
             // The main thread is mid-turn. Said out loud, this reaches it now, as added information: it keeps going and keeps everything it has.
             // It only waits when they ask for that ("queue this"), and only a clear "stop" or "not that, this" interrupts the work. (Typed text queues, with a Send now button.)
             const triage = spec && spec.busy && spec.triage ? spec.triage : window.desktop.triage(t.text, speaker.current.provider, speaker.current.model, main.current, v.current.asked).catch(() => null);
-            const r = await triage; const action = v.current.running ? r?.action ?? 'steer' : 'queue';
+            const r = await triage; const read = v.current.running ? r?.action ?? 'steer' : 'queue'; const action = confirmStop(read, t.text); /* a stop with no stop word in it is added information (2026-10-07: "Off.") */ if (action !== read) window.desktop.debugPush('stop', `not stopped: "${t.text}" holds no stop word, so it goes to the turn (${read} was the model's reading)`);
             if (action === 'steer') { if (await steer(t.text, undefined, true)) v.current.asked = `${v.current.asked}\n(added while I worked) ${t.text}`; } // the summary at the end covers this too
             else if (action === 'replace') { setDraft(null); queue.current.unshift({ text: t.text, images: [], spoken: true }); setQueued([...queue.current]); persistQueue(); window.desktop.debugPush('queue', `first in the queue, it replaces the work: ${t.text}`); } else if (action !== 'stop') enqueueForMain(t.text, undefined, true);                  // stop alone carries nothing to hand over
             if (action === 'stop') { setDraft(null); showStop(t.text); }
@@ -1423,10 +1457,18 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
               {messages.length === 0 && !running && (embed ? <p className="jev-hint">{embed.hint ?? t('app.chat.jevHint', { provider: PROVIDER_LABEL[provider] })}</p>
                 : <div className="empty inline"><Mark /><h2>{t('app.chat.newSessionIn', { provider: PROVIDER_LABEL[provider], folder: project.name })}</h2><p>{project.path}</p></div>)}
               {dev ? messages.map((m) => (m.voice && !cfg.showVoiceLines ? null : <Message key={m.uuid} m={m} showMeta={showMeta} results={results} base={project.path} />))
-                : (() => { const units = threadUnits(messages.filter((m) => !(m.voice && !cfg.showVoiceLines)), showMeta); /* not a developer: each run of tool calls as one Working row (T-247) */
-                  return units.map((u, k) => (u.kind === 'msg' ? <Message key={u.key} m={u.m} showMeta={showMeta} results={results} base={project.path} />
+                : (() => { const shownMsgs = messages.filter((m) => !(m.voice && !cfg.showVoiceLines));
+                  // FB-14 (as Jauvex Pro): whose a message is, when it is agent-to-agent traffic: an agent's message to this one, or this one's answer
+                  // to it (an answer to an agent's message goes back to that agent by itself), until the person writes again
+                  const toAgent = new Map<string, string>(); let from: string | null = null;
+                  for (const m of shownMsgs) { if (m.role === 'user') { const txt = textOf(m).replace(CONTEXT_TAG, '').trim(); from = /^\(from agent "([^"]+)"/.exec(txt)?.[1] ?? null; if (from) toAgent.set(m.uuid, from); } else if (m.role === 'assistant' && from) toAgent.set(m.uuid, from); }
+                  const agentUnit = (u: ThreadUnit): string | null => (u.kind === 'msg' ? toAgent.get(u.m.uuid) ?? toAgent.get(u.m.uuid.split(':')[0]!) ?? null : null);
+                  const units = foldAgents(threadUnits(shownMsgs, showMeta), agentUnit); /* not a developer: each run of tool calls as one Working row (T-247); agent-to-agent traffic as one line (FB-14) */
+                  const one = (u: ThreadUnit, k: number, all: ThreadUnit[]): React.ReactNode => (u.kind === 'agents' ? <details key={u.key} className="agent-fold"><summary>{t('chat.agentTraffic', { count: u.units.filter((x) => x.kind === 'msg').length, names: u.names.join(', ') })}</summary>{u.units.map((x, j) => one(x, j, u.units))}</details>
+                    : u.kind === 'msg' ? <Message key={u.key} m={u.m} showMeta={showMeta} results={results} base={project.path} />
                     : u.kind === 'media' ? <div key={u.key} className="assistant"><a className="tool-media" href={u.src} title={t('app.chat.openBeside')}><img src={localSrc(u.src)} alt="" loading="lazy" /></a></div>
-                    : <WorkRow key={u.key} parts={u.parts} results={results} showMeta={showMeta} live={running && k === units.length - 1} />)); })()}
+                    : <WorkRow key={u.key} parts={u.parts} results={results} showMeta={showMeta} live={running && all === units && k === units.length - 1} />);
+                  return units.map((u, k) => one(u, k, units)); })()}
               {statusLine && <p className="chat-status" role="status">{statusLine}</p>}
               {liveText && <div className="assistant"><div className="prose" dangerouslySetInnerHTML={{ __html: md(liveText, project.path) }} /></div>}
               {asks.map((a) => (
@@ -1436,7 +1478,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
                   <div className="ask-row"><button className="btn ghost" onClick={() => answer(a.requestId, 'deny')}>{t('app.ask.deny')}</button><button className="btn ghost" onClick={() => answer(a.requestId, 'always')}>{t('app.ask.always', { tool: a.toolName })}</button><button className="btn" onClick={() => answer(a.requestId, 'allow')}>{t('app.ask.once')}</button></div>
                 </div>
               ))}
-              {queued.some((q) => !q.shown) && <div className="user">{queued.map((q, i) => q.shown ? null : <div key={i} className="bubble queued" title={t('app.chat.queuedTitle')}><small>{t('app.chat.queued')}</small>{q.text}{q.images.length > 0 && <div className="queued-imgs">{q.images.map((a, j) => <img key={j} src={`data:${a.mediaType};base64,${a.data}`} alt={a.name} title={a.name} />)}</div>}<button className="steer-now" title={t('app.chat.sendNowTitle')} onClick={() => { queue.current.splice(i, 1); setQueued([...queue.current]); persistQueue(); void steer(q.text, q.images.length ? q.images : undefined); }}>{t('app.chat.sendNow')}</button></div>)}</div>}
+              {queued.some((q) => !q.shown) && <div className="user">{queued.map((q, i) => q.shown ? null : <div key={i} className="bubble queued" title={t('app.chat.queuedTitle')}><small>{t(compacting ? 'chat.queuedCompacting' : 'app.chat.queued')}</small>{q.text}{q.images.length > 0 && <div className="queued-imgs">{q.images.map((a, j) => <img key={j} src={`data:${a.mediaType};base64,${a.data}`} alt={a.name} title={a.name} />)}</div>}<button className="steer-now" title={t('app.chat.sendNowTitle')} onClick={() => { queue.current.splice(i, 1); setQueued([...queue.current]); persistQueue(); void steer(q.text, q.images.length ? q.images : undefined); }}>{t('app.chat.sendNow')}</button></div>)}</div>}
               {draft !== null && <div className="user"><div className="bubble draft" title={t('app.chat.draftTitle')}><small>{t('app.chat.hearing')}</small>{draft ? <DraftText text={draft} /> : <span className="draft-dots"><i /><i /><i /></span>}</div></div>}
               <div className="thread-end"><Mark busy={running} />{note && <span>{note}</span>}</div>
             </div>
@@ -1559,7 +1601,7 @@ function VoiceSettingsForm({ c, set, st, provider, models, onTest }: { c: VoiceS
   return <>
           <label>{t('app.settings.voice.voice')}<select value={c.voice} onChange={(e) => set({ voice: e.target.value })}><option value="">{window.desktop.platform === 'darwin' ? t('app.settings.voice.systemVoice') : t('app.settings.voice.defaultVoice')}</option>{(st?.voices ?? []).map((x) => { const [n, loc] = x.split('|'); return <option key={x} value={n}>{n} · {loc}</option>; })}</select></label>
           <label><span className="lhead">{t('app.settings.voice.speed')}<em>{t('app.settings.voice.wpm', { n: c.rate })}</em></span><input type="range" min={140} max={260} step={5} value={c.rate} onChange={(e) => set({ rate: +e.target.value })} /></label>
-          <label><span className="lhead">{t('app.settings.voice.pause')}<em>{(c.pauseMs / 1000).toFixed(1)} s</em></span><input type="range" min={400} max={2000} step={100} value={c.pauseMs} onChange={(e) => set({ pauseMs: +e.target.value })} /></label>
+          <label><span className="lhead">{t('app.settings.voice.pause')}<em>{(c.pauseMs / 1000).toFixed(1)} s</em></span><input type="range" min={400} max={PAUSE_MAX_MS} step={100} value={c.pauseMs} onChange={(e) => set({ pauseMs: +e.target.value, pauseSet: true })} /></label>
           <label>{t('app.settings.voice.language')}<select value={c.language} onChange={(e) => set({ language: e.target.value })}>{[['auto', t('app.settings.voice.detect')], ['en', 'English'], ['es', 'Español'], ['pt', 'Português'], ['fr', 'Français'], ['de', 'Deutsch'], ['it', 'Italiano']].map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></label>
           <label><span className="lhead">{t('app.settings.voice.sttModel')}{st?.model ? <em>{st.model.replace(/^ggml-|\.bin$/g, '')}</em> : null}</span><select value={(st?.models ?? []).includes(c.sttModel) ? c.sttModel : ''} onChange={(e) => set({ sttModel: e.target.value })}><option value="">{t('app.settings.voice.sttAuto')}</option>{(st?.models ?? []).map((m) => <option key={m} value={m}>{m.replace(/^ggml-|\.bin$/g, '')}</option>)}</select></label>
           <label>{t('app.settings.voice.vocabulary')}<TextSetting value={c.vocabulary} placeholder="Jauvex, Codex, …" onSave={(x) => set({ vocabulary: x })} /></label>
@@ -1588,7 +1630,7 @@ function TextSetting({ value, placeholder, onSave }: { value: string; placeholde
 }
 function VoiceChatSettings({ provider }: { provider: Provider }) {
   const [c, setC] = useState<VoiceSettings | null>(null); const [st, setSt] = useState<VoiceStatus | null>(null);
-  useEffect(() => { void api.state().then((s) => setC({ ...VOICE_DEFAULTS, ...(s.ui?.voice ?? {}) })); void window.desktop.voiceStatus().then(setSt).catch(() => {}); }, []);
+  useEffect(() => { void api.state().then((s) => setC(settledVoice({ ...VOICE_DEFAULTS, ...(s.ui?.voice ?? {}) }).voice)); void window.desktop.voiceStatus().then(setSt).catch(() => {}); }, []);
   if (!c) return null;
   const set = (patch: Partial<VoiceSettings>) => { const next = { ...c, ...patch }; setC(next); void api.setUi({ voice: next }); window.dispatchEvent(new CustomEvent('cvc-voice-settings', { detail: { cfg: next, from: '' } }));
     if (next.sttModel !== c.sttModel || next.vocabulary !== c.vocabulary) void window.desktop.sttConfig(next.sttModel, next.vocabulary); if (next.decisions !== c.decisions) void window.desktop.decisions(next.decisions === 'jev').then(setSt); };

@@ -1,4 +1,4 @@
-// Updates (T-165). The app asks jauvex.reindent.com which version of Jauvex is the latest (at launch and every six hours). The copy the
+// Updates (T-165). The app asks jauvex.ai which version of Jauvex is the latest (at launch and every six hours). The copy the
 // install command made (Jauvex.app in Applications, built from ~/.jauvex/personal/app) updates itself on the user's yes: it fetches the
 // same installer, checks that it installs the version offered, hands a one-shot launchd job the work (wait for the app to quit, run the
 // installer, which rebuilds the app on this Mac and opens it, or open the app as it was if the installer fails), then quits. A copy run
@@ -10,12 +10,12 @@ import path from 'node:path';
 import { newer, VERSION_RE, type UpdateStatus } from '../shared/update.js';
 import { changelogSince } from '../shared/changelog.js';
 
-export const SITE = 'https://jauvex.reindent.com';
+export const SITE = 'https://jauvex.ai';
 
 /** The runner launchd starts, once: `sh run.sh <app pid> <app bundle> [<launchd label>]`, next to the installer the app fetched. */
 export const RUNNER = `#!/bin/sh
 # An update of the installed app, started once by launchd: it waits for the app to quit, runs the installer the app fetched from
-# jauvex.reindent.com (it rebuilds the app on this Mac and opens it), and opens the app as it was if the installer does not finish.
+# jauvex.ai (it rebuilds the app on this Mac and opens it), and opens the app as it was if the installer does not finish.
 dir=$(cd "$(dirname "$0")" && pwd); pid="$1"; bundle="$2"; label="$3"
 echo "--- $(date '+%F %T') update: waiting for the app (pid $pid) to quit"
 i=0
@@ -105,14 +105,14 @@ export function updater(deps: UpdaterDeps) {
     async run(): Promise<{ ok: boolean; error?: string; updating?: string; log?: string }> {
       const s = await status();
       if (!s.installed) return { ok: false, error: s.reinstall ? `This copy updates the way it was installed: close the app, then run the install command again: ${s.reinstall}` : 'This copy updates the way it was installed: a copy run from a clone with git pull and a build. Only the Jauvex.app the install command made updates itself.' };
-      if (!s.available) return { ok: false, error: s.latest ? `There is no newer version: this copy runs ${s.current}, the latest is ${s.latest}.` : 'No newer version is known yet: the app asks jauvex.reindent.com at launch and every six hours.' };
+      if (!s.available) return { ok: false, error: s.latest ? `There is no newer version: this copy runs ${s.current}, the latest is ${s.latest}.` : 'No newer version is known yet: the app asks jauvex.ai at launch and every six hours.' };
       let script: string;
       try {
         const r = await get(`${site}/install`, { redirect: 'error', signal: AbortSignal.timeout(20_000) });
-        if (!r.ok) { await r.body?.cancel(); return { ok: false, error: `jauvex.reindent.com answered ${r.status}. Nothing was changed.` }; }
+        if (!r.ok) { await r.body?.cancel(); return { ok: false, error: `jauvex.ai answered ${r.status}. Nothing was changed.` }; }
         script = await r.text();
-      } catch { return { ok: false, error: 'jauvex.reindent.com could not be reached. Nothing was changed.' }; }
-      if (!script.startsWith('#!/bin/sh') || !script.includes('Jauvex Personal') || script.length > 200_000) return { ok: false, error: 'jauvex.reindent.com did not send the installer. Nothing was changed.' };
+      } catch { return { ok: false, error: 'jauvex.ai could not be reached. Nothing was changed.' }; }
+      if (!script.startsWith('#!/bin/sh') || !script.includes('Jauvex Personal') || script.length > 200_000) return { ok: false, error: 'jauvex.ai did not send the installer. Nothing was changed.' };
       const offered = /^\s*version='([^']*)'/m.exec(script)?.[1];
       if (offered !== s.latest) return { ok: false, error: `The installer is for ${offered || 'no version'}, not ${s.latest}: try again in a minute. Nothing was changed.` };
       await fs.mkdir(dir, { recursive: true, mode: 0o700 });

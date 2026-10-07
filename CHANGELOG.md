@@ -1,7 +1,22 @@
 # Changelog
 
-What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.reindent.com/install | sh`)
+What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.ai/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
+
+## 1.7.2: 2026-10-07
+
+- **A lead agent waits for its team**: when an agent's plan waits for other agents to finish ("start the third when the first two are
+  done"), the app wakes it with their last answers once all of them have finished, and its chat says whom it waits for.
+- **Messages between agents fold away**: in your chat, an agent's back-and-forth with other agents is one line, "3 messages with Coding
+  Agent", that opens with a click, so its answer to you stays in sight.
+- **Codex signs in with a code**: Accounts has "Sign in with a code" for Codex, for when the browser sign-in fails. On Windows the app also
+  finds a Codex installed with WinGet.
+- **Web pages in Markdown open as pages**: a link to a Markdown file served over the web shows as a page beside the chat, not a blank pane.
+- **A folder's files**: a folder's menu opens it in your file manager.
+- **Voice**: the pause that ends your turn is 2 seconds by default and can go up to 5.
+- **Compaction waits for a quiet moment**: an idle chat whose context is nearly full compacts while nobody waits on it, and nothing you
+  send is lost in a compaction.
+- The site is now jauvex.ai: `curl -fsSL https://jauvex.ai/install | sh`.
 
 ## 1.7.1: 2026-10-04
 

@@ -17,5 +17,11 @@ cases.push(['The code, the Reindent code engine that runs on Cloud.', 'The code,
   ['it runs on cloud servers', 'it runs on cloud servers'], ['our backups run in the cloud.', 'our backups run in the cloud.'], ['it is on cloud now', 'it is on cloud now']);
 // Grok (xAI's coding agent, 2026-09-24): "add grog support", "the Grog CLI" as dictated; Groq, another company, stays.
 cases.push(['add grog support, please', 'add Grok support, please'], ['the Grog CLI', 'the Grok CLI'], ['a grock agent', 'a Grok agent'], ['a Groq endpoint', 'a Groq endpoint'], ['a glass of grog', 'a glass of Grok']);
+// "Hey Jauvex" heard as "Javek" (the launch spot's transcript, 2026-10-04; as Jauvex Pro): its near misses, and the real words that stay.
+cases.push(['Hey Javek, open the dashboard', 'Hey Jauvex, open the dashboard'], ['hey javec', 'hey Jauvex'], ['Jawek, I have an idea', 'Jauvex, I have an idea'], ['Yavex, stop', 'Jauvex, stop'], ['a Java class', 'a Java class'], ['the javelin', 'the javelin'], ['my jacket', 'my jacket']);
+// "Hola, Jauvex" heard as "Alla Jauvex," (2026-10-05, as Jauvex Pro): a greeting before the name only; "allá" elsewhere stays
+cases.push(['Alla Jauvex, abre el panel', 'Hola Jauvex, abre el panel'], ['Ola, Jauvex', 'Hola, Jauvex'], ['Allá Javek, ¿qué tal?', 'Hola Jauvex, ¿qué tal?'], ['olla jauvex', 'Hola Jauvex'], ['Gracias. Alla Jauvex', 'Gracias. Hola Jauvex'], ['ve allá mañana', 've allá mañana'], ['la olla está caliente', 'la olla está caliente'], ['Hola Jauvex', 'Hola Jauvex']);
+// "Jarvex" and "Jorvex" (as Jauvex Pro)
+cases.push(['Jarvex, open the dashboard', 'Jauvex, open the dashboard'], ['hey jorvex', 'hey Jauvex']);
 let bad = 0; for (const [i, want] of cases) { const got = fixNames(i); const ok = got === want; if (!ok) bad++; console.log(`${ok ? 'ok  ' : 'BAD '} ${JSON.stringify(i)} -> ${JSON.stringify(got)}`); }
 console.log(bad ? `${bad} FAILED` : 'ALL PASS'); process.exit(bad ? 1 : 0);

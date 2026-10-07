@@ -46,7 +46,7 @@ export class VoiceEngine {
   private out: GainNode | null = null; private sources = new Set<AudioBufferSourceNode>(); private nextAt = 0;
   private frames: Float32Array[] = []; private pre: Float32Array[] = []; private inSpeech = false; private silentMs = 0; private speechMs = 0; private over = 0;
   private noise = 0.004; private lastInterim = 0; private maybeSent = false; private seq = 0; private meter: AnalyserNode | null = null; private meterBuf = new Float32Array(512);
-  pauseMs = 800;
+  pauseMs = 2000;
   minSpeechMs = MIN_SPEECH_MS; // loud frames needed for a sound to count as speech (a crisp "start" is short)
   /** Mic muted: nothing is heard, nothing can interrupt. */
   muted = false; wake = false; // wake: while muted, short phrases still go to on.wake (the wake phrase unmutes)
