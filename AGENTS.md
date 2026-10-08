@@ -49,7 +49,10 @@ feature and why it works the way it does: read the relevant part before changing
    answers (`list` first, for ids). The Jauvex agent, the built-in session in this folder, is briefed to use it.
 3. **Never kill by name** (`pkill`, `killall`). Find the PID, confirm with `ps -p <pid> -o command=`, kill that PID only.
 4. **One commit per finished feature or fix**, before starting the next. Plain messages, no AI attribution trailer.
-   Commit on `master` and push to `origin` (github.com/reindent/jauvex) when the user asks.
+   Branches (Diego, 2026-10-08): `main` is what is released, each release tagged (vX.Y.Z); `dev` is the version in the making
+   (X.Y.Z-dev). Each piece of work gets a short branch named for it (`fix/open-browser`, `feature/movable-panels`), merged into `dev` and
+   deleted right after; at a release `dev` merges into `main` and is tagged. No stale branches: what is merged is deleted, what is not is
+   merged or kept as an `archive/<name>` tag. Push to `origin` (github.com/reindent/jauvex) when the user asks.
 5. **Nothing in the look may copy a vendor** (marks, orb, colours). The provider marks on session rows are the one
    exception: they identify whose session it is.
 6. **The user talks; speech may only interrupt the voice, never the work.** What is said while an agent works is
