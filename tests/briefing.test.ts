@@ -38,7 +38,10 @@ check('a restart is the agent\'s own, as the restart paragraph says: the two agr
   // Workflows (T-210): an agent is told the folder's workflows, that a step of its own ends with an OUTCOME line, and nothing when there are none
   const withFlows = clientBriefing(false, '', false, '/app', { boards: [], workflows: [{ file: 'workflows/news-video.md', name: 'News video' }] });
   check('an agent is told its folder\'s workflows and how a step of its own ends', /Workflows in this folder: workflows\/news-video\.md \("News video"\)/.test(withFlows) && /OUTCOME: <one of the outcomes/.test(withFlows) && !/Workflows in this folder/.test(withBoards)); }
-// Keep everything organized (Diego, 2026-10-08: "the number one rule after security"): every agent is told, in his words, and what it means
-{ const paras = b.split('\n\n'); const at = paras.findIndex((p) => p.startsWith('Keep everything organized'));
-  check('every agent is told to keep everything organized, in Diego\'s words, near the top', at > 0 && at <= 2 && paras[at]!.includes('This is the number one rule after security') && /one branch per piece of work/i.test(paras[at]!) && /carries this rule/.test(paras[at]!), String(at)); }
+// Keep everything organized, absolutely everything (Diego, 2026-10-08: "the number one rule after security", then "expand it to everything"):
+// every agent is told it near the top, in his words, with the twelve points, and nothing of Reindent's own folders
+{ const paras = b.split('\n\n'); const at = paras.findIndex((p) => p.startsWith('Keep everything organized')); const p = paras[at] ?? '';
+  check('every agent is told to keep everything organized, in Diego\'s words, near the top', at > 0 && at <= 2 && p.includes('This is the number one rule after security') && p.includes('absolutely everything'), String(at));
+  check('...with all twelve points, files to memory', ['1. Files and folders', '2. Temporary work', '3. Code', '4. Versions', '5. Tasks', '6. Decisions', '7. Instructions', '8. Agents and sessions', '9. Workflows', '10. Messages', '11. Secrets', '12. Memory'].every((x) => p.includes(`\n${x}`)));
+  check('...written for any user\'s computer: no Reindent paths', !/Reindent|CONVENTIONS|SECRETS\.md/.test(p)); }
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

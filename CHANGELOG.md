@@ -3,6 +3,12 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.ai/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.7.3-dev (in the making)
+
+- **Agents keep everything organized**: every agent is told, first after security, to keep everything in order: files and folders, temp
+  work and the processes it started, code, branches and versions, tasks, decisions, instructions, agents, workflows, messages, secrets and
+  memory. No stray copies or leftovers in your folders.
+
 ## 1.7.2: 2026-10-07
 
 - **A lead agent waits for its team**: when an agent's plan waits for other agents to finish ("start the third when the first two are
