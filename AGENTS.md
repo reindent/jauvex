@@ -62,6 +62,12 @@ feature and why it works the way it does: read the relevant part before changing
 10. **The licence and the owner are Diego's alone.** Jauvex Personal is open source under Apache-2.0 and owned by Reindent LLC, its sole
    copyright holder. No agent changes `LICENSE`, `NOTICE`, the `license` or `author` fields in `package.json`, or any copyright line
    without Diego's explicit word (Reindent's workspace conventions, CONVENTIONS.md §5, Licences). When unsure, ask before committing.
+11. **A version in the making carries -dev** (Diego, 2026-10-08: "whenever a new version is in the making, it should be marked with the new
+   version and a dash dev, so that I can differentiate them"): while it is built or tested, its branch has the next number with -dev
+   (1.7.3-dev) in `package.json` and the lock file, so the foot of the sidebar shows it. The plain number goes in only when it is packaged.
+12. **Keep everything organized** (Diego: "the number one rule after security"): every file, folder, branch and note has one right home,
+   used the first time; no stray copies, test leftovers, empty folders or loose files; one branch per piece of work, deleted once merged or
+   abandoned; temporary work in `tmp/`, cleaned when done. The agents running inside the app are told the same (`clientBriefing`).
 
 ## Who decides what (the voice channel)
 

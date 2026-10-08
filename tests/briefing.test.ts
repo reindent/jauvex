@@ -38,4 +38,7 @@ check('a restart is the agent\'s own, as the restart paragraph says: the two agr
   // Workflows (T-210): an agent is told the folder's workflows, that a step of its own ends with an OUTCOME line, and nothing when there are none
   const withFlows = clientBriefing(false, '', false, '/app', { boards: [], workflows: [{ file: 'workflows/news-video.md', name: 'News video' }] });
   check('an agent is told its folder\'s workflows and how a step of its own ends', /Workflows in this folder: workflows\/news-video\.md \("News video"\)/.test(withFlows) && /OUTCOME: <one of the outcomes/.test(withFlows) && !/Workflows in this folder/.test(withBoards)); }
+// Keep everything organized (Diego, 2026-10-08: "the number one rule after security"): every agent is told, in his words, and what it means
+{ const paras = b.split('\n\n'); const at = paras.findIndex((p) => p.startsWith('Keep everything organized'));
+  check('every agent is told to keep everything organized, in Diego\'s words, near the top', at > 0 && at <= 2 && paras[at]!.includes('This is the number one rule after security') && /one branch per piece of work/i.test(paras[at]!) && /carries this rule/.test(paras[at]!), String(at)); }
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);
