@@ -8,6 +8,8 @@ always builds the latest one, and from 1.1.0 on the app offers each new version 
 - **Agents keep everything organized**: every agent is told, first after security, to keep everything in order: files and folders, temp
   work and the processes it started, code, branches and versions, tasks, decisions, instructions, agents, workflows, messages, secrets and
   memory. No stray copies or leftovers in your folders.
+- **A message with no answer says so**: when an agent's reply is empty, or a turn is cut off or lost, the line under your message says
+  "<agent> didn't reply", with Send again, instead of leaving it looking swallowed.
 
 ## 1.7.2: 2026-10-07
 

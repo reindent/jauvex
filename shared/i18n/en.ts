@@ -7,6 +7,8 @@ export const en = {
   'settings.language.note': 'The app\'s words. What the agents write stays in the language you write to them in.',
   'chat.compactingIdle': 'Compacting while the agent is idle: the context passed {pct} %…',
   'chat.queuedCompacting': 'Waits for the compaction',
+  'chat.noReply': "{name} didn't reply",
+  'chat.sendAgain': 'Send again',
   'chat.waitingFor': "Waiting for {names}: the app wakes this agent with their answers once they have all finished.",
   'chat.agentTraffic.one': "{count} message with {names}",
   'chat.agentTraffic.other': "{count} messages with {names}",

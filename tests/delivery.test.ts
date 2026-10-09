@@ -1,6 +1,6 @@
 // A message handed to an agent while its turn is under way (T-228; the user, 2026-09-29: an agent's answer landed in the chat of another
 // agent that had asked it a question meanwhile): which ones wait for a turn of their own.
-import { ownTurn, closesWaitingStep, waitsFor, noResponse } from '../shared/delivery.js';
+import { ownTurn, closesWaitingStep, waitsFor, noResponse, unanswered } from '../shared/delivery.js';
 import { normalize } from '../electron/backend.ts';
 let failed = 0; const check = (name: string, ok: boolean) => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`); if (!ok) failed++; };
 const agent = { key: 'p1:s1' }, other = { key: 'p2:s2' }, exp = { key: 'export:p:s', kind: 'export' }, run = { key: 'run:p:wf', kind: 'run' };
@@ -22,4 +22,9 @@ check('...a reply that only mentions agents, or waits for nobody named, waits fo
 // "No response requested." is no answer (Diego, 2026-10-07, as Jauvex Pro): hidden from the thread, and the message goes again once
 check('"No response requested." is no answer, a real answer that mentions it is one', noResponse('No response requested.') && noResponse(' No response requested ') && !noResponse('Diego, the X post is live. No response requested from you.'));
 check('...an assistant message that says only that is hidden, as plumbing', normalize({ type: 'assistant', uuid: 'a', message: { role: 'assistant', content: [{ type: 'text', text: 'No response requested.' }] } } as never)?.meta === true && normalize({ type: 'assistant', uuid: 'b', message: { role: 'assistant', content: [{ type: 'text', text: 'Done.' }] } } as never)?.meta === false);
+// FB-50 (Diego, 2026-10-09: "terrible UX"): a message nothing visible came back to says so, under it; anything visible after it is a reply
+{ const m = (uuid: string, role: 'user' | 'assistant' | 'system', text: string, meta = false) => ({ uuid, role, meta, blocks: text ? [{ type: 'text', text }] : [{ type: 'tool_use' }] });
+  check('an empty reply, or only "No response requested.", leaves the message unanswered', unanswered([m('1', 'user', 'Hi'), m('2', 'assistant', '')], false) === '1' && unanswered([m('1', 'user', 'Hi'), m('2', 'assistant', 'No response requested.')], false) === '1' && unanswered([m('1', 'user', 'Hi')], false) === '1');
+  check('...an answer, a message to another agent, a failure card or an app note is a reply', [m('2', 'assistant', 'Done.'), m('2', 'assistant', '```message-agent X\nhi\n```'), m('2', 'system', 'It failed'), m('2', 'user', '(from the app) Moved to Codex.')].every((r) => unanswered([m('1', 'user', 'Hi'), r], false) === null));
+  check('...hidden lines are skipped, another agent\'s message counts as said to it, and nothing shows while a turn runs', unanswered([m('1', 'user', '(from agent "A") hi'), m('2', 'assistant', 'x', true)], false) === '1' && unanswered([m('1', 'user', 'Hi')], true) === null); }
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

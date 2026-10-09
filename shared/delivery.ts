@@ -31,3 +31,21 @@ export function waitsFor(text: string, names: string[]): string[] {
  *  model sometimes copies as its whole answer to a real message (Diego, 2026-10-07, as Jauvex Pro: "I still see this in the chat btw, bug").
  *  It is no answer: the app hides it and sends the message again, once. */
 export const noResponse = (text: string): boolean => /^\s*No response requested\.?\s*$/i.test(text);
+
+/** The message nothing visible came back to (FB-50, Diego, 2026-10-09: "terrible UX"; an empty reply, or only "No response requested.", or a
+ *  turn cut off or lost, left nothing under the message, as if it was swallowed): the uuid of the last message to this agent (the person's or
+ *  another agent's) when no answer, message to another agent, failure card or app note followed it; null when one did, or a turn still runs.
+ *  Hidden messages (meta) are not looked at. */
+type Said = { uuid: string; role: 'user' | 'assistant' | 'system'; meta: boolean; blocks: { type: string; text?: string }[] };
+export function unanswered(messages: Said[], running: boolean): string | null {
+  if (running) return null;
+  const text = (m: Said) => m.blocks.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('').trim();
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!; if (m.meta) continue; const tx = text(m);
+    if (m.role === 'system') return null; // a failure card: something visible came back
+    if (m.role === 'assistant') { if (tx && !noResponse(tx)) return null; continue; } // an answer, or a message to another agent
+    if (/^\(from the app\)/.test(tx)) return null; // the app's own note
+    return tx ? m.uuid : null; // the last thing said to this agent, with nothing visible after it
+  }
+  return null;
+}

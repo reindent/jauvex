@@ -496,3 +496,4 @@ html.is-mini, html.is-mini body, html.is-mini #root { background: transparent; }
 .agent-fold { margin: 2px 0; } /* FB-14: agent-to-agent traffic, folded into one line in the person's chat */
 .agent-fold > summary { cursor: pointer; list-style: none; font-size: 12.5px; color: var(--muted); padding: 3px 0; } .agent-fold > summary::before { content: '▸ '; } .agent-fold[open] > summary::before { content: '▾ '; }
 .agent-fold[open] { border-left: 2px solid var(--line); padding-left: 10px; }
+.silent-reply { margin: 2px 0 6px; font-size: 12.5px; color: var(--muted); } /* FB-50: a message nothing came back to */ .silent-reply button { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; } .silent-reply button:hover { text-decoration: underline; }

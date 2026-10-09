@@ -7,6 +7,8 @@ export const es: Record<keyof typeof en, string> = {
   'settings.language.note': 'Las palabras de la app. Lo que escriben los agentes sigue en el idioma en que tú les escribes.',
   'chat.compactingIdle': 'Compactando mientras el agente está libre: el contexto pasó el {pct} %…',
   'chat.queuedCompacting': 'Espera a que termine la compactación',
+  'chat.noReply': '{name} no respondió',
+  'chat.sendAgain': 'Enviar de nuevo',
   'chat.waitingFor': 'Esperando a {names}: la app despierta a este agente con sus respuestas cuando todos hayan terminado.',
   'chat.agentTraffic.one': '{count} mensaje con {names}',
   'chat.agentTraffic.other': '{count} mensajes con {names}',

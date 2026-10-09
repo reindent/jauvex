@@ -32,7 +32,7 @@ import { WorkflowView, type RunControl, type StepAgents, type EmbeddedMail } fro
 import { Runner } from './runner';
 import { parseWorkflow, parseRun, formatRun, stamp, parseTrigger, isDue, windowDue, firesAfter, stepTitle, workflowBase, SCHEDULE_TICK_MS, DEFAULT_TRIES, missedSlot, missedBy, missedNote, MISSED_DEFAULT, MISSED_OPTIONS, type MissedPolicy, type Run, type WorkflowInfo, realSteps } from '../../shared/workflow';
 import { doneFileOf, type BoardInfo } from '../../shared/board';
-import { closesWaitingStep, ownTurn, replyBack, waitsFor, noResponse } from '../../shared/delivery';
+import { closesWaitingStep, ownTurn, replyBack, waitsFor, noResponse, unanswered } from '../../shared/delivery';
 import { foldAgents, type ThreadUnit, threadUnits, toolImage, type WorkPart } from '../../shared/thread';
 import { applyTheme, themeOf, type Theme } from './theme';
 import { badgeText, counted, seen, countOf, unreadFrom, type Unread } from '../../shared/unread';
@@ -1469,6 +1469,9 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
                     : u.kind === 'media' ? <div key={u.key} className="assistant"><a className="tool-media" href={u.src} title={t('app.chat.openBeside')}><img src={localSrc(u.src)} alt="" loading="lazy" /></a></div>
                     : <WorkRow key={u.key} parts={u.parts} results={results} showMeta={showMeta} live={running && all === units && k === units.length - 1} />);
                   return units.map((u, k) => one(u, k, units)); })()}
+              {(() => { const id = unanswered(messages, running); const m = id ? messages.find((x) => x.uuid === id) : undefined; if (!m) return null; /* FB-50: a message nothing visible came back to says so, under it */
+                const text = textOf(m).replace(CONTEXT_TAG, '').trim(); const images = m.blocks.filter((b) => b.type === 'image') as unknown as Attachment[];
+                return <p className="silent-reply">{t('chat.noReply', { name: info?.customTitle || nameOnStart || PROVIDER_LABEL[provider] })} · <button type="button" onClick={() => { window.desktop.debugPush('note', `sent again from the "didn't reply" line: ${text.slice(0, 80)}`); void sendRef.current(text, false, undefined, false, images.length ? images : undefined, true); }}>{t('chat.sendAgain')}</button></p>; })()}
               {statusLine && <p className="chat-status" role="status">{statusLine}</p>}
               {liveText && <div className="assistant"><div className="prose" dangerouslySetInnerHTML={{ __html: md(liveText, project.path) }} /></div>}
               {asks.map((a) => (
