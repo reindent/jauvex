@@ -113,6 +113,9 @@ async function createWindow(): Promise<void> {
   // Every framed page starts muted and stays so, and opens no windows of its own.
   win.webContents.on('did-attach-webview', (_e, wc) => { wc.setAudioMuted(true); wc.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' }; }); });
   if (!HIDDEN) win.once('ready-to-show', () => win?.show());
+  // Wayland paints no hidden window, so 'ready-to-show' never came and the app ran with no window on Omarchy's Hyprland (2026-10-11): off
+  // the Mac, the window shows after a moment all the same.
+  if (!HIDDEN && !MAC) setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) win.show(); }, 1500);
   // The window's page dying left the window its background colour with nothing in it, and no word anywhere (T-271, from the other edition's
   // fix: a window there "completely went black screen"). Why goes to the flight recorder, with the memory then; a page that crashed or ran
   // out of memory loads again by itself (its chats take their turns back, as after a reload), at most three times in ten minutes.
