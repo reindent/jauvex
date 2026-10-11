@@ -12,7 +12,7 @@ trap '"$RUN" unshare rm -rf "$work" 2>/dev/null || rm -rf "$work"' EXIT # the co
 tar --exclude=./node_modules --exclude=./kokoro/node_modules --exclude=./tmp --exclude=./models --exclude=./dist --exclude=./dist-electron --exclude=./.git -cf - . | tar -xf - -C "$work"
 mkdir -p "$work/models"
 "$RUN" run --rm -v "$work:/home/omarchy/jauvex" -v "$ROOT/models:/models:ro" docker.io/library/archlinux:latest bash -euc '
-  pacman -Syu --noconfirm --needed sudo weston >/dev/null
+  pacman -Syu --noconfirm --needed sudo weston libvips >/dev/null # libvips: Omarchy has it, and sharp then built from source and failed
   useradd -m omarchy 2>/dev/null || true; echo "omarchy ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/omarchy
   cp -r /models/. /home/omarchy/jauvex/models/; chown -R omarchy:omarchy /home/omarchy
   su omarchy -c "cd ~/jauvex && JAUVEX_NO_LAUNCH=1 sh scripts/install-arch.sh"

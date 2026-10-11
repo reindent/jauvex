@@ -4,6 +4,9 @@
 # Each step shows a spinner while it runs (the first start installs and fetches Electron, which takes a while);
 # a step's output is kept in tmp/start.log and shown only if the step fails.
 unset ELECTRON_RUN_AS_NODE
+# sharp (in Kokoro's packages) takes a libvips the system has and builds itself from source against it, which fails: Omarchy has one
+# (2026-10-11). Its own prebuilt copy always works.
+export SHARP_IGNORE_GLOBAL_LIBVIPS=1
 cd "$(dirname "$0")"
 OS=$(uname)
 mkdir -p tmp; LOG="$PWD/tmp/start.log"; : > "$LOG"
