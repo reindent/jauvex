@@ -17,8 +17,16 @@ say 'Jauvex on Arch / Omarchy'
 # Node 22.18 or newer (Arch's is newer), git, and the libraries Electron loads; cmake and a compiler for whisper.cpp; curl for the models.
 PKGS='nodejs npm git curl base-devel cmake nss gtk3 alsa-lib libxss libxtst libxkbcommon at-spi2-core libdrm mesa libcups'
 missing=''; for p in $PKGS; do pacman -Qq "$p" >/dev/null 2>&1 || missing="$missing $p"; done
-# -Syu, not -S: a fresh Omarchy has no package lists yet (pacman: "target not found"), and Arch upgrades with every install (no partial upgrades)
-if [ -n "$missing" ]; then say "  Installing with pacman:$missing"; $SUDO pacman -Syu --needed --noconfirm $missing; else say '  System packages are here'; fi
+if [ -z "$missing" ]; then say '  System packages are here'
+elif command -v omarchy-pkg-add >/dev/null 2>&1; then
+  # Omarchy installs packages with its own tool and refuses a bare pacman upgrade (its update guard). A fresh Omarchy has no package lists
+  # yet ("target not found"): its own update fetches them first, unattended.
+  [ -f /var/lib/pacman/sync/core.db ] || { say '  Omarchy has no package lists yet: updating it first (omarchy update -y)'; omarchy-update -y; }
+  say "  Installing with omarchy-pkg-add:$missing"; omarchy-pkg-add $missing
+else
+  # plain Arch: -Syu, not -S (no package lists on a fresh system, and Arch upgrades with every install: no partial upgrades)
+  say "  Installing with pacman:$missing"; $SUDO pacman -Syu --needed --noconfirm $missing
+fi
 
 # The ears: whisper.cpp's server, built once (a few minutes) into ~/.local/bin, where the app looks for it.
 BIN="$HOME/.local/bin"; mkdir -p "$BIN"
