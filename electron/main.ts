@@ -95,7 +95,9 @@ async function createWindow(): Promise<void> {
   // read. Made at once: waiting for the settings before the window was made aborted its page's load now and then (ERR_FAILED, a check's window
   // that never came up, 2026-10-01).
   win = new BrowserWindow({
-    width: 1360, height: 880, minWidth: 900, minHeight: 600, show: false,
+    // A tiling desktop (Omarchy's Hyprland, at 2x on a 1080p screen) gives a half-screen window 461x490: the compositor ignores the
+    // minimum, and a 900-wide page was drawn into it, cut off (2026-10-11). Off the Mac the minimum lets the page reflow instead.
+    width: 1360, height: 880, minWidth: process.platform === 'linux' ? 360 : 900, minHeight: process.platform === 'linux' ? 320 : 600, show: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#141413' : '#ffffff',
     // macOS: the traffic lights inset in the app's own title bar. Elsewhere the system's frame, with no menu bar (the app has no menu, and
     // Alt is push-to-talk: Electron's default menu bar would take it), and the window's icon (macOS takes it from the Dock, below).
