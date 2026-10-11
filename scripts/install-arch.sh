@@ -17,7 +17,8 @@ say 'Jauvex on Arch / Omarchy'
 # Node 22.18 or newer (Arch's is newer), git, and the libraries Electron loads; cmake and a compiler for whisper.cpp; curl for the models.
 PKGS='nodejs npm git curl base-devel cmake nss gtk3 alsa-lib libxss libxtst libxkbcommon at-spi2-core libdrm mesa libcups'
 missing=''; for p in $PKGS; do pacman -Qq "$p" >/dev/null 2>&1 || missing="$missing $p"; done
-if [ -n "$missing" ]; then say "  Installing with pacman:$missing"; $SUDO pacman -S --needed --noconfirm $missing; else say '  System packages are here'; fi
+# -Syu, not -S: a fresh Omarchy has no package lists yet (pacman: "target not found"), and Arch upgrades with every install (no partial upgrades)
+if [ -n "$missing" ]; then say "  Installing with pacman:$missing"; $SUDO pacman -Syu --needed --noconfirm $missing; else say '  System packages are here'; fi
 
 # The ears: whisper.cpp's server, built once (a few minutes) into ~/.local/bin, where the app looks for it.
 BIN="$HOME/.local/bin"; mkdir -p "$BIN"
