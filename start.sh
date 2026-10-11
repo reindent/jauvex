@@ -28,7 +28,9 @@ step() { # step "label" command...
 printf 'Jauvex\n'
 # Again whenever the lockfile changed since the last install: an update or a pull brings a new one.
 if [ -d node_modules ] && cmp -s package-lock.json node_modules/.jauvex-lock; then step "Dependencies are installed" true
-else step "Installing dependencies (npm install)" npm install --no-audit --no-fund; cp package-lock.json node_modules/.jauvex-lock; fi
+# npm ci, not npm install: it installs exactly the lockfile and never rewrites it (npm 12 did, and a clone with a changed lockfile refused
+# its next git pull: Omarchy, 2026-10-11)
+else step "Installing dependencies (npm ci)" npm ci --no-audit --no-fund; cp package-lock.json node_modules/.jauvex-lock; fi
 # The electron package does not fetch its binary by itself (no postinstall of its own since Electron 40-something): install-electron does.
 { [ -d node_modules/electron/dist/Electron.app ] || [ -x node_modules/electron/dist/electron ]; } && step "Electron is here" true || step "Fetching Electron (about 120 MB, once)" npx install-electron
 # Linux: Electron's sandbox helper must belong to root with the setuid bit (Ubuntu 24.04 and later refuse the other way, user namespaces, to an
