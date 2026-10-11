@@ -33,12 +33,14 @@ else step "Installing dependencies (npm install)" npm install --no-audit --no-fu
 sandbox=node_modules/electron/dist/chrome-sandbox
 if [ "$OS" != Darwin ] && [ -f "$sandbox" ]; then
   if [ "$(stat -c %u:%a "$sandbox" 2>/dev/null)" = 0:4755 ]; then step "Electron's sandbox is set up" true
+  elif unshare -Ur true 2>/dev/null; then step "Electron's sandbox uses user namespaces" true # Arch and Omarchy allow them: no sudo
   else printf '  Electron needs its sandbox helper to belong to root (sudo may ask for your password):\n'
     sudo chown root:root "$sandbox" && sudo chmod 4755 "$sandbox" && printf '  \033[32m✓\033[0m Electron'"'"'s sandbox is set up\n' || { printf '  \033[31m✗\033[0m Run, then start again:\n    sudo chown root:root %s && sudo chmod 4755 %s\n' "$PWD/$sandbox" "$PWD/$sandbox"; exit 1; }
   fi
 fi
 # The ears: whisper-server (Homebrew) and the models the app prefers (small for the transcript, base for the live words).
 if command -v whisper-server >/dev/null 2>&1 || [ -x "$HOME/.local/bin/whisper-server" ]; then step "whisper-server is here" true
+elif [ "$OS" != Darwin ] && command -v pacman >/dev/null 2>&1; then printf '  \033[33m!\033[0m whisper-server is not installed: sh scripts/install-arch.sh builds it. Without it you can type but not talk.\n'
 elif [ "$OS" != Darwin ]; then printf '  \033[33m!\033[0m whisper-server is not installed. Build whisper.cpp (github.com/ggml-org/whisper.cpp: cmake -B build && cmake --build build -j) and put build/bin/whisper-server on your PATH (~/.local/bin will do). Without it you can type but not talk.\n'
 elif command -v brew >/dev/null 2>&1; then step "Installing whisper-cpp (brew, once)" brew install whisper-cpp
 else printf '  \033[33m!\033[0m whisper-server is not installed and Homebrew is missing: install Homebrew (brew.sh), then run this again. Without it you can type but not talk.\n'; fi

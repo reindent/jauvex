@@ -231,6 +231,9 @@ debug panel.
   spoken voice there is Kokoro (`kokoro/`, its own package and lockfile, Linux only; `KOKORO` in `voice.ts`, `tests/kokoro-speech.test.ts`;
   `CVC_TTS=kokoro` picks it on a Mac). Find the app there by `node_modules/electron/dist/electron`, not `Electron.app`; `scripts/restart.sh`
   uses setsid instead of launchd.
+- Arch and Omarchy (2026-10-11): `scripts/install-arch.sh` (pacman, whisper.cpp built into `~/.local/bin`, a launcher entry); `start.sh` skips the
+  sudo for Electron's sandbox where `unshare -Ur` works (Arch), keeps it where it fails (Ubuntu 24.04+). `sh tests/arch/check.sh` checks it in a
+  podman Arch container on a headless weston; it is not part of `npm test`.
 - Windows (T-283, from source): a fresh Windows 11 has no Visual C++ runtime, and Electron's install step failed with "Cannot find native
   binding" (its zip extractor's native module needs `vcruntime140.dll`); PATH's folders are split by ";" and a program is `name.exe`
   (`findOnPath` in `voice.ts` takes both); there is no `lsof` or `ps` (`netstatListeners`, CIM for a command line), and netstat's state word
