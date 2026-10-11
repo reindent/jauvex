@@ -70,6 +70,9 @@ step "Building the app" sh scripts/ts.sh scripts/bundle-electron.ts
 if [ "$OS" != Darwin ]; then
   # Linux: no LaunchServices and no protected folders. Started in a session of its own, so closing the terminal does not stop it.
   [ -n "$DISPLAY$WAYLAND_DISPLAY" ] || { printf '  \033[31m✗\033[0m No screen: DISPLAY and WAYLAND_DISPLAY are both empty. Start it from your desktop session.\n'; exit 1; }
+  # A Wayland session (Omarchy's Hyprland, GNOME, KDE): Electron is told so. Left to choose, it took X11 through XWayland and drew no window
+  # on Omarchy, or stopped with "Missing X server" where there is no XWayland (2026-10-11).
+  [ -n "${WAYLAND_DISPLAY:-}" ] && set -- --ozone-platform=wayland "$@"
   nohup setsid "$PWD/node_modules/electron/dist/electron" "$PWD" "$@" > "$PWD/tmp/app.log" 2>&1 < /dev/null & pid=$!
   sleep 2; if kill -0 "$pid" 2>/dev/null; then printf '  \033[32m✓\033[0m Launched (log in tmp/app.log)\n'; else printf '  \033[31m✗\033[0m The app stopped right away:\n'; tail -20 "$PWD/tmp/app.log"; exit 1; fi
   exit 0

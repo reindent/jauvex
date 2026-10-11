@@ -3,7 +3,7 @@
 #   git clone https://github.com/reindent/jauvex && cd jauvex && sh scripts/install-arch.sh
 # Installs what the app needs with pacman (Node, git, Electron's libraries, what building whisper.cpp needs), builds whisper-server once
 # into ~/.local/bin, builds the app (start.sh), and adds a "jauvex" command and an entry in the app launcher (Super+Space on Omarchy). Run
-# it again to update after a git pull. Electron 44 draws on Wayland by itself; Arch lets Chromium's sandbox use user namespaces, so no sudo
+# it again to update after a git pull. start.sh starts Electron on Wayland in a Wayland session; Arch lets Chromium's sandbox use user namespaces, so no sudo
 # for it. JAUVEX_NO_LAUNCH=1 builds without starting the app (the checks).
 set -eu
 cd "$(dirname "$0")/.."

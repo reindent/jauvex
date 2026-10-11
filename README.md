@@ -417,8 +417,8 @@ git clone https://github.com/reindent/jauvex && cd jauvex && sh scripts/install-
 
 `scripts/install-arch.sh` installs what the app needs with pacman (Node, git, Electron's libraries, cmake and a compiler), builds
 whisper-server once into `~/.local/bin`, builds the app with `start.sh` (Whisper's and Kokoro's models included), adds a `jauvex` command
-and an entry in the app launcher (Super+Space on Omarchy), and starts it. Run it again after a `git pull` to update. Electron draws on
-Wayland by itself, and Arch lets Chromium's sandbox use user namespaces, so `start.sh` asks for no sudo there (Ubuntu still needs its
+and an entry in the app launcher (Super+Space on Omarchy), and starts it. Run it again after a `git pull` to update. In a Wayland session
+`start.sh` tells Electron to draw on Wayland (left to choose, it took X11 through XWayland and drew no window), and Arch lets Chromium's sandbox use user namespaces, so `start.sh` asks for no sudo there (Ubuntu still needs its
 setuid helper). `sh tests/arch/check.sh` checks it in a fresh Arch container: the install as an ordinary user with sudo, then the app on a
 headless Wayland compositor (weston). Not checked there: Hyprland itself, a real microphone and speakers, and a GPU.
 
