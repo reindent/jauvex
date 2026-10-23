@@ -20,7 +20,7 @@ const FRESH_MS = 30_000; // several chats are mounted at once: they share one an
 const cache = new Map<Provider, { at: number; p: Promise<ProviderUsage> }>();
 export function get(provider: Provider, force = false): Promise<ProviderUsage> {
   const hit = cache.get(provider); if (hit && !force && Date.now() - hit.at < FRESH_MS) return hit.p;
-  const p = (provider === 'codex' ? codexUsage() : provider === 'grok' ? grokUsage() : claudeUsage()).catch((e): ProviderUsage => ({ provider, available: false, windows: [], at: Date.now(), error: e instanceof Error ? e.message : String(e) }));
+  const p = (provider === 'open' ? Promise.resolve<ProviderUsage>({ provider, available: false, windows: [], at: Date.now() }) /* the user's own server: nothing to count */ : provider === 'codex' ? codexUsage() : provider === 'grok' ? grokUsage() : claudeUsage()).catch((e): ProviderUsage => ({ provider, available: false, windows: [], at: Date.now(), error: e instanceof Error ? e.message : String(e) }));
   cache.set(provider, { at: Date.now(), p }); return p;
 }
 const clamp = (n: number) => Math.max(0, Math.min(100, n));
@@ -81,6 +81,8 @@ export function codexFromLimits(r: { rateLimits: RateSnapshot; rateLimitsByLimit
     .map((w): UsageWindow => ({ label: `${span(w.windowDurationMins)}${name ? ` ${name}` : ''}`, usedPercent: clamp(w.usedPercent), resetsAt: w.resetsAt ? w.resetsAt * 1000 : null, ...(name ? { model: name.toLowerCase() } : {}) }));
   const windows = of(main);
   for (const [id, snap] of Object.entries(r.rateLimitsByLimitId ?? {})) if (snap && snap !== main && id !== 'codex') windows.push(...of(snap, snap.limitName || snap.normalModelSlug || id));
-  const c = main?.credits; const notes = c?.unlimited ? ['Credits: unlimited.'] : c?.hasCredits && c.balance ? [`Credits balance: ${c.balance}.`] : [];
+  // the account's credits as a number people read ("Credits balance: 62500.0000000000." became "Credits: 62,500"): ChatGPT sends a decimal string
+  const credits = (b: unknown): string => { const n = Number(b); return Number.isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : String(b); };
+  const c = main?.credits; const notes = c?.unlimited ? ['Credits: unlimited'] : c?.hasCredits && c.balance ? [`Credits: ${credits(c.balance)}`] : [];
   return { provider: 'codex', available: windows.length > 0, windows, at, ...(main?.planType ? { plan: String(main.planType) } : {}), ...(notes.length ? { notes } : {}), ...(windows.length ? {} : { error: 'Codex reported no usage windows for this sign-in.' }) };
 }

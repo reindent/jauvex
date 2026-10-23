@@ -7,6 +7,7 @@
 import { readFileSync, existsSync, statSync, mkdirSync, rmSync, renameSync, createWriteStream, createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto'; import path from 'node:path'; import { fileURLToPath } from 'node:url';
 import { Readable } from 'node:stream'; import { pipeline } from 'node:stream/promises';
+import { webGet } from '../electron/webget.ts';
 
 const sh = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'models.sh'), 'utf8');
 type Model = { file: string; bytes: number; sum: string };
@@ -29,7 +30,7 @@ if (cmd === 'missing') {
   const target = path.join(dir, m.file), part = `${target}.part`; mkdirSync(path.dirname(target), { recursive: true }); rmSync(part, { force: true });
   const tries = 1 + Number(process.env.JAUVEX_MODELS_RETRIES ?? 3); let done = false;
   for (let i = 0; i < tries && !done; i++) {
-    try { const r = await fetch(url); if (!r.ok || !r.body) throw Error(`HTTP ${r.status}`); await pipeline(Readable.fromWeb(r.body as never), createWriteStream(part)); done = true; }
+    try { const r = await webGet(url); if (!r.ok || !r.body) throw Error(`HTTP ${r.status}`); await pipeline(Readable.fromWeb(r.body as never), createWriteStream(part)); done = true; }
     catch { rmSync(part, { force: true }); if (i + 1 < tries) await new Promise((res) => setTimeout(res, 1000 * (i + 1))); }
   }
   if (!done) fail(`The download of ${m.file} failed.`);

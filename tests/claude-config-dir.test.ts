@@ -1,6 +1,6 @@
 // Claude Code keeps its sessions under CLAUDE_CONFIG_DIR when the user set one (in a shell profile, say). The app starts through macOS,
-// not from a terminal, so it takes that variable from the login shell; the session list then reads from there. A friend saw his Codex
-// sessions listed and none of his Claude Code ones.
+// not from a terminal, so it takes that variable from the login shell; the session list then reads from there. A user saw their Codex
+// sessions listed and none of their Claude Code ones.
 import { mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs'; import { execFileSync } from 'node:child_process'; import path from 'node:path'; import os from 'node:os';
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };
 const { parseShellVars } = await import('../electron/shellenv.ts');

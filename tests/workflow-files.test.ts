@@ -1,5 +1,4 @@
-// One file per step (T-168; the user, 2026-09-27: "a workflow MD file, and then the workflow folder with MD files for each step. That's it,
-// that's all it has to do"): a new workflow is its file and a folder with each step's instructions; reading it brings them; the app writes
+// One file per step (T-168): a new workflow is its file and a folder with each step's instructions; reading it brings them; the app writes
 // and removes a step's file in the workflow's own folder, nothing outside it. No app, a folder under the check's data folder.
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -36,7 +35,7 @@ const older = 'workflows/older.md'; await fs.writeFile(path.join(dir, older), '#
 const o = await readWorkflow(dir, older); const od = parseWorkflow(o.md, older, o.prompts);
 check('an older file still reads: instructions under a heading, and a linked file not made yet is no instructions', od.steps[0]!.prompt === 'Collect the notes.' && od.steps[1]!.prompt === '' && Object.keys(o.prompts).length === 0);
 
-// versions (T-169; the user, 2026-09-27: "versioned each time they are run and they change. Not before ... it's per run"): a run takes the
+// versions (T-169): a workflow is versioned per run, when it changed, never on an edit alone; a run takes the
 // latest version when the workflow is as it was, a new one when its file or a step's instructions changed; editing alone takes none
 const vfile = await newWorkflow(dir, 'Versioned', 'Jauvex'); const vdir = path.join(dir, 'workflows/versioned/versions');
 const versions = async () => (await fs.readdir(vdir).catch(() => [] as string[])).sort().join(',');
@@ -55,7 +54,7 @@ check('the workflow file changed: version 3 at the next run', (await newRun(dir,
 const fence = 'Show them this:\n```\ncode\n```\n'; await saveWorkflowStep(dir, vfile, 'versioned/write-it-down.md', fence);
 check('instructions with a code block of their own stay whole in a version', (await newRun(dir, vfile)).version === 4 && (await fs.readFile(path.join(vdir, '004.md'), 'utf8')).includes('````markdown\nShow them this:\n```\ncode\n```\n````'));
 
-// seeing and restoring them (the user, 2026-09-27: "where I'm supposed to see the versions ... how can I roll back to a previous version")
+// seeing and restoring them: the versions are listed, and an earlier one can be rolled back to
 check('the versions, and the one the workflow is now', JSON.stringify((await workflowVersions(dir, vfile)).versions.map((x) => x.n)) === '[1,2,3,4]' && (await workflowVersions(dir, vfile)).current === 4 && /when run \d+ started/.test((await workflowVersions(dir, vfile)).versions[0]!.taken));
 await saveWorkflowStep(dir, vfile, 'versioned/say-hello.md', 'An edit nobody ran.\n');
 check('edited since: no version is the workflow now', (await workflowVersions(dir, vfile)).current === null);

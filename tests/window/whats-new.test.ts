@@ -1,5 +1,5 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/whats-new/claude CODEX_HOME=__ROOT__/tmp/testrun/whats-new/codex MOCK_DELAY_MS=5 CVC_UPDATE_INSTALLED=1 CVC_UPDATE_SITE=http://127.0.0.1:4481
-// What's new (T-245; the user, 2026-09-30: "when you click what's new, it should check if there's a new version"): a click asks the site right
+// What's new (T-245): a click asks the site right
 // then (here a stand-in on 4481), the notes open at once with "checking" on top. Out of reach: this copy's notes, under a line that says so. The latest already: the notes, under a line that
 // says so. A newer version: no notes; the Jauvex agent's chat opens and it is told what the version brings, to ask the user; the notice that
 // then takes What's new's place asks again on a click.
@@ -10,6 +10,10 @@ import path from 'node:path';
 const { js, close } = await connect(); await sleep(2500);
 const until = async (expr: string, ms = 20000) => { for (let t = 0; t < ms; t += 300) { if (await js(expr)) return true; await sleep(300); } return false; };
 const version = JSON.parse(readFileSync('package.json', 'utf8')).version, data = process.env.CVC_DATA_DIR!;
+// this copy's changelog, newest first: the What's new window shows its newest sections, so the check compares the newest with the one after it
+// (a fixed old version fell out of the window as releases were added; a copy just moved to its next x.y.z-dev has no section of its own yet). The site never names a version in the making (VERSION_RE): for a
+// copy at x.y.z-dev, "the latest" is the newest release before it.
+const heads = [...readFileSync('CHANGELOG.md', 'utf8').matchAll(/^## (\d+\.\d+\.\d+(?:-dev)?)/gm)].map((m) => m[1]!), released = heads.find((v) => !v.endsWith('-dev'))!;
 const told = () => { const f = path.join(data, 'jauvex-transcript.json'); if (!existsSync(f)) return [] as string[]; return JSON.parse(readFileSync(f, 'utf8')).filter((e: any) => e.message?.role === 'user').map((e: any) => JSON.stringify(e.message.blocks)).filter((t: string) => t.includes('Jauvex 9.9.0 is out')); };
 const box = "document.querySelector('.modal.whats-new')";
 const click = (sel: string) => js(`document.querySelector(${JSON.stringify(sel)})?.click()`);
@@ -18,10 +22,10 @@ const closeBox = async () => { await js(`${box}?.querySelector('.modal-foot butt
 await until("!!document.querySelector('.foot-news')", 10000);
 await click('.foot-news');
 check('the site out of reach: the notes, under a line that says so', await until(`!!${box} && ${box}.querySelector('.whats-new-check').textContent.includes('could not be reached')`), await js(`${box}?.querySelector('.whats-new-check')?.textContent`));
-check('...the notes are this copy\'s own changelog, the newest release first', await js(`(() => { const t = ${box}?.querySelector('.whats-new-body')?.textContent ?? ''; return t.indexOf(${JSON.stringify(version)}) >= 0 && t.indexOf(${JSON.stringify(version)}) < t.indexOf('1.3.0'); })()`));
+check('...the notes are this copy\'s own changelog, the newest release first', await js(`(() => { const t = ${box}?.querySelector('.whats-new-body')?.textContent ?? ''; return t.indexOf(${JSON.stringify(heads[0])}) >= 0 && t.indexOf(${JSON.stringify(heads[0])}) < t.indexOf(${JSON.stringify(heads[1])}); })()`), `${heads[0]} before ${heads[1]}`);
 await closeBox();
 
-let latest = version, slow = 0; const log = '# Changelog\n\n## 9.9.0: 2026-10-02\n\n- **Timers.** Agents that wake up on their own.\n';
+let latest = released, slow = 0; const log = '# Changelog\n\n## 9.9.0: 2026-10-02\n\n- **Timers.** Agents that wake up on their own.\n';
 const server = http.createServer((q, r) => { if (q.url === '/api/personal/version') { r.setHeader('content-type', 'application/json'); setTimeout(() => r.end(JSON.stringify({ latest_version: latest })), slow); } else if (q.url === '/api/personal/changelog') { r.setHeader('content-type', 'text/plain'); r.end(log); } else { r.statusCode = 404; r.end(); } });
 await new Promise<void>((r) => server.listen(4481, '127.0.0.1', () => r()));
 slow = 2500; await click('.foot-news');

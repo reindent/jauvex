@@ -1,4 +1,4 @@
-// The pause that ends a turn (Diego, 2026-10-06): 2.0 s by default, up to 5.0 s; a copy on the old 0.8 s default moves to 2.0 s once, a chosen pause stays.
+// The pause that ends a turn: 2.0 s by default, up to 5.0 s; a copy on the old 0.8 s default moves to 2.0 s once, a chosen pause stays.
 import { VOICE_DEFAULTS, settledVoice, PAUSE_MAX_MS } from '../shared/types.ts';
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${!ok && got ? `: ${got}` : ''}`); if (!ok) failed++; };
 check('the default is 2.0 s, the most 5.0 s', VOICE_DEFAULTS.pauseMs === 2000 && PAUSE_MAX_MS === 5000);

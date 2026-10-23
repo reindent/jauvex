@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // The app's command line, for agents (the Jauvex agent above all): every action in the app, as a request file in
 // data/commands that the running app answers. Usage: node scripts/jauvex.ts <command> [--flag value ...]
-// Commands: list | add-folder <path> | pick-folder | new-agent [--provider claude|codex|grok|jev] [--folder name|path|id] [--name ..] [--purpose ..] [--kickoff ".."] (always started: --no-kickoff gives it its own introduction)
+// Commands: list | add-folder <path> | pick-folder | new-agent [--provider claude|codex|grok|open|jev] [--folder name|path|id] [--name ..] [--purpose ..] [--kickoff ".."] [--from ..] (always started: --no-kickoff gives it its own introduction)
 //           open [--folder ..] [--session id|title] | import --folder .. [<session id|title> ...] [--last N] | new-board --name .. [--folder ..] | new-workflow --name .. [--folder ..] | send --session id|title [--folder ..] --text ".." | rename --session .. --title ".."
 //           wait --agent "<your name>" --for "<agent>, <agent>" [--off]   (a lead: the app wakes you with their last answers once every one of them has finished a turn)
-//           settings [--default-provider claude|codex|grok] [--show-jauvex yes|no] [--welcome-next yes|no] [--jauvex-move unified|handoff] [--auto-compact <percent>|provider] [--workflow-missed run|alert|nothing] [--language auto|en|es] [--permission-provider claude|codex|grok --permission-mode ask|auto|yolo|session] | welcome | reload | restart
+//           settings [--default-provider claude|codex|grok|open] [--show-jauvex yes|no] [--welcome-next yes|no] [--jauvex-move unified|handoff] [--auto-compact <percent>|provider] [--workflow-missed run|alert|nothing] [--language auto|en|es] [--permission-provider claude|codex|grok --permission-mode ask|auto|yolo|session] | welcome | reload | restart
 //           run --workflow file|name [--folder ..] | runs --workflow .. | decide --workflow .. --outcome ".." [--note ".."] (the user's decision at a gate, on their word) | stop-run --workflow .. | resend-run --workflow ..
 //           move-workflow --workflow file|name --to <folder> [--folder ..] (with its chat's session) | move-session --session id|title --to <folder> [--folder ..]
 //           feedback --preview [--screenshot] [--log] | --type bug|feature|idea|feedback|question --title <t> --description <d> [--contact <email>] [--screenshot] [--log]
-//             (the Jauvex agent: a person's report to Reindent; preview gives the screenshot's path and the cleaned log, to show first)
+//             (the Jauvex agent: a person's report to the app's makers; preview gives the screenshot's path and the cleaned log, to show first)
 //           update [--check] [--now] (the app the install command made, to the latest version: it closes, rebuilds and opens again)
 //           theme [--custom '<palette JSON>' | --set light|dark|system] (the app's colours: a palette of the user's own, or one of the app's themes)
 // Prints the JSON result; exits 1 when the app said no or did not answer (is it running? same data folder?).
@@ -25,7 +25,7 @@ const shapes = {
   list: () => ({ type: 'list' }),
   'add-folder': () => ({ type: 'add-folder', path: flags.path ?? bare[0] }),
   'pick-folder': () => ({ type: 'pick-folder' }),
-  'new-agent': () => ({ type: 'new-agent', provider: flags.provider, folder: flags.folder, name: flags.name, purpose: flags.purpose, kickoff: flags['no-kickoff'] ? '' : flags.kickoff }),
+  'new-agent': () => ({ type: 'new-agent', provider: flags.provider, folder: flags.folder, name: flags.name, purpose: flags.purpose, kickoff: flags['no-kickoff'] ? '' : flags.kickoff, author: flags.from }),
   open: () => ({ type: 'open', folder: flags.folder, session: flags.session ?? bare[0] }),
   import: () => ({ type: 'import', folder: flags.folder, sessions: [...(typeof flags.session === 'string' ? [flags.session] : []), ...bare], last: flags.last === undefined ? undefined : Number(flags.last) }),
   'new-board': () => ({ type: 'new-board', folder: flags.folder, name: flags.name ?? bare.join(' ') }),
@@ -37,17 +37,18 @@ const shapes = {
   'resend-run': () => ({ type: 'resend-run', folder: flags.folder, workflow: flags.workflow ?? bare[0] }),
   'move-workflow': () => ({ type: 'move-workflow', folder: flags.folder, workflow: flags.workflow ?? bare[0], to: flags.to }), // with its chat's session, whatever the provider
   'move-session': () => ({ type: 'move-session', folder: flags.folder, session: flags.session ?? bare[0], to: flags.to }),
-  send: () => ({ type: 'send', folder: flags.folder, session: flags.session, text: flags.text ?? bare.join(' ') }),
+  send: () => ({ type: 'send', folder: flags.folder, session: flags.session, text: flags.text ?? bare.join(' '), author: flags.from }),
   rename: () => ({ type: 'rename', folder: flags.folder, session: flags.session, title: flags.title ?? bare.join(' ') }),
   wait: () => ({ type: 'wait', ...(typeof flags.agent === 'string' ? { agent: flags.agent } : {}), ...(typeof flags.for === 'string' ? { for: flags.for } : {}), ...(flags.off ? { off: true } : {}) }), // FB-09
   settings: () => ({ type: 'settings', permissionProvider: flags['permission-provider'], permissionMode: flags['permission-mode'], defaultProvider: flags['default-provider'], showJauvex: bool('show-jauvex'), welcomeNext: bool('welcome-next'), jauvexMove: flags['jauvex-move'], autoCompact: flags['auto-compact'] === undefined ? undefined : /^provider$/i.test(String(flags['auto-compact'])) ? 0 : Number(String(flags['auto-compact']).replace('%', '')), workflowMissed: flags['workflow-missed'], language: flags.language }), // provider: the provider decides
-  feedback: () => ({ type: 'feedback', ...(flags.preview ? { preview: true } : {}), ...(typeof flags.type === 'string' ? { kind: flags.type } : {}), ...(typeof flags.title === 'string' ? { title: flags.title } : {}), ...(typeof flags.description === 'string' ? { description: flags.description } : {}), ...(typeof flags.contact === 'string' ? { contact: flags.contact } : {}), ...(flags.screenshot ? { screenshot: true } : {}), ...(flags.log ? { log: true } : {}) }), // a person's report to Reindent (2026-10-04)
+  feedback: () => ({ type: 'feedback', ...(flags.preview ? { preview: true } : {}), ...(typeof flags.type === 'string' ? { kind: flags.type } : {}), ...(typeof flags.title === 'string' ? { title: flags.title } : {}), ...(typeof flags.description === 'string' ? { description: flags.description } : {}), ...(typeof flags.contact === 'string' ? { contact: flags.contact } : {}), ...(flags.screenshot ? { screenshot: true } : {}), ...(flags.log ? { log: true } : {}) }), // a person's report to the app's makers
   update: () => ({ type: 'update', check: flags.check ? true : undefined, now: flags.now ? true : undefined }), // the installed app, to the latest version
   theme: () => ({ type: 'theme', custom: typeof flags.custom === 'string' ? flags.custom : undefined, set: flags.set }), // T-278
   welcome: () => ({ type: 'welcome' }), reload: () => ({ type: 'reload-ui' }), restart: () => ({ type: 'restart-app' }),
 };
 if (!cmd || !shapes[cmd]) { console.error(`usage: node scripts/jauvex.ts <${Object.keys(shapes).join('|')}> [--flag value ...]`); process.exit(2); }
-const body = Object.fromEntries(Object.entries(shapes[cmd]()).filter(([, v]) => v !== undefined));
+// byAgent, agentSession: typed in an agent's shell, and which agent when its shell knows (a Claude session's): its kickoffs and sends show as its own
+const body = { ...Object.fromEntries(Object.entries(shapes[cmd]()).filter(([, v]) => v !== undefined)), ...(process.env.JAUVEX_AGENT ? { byAgent: true, ...(process.env.JAUVEX_SESSION ? { agentSession: process.env.JAUVEX_SESSION } : {}) } : {}) };
 mkdirSync(dir, { recursive: true }); const id = `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
 const tmp = path.join(dir, `${id}.tmp`); writeFileSync(tmp, JSON.stringify(body)); renameSync(tmp, path.join(dir, `${id}.json`)); // whole or not there
 const result = path.join(dir, `${id}.result.json`); const deadline = Date.now() + Number(flags.timeout ?? 30000);

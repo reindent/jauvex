@@ -2,7 +2,7 @@
 // for the user, the record is rewritten at every change, a missing OUTCOME line is asked for once, a loop stops the run.
 let failed = 0; const check = (name: string, ok: boolean, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok || !detail ? '' : `: ${detail}`}`); if (!ok) failed++; };
 const { Runner, said } = await import('../web/src/runner.ts'); const { parseWorkflow, parseRun } = await import('../shared/workflow.ts');
-const md = `# Demo\n\nA check.\n\nwhen: manual\n\n## 1. Gather → Notes agent\nCollect.\nthen: done → Your approval · nothing found → stop, tell the user\n\n## 2. Your approval → you\nthen: approved → Publish · changes → back to step 1 with your notes\n\n## 3. Publish → Social agent\nthen: → Done\n\ndone: out\n`;
+const md = `# Demo\n\nA check.\n\nwhen: manual\n\n## 1. Gather → Notes agent\nCollect.\nthen: done → Your approval · nothing found → stop, tell the user\n\n## 2. Your approval → you\nthen: approved → Send · changes → back to step 1 with your notes\n\n## 3. Send → Mail agent\nthen: → Done\n\ndone: out\n`;
 const def = parseWorkflow(md, 'workflows/demo.md');
 const make = (deliverOk = true) => { const sent: { agent: string; text: string; step: number }[] = []; let record = ''; const run = parseRun('# Run 1\nstarted: 2026-09-22 10:00\nresult: running\n', 'workflows/demo/runs/001.md');
   const r = new Runner(def, run, 'workflows/demo/runs/001/', { deliver: async (agent, text, step) => { sent.push({ agent, text, step }); return deliverOk ? { ok: true } : { ok: false, note: `No agent named "${agent}"` }; }, save: async (m) => { record = m; } });
@@ -17,7 +17,7 @@ const make = (deliverOk = true) => { const sent: { agent: string; text: string; 
   await r.decide(2, 'changes', 'tighter');
   check('a send-back goes back to step 1 with the note in the record, a fresh message to the agent', parsed().steps[2]!.said === 'you: changes — tighter' && sent.length === 2 && sent[1]!.step === 1 && /Step 2 \("Your approval"\) ended with: you: changes — tighter/.test(sent[1]!.text), sent[1]?.text);
   await r.onReply(1, 'Better now.\nOUTCOME: done'); await r.decide(2, 'approved'); 
-  check('approved goes on to Publish', sent.length === 3 && sent[2]!.agent === 'Social agent', String(sent.length));
+  check('approved goes on to Send', sent.length === 3 && sent[2]!.agent === 'Mail agent', String(sent.length));
   await r.onReply(3, 'Posted.\nOUTCOME: done');
   check('the run ends done with its total time, every step in the record', r.over && parsed().result === 'done' && parsed().took != null && Object.keys(parsed().steps).length === 3, rec()); }
 { const { r, sent, parsed } = make(); await r.start(); await r.onReply(1, 'I did things but forgot the line.');
@@ -28,7 +28,7 @@ const make = (deliverOk = true) => { const sent: { agent: string; text: string; 
   check('a stop branch ends the run and says why', r.over && parsed().result === 'stopped: stop, tell the user', parsed().result); }
 { const { r, parsed } = make(false); await r.start();
   check('an agent that cannot be reached fails the run at that step', r.over && /^failed: step 1 \(Gather\): No agent named "Notes agent"/.test(parsed().result), parsed().result); }
-// Tries (T-197; the user, 2026-09-28: "agents should not do it more than six times ... but for humans, I wouldn't add that"): a loop through
+// Tries (T-197): agents alone get six rounds at most, a person's decision none; a loop through
 // a decision of the user's has no limit; one between agents alone stops the run past the step's tries (its own line, else the workflow's, else 6).
 { const { r, sent, parsed } = make(); await r.start(); for (let i = 0; i < 9 && !r.over; i++) { await r.onReply(1, 'OUTCOME: done'); await r.decide(2, 'changes'); }
   check('a loop through a decision of yours goes on past six rounds (nine send-backs, still running)', !r.over && sent.length === 10 && parsed().result === 'running', `${parsed().result} after ${sent.length} messages`); }
@@ -54,19 +54,19 @@ const agentsOnly = (tries: string, stepLine = '') => { const d = parseWorkflow(`
   await r.onReply(1, 'Found them.\nOUTCOME: done'); check('the reply moves it on to the gate, which is signalled', gates.join() === '2' && r.waiting === 'user' && /took: \d/.test(rec));
   await r.decide(2, 'approved'); await r.onReply(3, 'OUTCOME: done'); check('the end is signalled with its result', ends.join() === 'done'); }
 // one file per step (T-168): the step is its agent and its instructions, the file its heading links; no then lines, the usual outcomes
-{ const split = parseWorkflow('# Split\n\nwhen: manual\n\n## 1. [Script](split/script.md) → Video agent\n\n## 2. [Your approval](split/your-approval.md) → you\n\n## 3. [Publish](split/publish.md) → Social agent\n',
-    'workflows/split.md', { 'split/script.md': 'Write the script.\n\nNever invent a quote.\n', 'split/publish.md': 'Post it.' });
+{ const split = parseWorkflow('# Split\n\nwhen: manual\n\n## 1. [Draft](split/draft.md) → Writer agent\n\n## 2. [Your approval](split/your-approval.md) → you\n\n## 3. [Send](split/send.md) → Mail agent\n',
+    'workflows/split.md', { 'split/draft.md': 'Write the draft.\n\nNever change a quantity.\n', 'split/send.md': 'Send it.' });
   const sent: { agent: string; text: string; step: number }[] = []; let record = ''; const run = parseRun('# Run 1\nstarted: 2026-09-27 10:00\nresult: running\n', 'workflows/split/runs/001.md');
   const r = new Runner(split, run, 'workflows/split/runs/001/', { deliver: async (agent, text, step) => { sent.push({ agent, text, step }); return { ok: true }; }, save: async (m) => { record = m; } }); await r.start();
-  check('a step is sent its own file, as written', sent[0]!.agent === 'Video agent' && sent[0]!.text.includes('Write the script.\n\nNever invent a quote.') && /OUTCOME: one of "done", "failed"/.test(sent[0]!.text), sent[0]?.text);
+  check('a step is sent its own file, as written', sent[0]!.agent === 'Writer agent' && sent[0]!.text.includes('Write the draft.\n\nNever change a quantity.') && /OUTCOME: one of "done", "failed"/.test(sent[0]!.text), sent[0]?.text);
   check('the step before yours is told to end with what you should do', /starts with FOR YOU:/.test(sent[0]!.text), sent[0]?.text);
-  await r.onReply(1, 'Written.\nFOR YOU: Read the script, then approve it or ask for changes.\nOUTCOME: done');
-  check('what it tells you is kept in the record, apart from what it said', /said: Written\.\nasks: Read the script, then approve it or ask for changes\./.test(record), record);
+  await r.onReply(1, 'Written.\nFOR YOU: Read the draft, then approve it or ask for changes.\nOUTCOME: done');
+  check('what it tells you is kept in the record, apart from what it said', /said: Written\.\nasks: Read the draft, then approve it or ask for changes\./.test(record), record);
   await r.decide(2, 'changes', 'shorter');
   check('an approval with no then line sends changes back to the step before, with the note', sent.length === 2 && sent[1]!.step === 1 && /ended with: you: changes — shorter/.test(sent[1]!.text), sent[1]?.text);
   await r.onReply(1, 'Shorter.\nOUTCOME: done');
   check('a step of yours goes on with continue, and an agent that still says approved is understood (it was the word until 2026-09-27)', await r.decide(2, 'approved') && /said: you: continue/.test(record), record);
-  check('continue goes on to the next', sent.length === 3 && sent[2]!.agent === 'Social agent' && sent[2]!.text.includes('Post it.'), String(sent.length));
+  check('continue goes on to the next', sent.length === 3 && sent[2]!.agent === 'Mail agent' && sent[2]!.text.includes('Send it.'), String(sent.length));
   await r.onReply(3, 'Could not log in.\nOUTCOME: failed');
   check('a failed step stops the run', /^result: stopped: stop, tell the user/m.test(record), record); }
 { const { r, sent, rec } = make(); await r.start(); // outcomes written out: a reply without its OUTCOME line is asked for once more

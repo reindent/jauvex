@@ -8,6 +8,7 @@
  * playing and the app does not interrupt itself.
  */
 import { t } from '../../shared/i18n';
+import { voiceCut } from '../../shared/voicecut';
 const WORKLET = `
 class Frames extends AudioWorkletProcessor {
   constructor() { super(); this.ratio = sampleRate / 16000; this.acc = 0; this.sum = 0; this.n = 0; this.out = new Float32Array(480); this.i = 0; }
@@ -35,11 +36,10 @@ export type VoiceEvents = {
   interim?(wav: ArrayBuffer): void;
   wake?(wav: ArrayBuffer): void;             // muted, with a wake phrase set: a short phrase heard, to be checked against it (nothing else is sent)          // still talking: the audio so far, every INTERIM_MS, to show the words as they come
 };
-const TAIL_MS = 240 /* of the closing pause kept */, FRAME_MS = 30, PREROLL = 10 /* 300 ms kept before speech starts */, MAYBE_MS = 240, MIN_SPEECH_MS = 200 /* the default; the welcome asks for less, one word at a time */, MAX_UTTERANCE_MS = 45_000, INTERIM_MS = 1300;
+const TAIL_MS = 240 /* of the closing pause kept */, FRAME_MS = 30, PREROLL = 10 /* 300 ms kept before speech starts */, MAYBE_MS = 240, MIN_SPEECH_MS = 200 /* the default; the welcome asks for less, one word at a time */, INTERIM_MS = 1300;
 // A dictation longer than this is closed at its next short pause and the next words start a new segment that joins it: every pass over
 // the audio costs by its length, and a paragraph re-transcribed at each pause took 3 to 5 seconds a pass, so the words landed late and cut.
-const LONG_MS = 6_000; // was 9 s: a 14 s pass once came back as "I" (T-79)
-const HARD_MS = 12_000; // no pause short enough for that long: closed anyway, so no pass ever covers a paragraph
+// LONG_MS, HARD_MS, MAX_MS: shared/voicecut.ts (FB-21: pieces close at gaps between words only, never mid-word)
 
 export class VoiceEngine {
   private ctx: AudioContext | null = null; private stream: MediaStream | null = null; private node: AudioWorkletNode | null = null;
@@ -104,8 +104,8 @@ export class VoiceEngine {
       this.silentMs += FRAME_MS;
       if (!this.maybeSent && this.silentMs >= MAYBE_MS && this.speechMs >= this.minSpeechMs) { this.maybeSent = true; this.trace('pause: speculative pass'); this.on.maybeEnd(this.wav(), this.seq); }
     }
-    const cut = (this.silentMs >= MAYBE_MS && this.silentMs < this.pauseMs && this.frames.length * FRAME_MS > LONG_MS) || (this.silentMs < this.pauseMs && this.frames.length * FRAME_MS > HARD_MS);
-    if (this.silentMs >= this.pauseMs || this.frames.length * FRAME_MS > MAX_UTTERANCE_MS || cut) {
+    const verdict = voiceCut(this.silentMs, this.frames.length * FRAME_MS, this.pauseMs); const cut = verdict === 'cut'; // FB-21: pieces close only at gaps between words, never mid-word
+    if (verdict) {
       const ok = this.speechMs >= this.minSpeechMs; const wav = ok ? this.wav(Math.max(0, Math.floor((this.silentMs - TAIL_MS) / FRAME_MS))) : null; const id = this.seq; this.trace(cut ? 'cut: closed for its length' : ok ? 'ends' : 'ends with too little speech: dropped');
       this.inSpeech = false; this.frames = []; this.silentMs = 0; this.speechMs = 0; this.maybeSent = false;
       if (wav) this.on.end(wav, id, cut); else this.on.dropped();

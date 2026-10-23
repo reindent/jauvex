@@ -7,7 +7,7 @@ import { t } from '../../shared/i18n';
 // (an empty tray at 0 %; no outline for a sheet that is not there), white, then yellow from half full, red from 80 %, with the percentage. A click opens the numbers and a Compact button: nothing is
 // compacted by the click itself. The sheets pulse while the provider compacts, whoever asked for it.
 const SHEETS = [12, 9.75, 7.5, 5.25, 3]; // each sheet's top, bottom to top: flat and lined up, rising out of a small tray that holds
-// about the lowest fifth of the stack (the user, 2026-09-23: no rotation; a tray, the sheets coming out of it)
+// about the lowest fifth of the stack (no rotation; a tray, the sheets coming out of it)
 
 export type LastCompact = { at: number; before?: number; after?: number; ok: boolean };
 

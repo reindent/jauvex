@@ -3,6 +3,80 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.ai/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.8.0: 2026-10-23
+
+- **Open models**: run an agent on a model of your own: Ollama, LM Studio or vLLM on your computer, or OpenRouter. Set it up in
+  Accounts, where List models shows what the server offers, then pick Open models when you start an agent.
+- **A tidier left panel**: each folder shows its agents, workflows and boards as a small tree, each group with its count and a plus to add
+  one; three rows show, then "N more…", and a group folds from its name.
+- **Tabs and a filter in the left panel**: All, Agents, Workflows and Boards, and a filter that narrows every folder as you type (Escape
+  clears it). The tabs, the filter and the Jauvex agent stay in place while the folders scroll.
+- **Drag to resize**: the line above a workflow's or a board's chat drags to make it taller or shorter, and the height is kept.
+- **Answers as buttons**: when an agent asks you to choose, its options show as buttons under the question, the recommended one marked. A
+  tap sends your answer, the pen lets you write your own, and Alt with a number picks one from the keyboard.
+- **Quotes you can click**: a quote in your message shows as a quote above it, and a click on it takes you to the text it came from.
+- **Fixes**: a long quote no longer squeezes the message box; the Jauvex agent's row stays lit while its chat is open.
+- **What an agent needs from you, in yellow**: a question or a request for you stands out in its own box; a click on it starts your reply.
+- **Questions for you stay in sight**: when an agent asks you something while answering another agent, the yellow box stays in your chat
+  instead of folding away with their messages, and it is not sent to that agent.
+- **Reply to part of the chat**: select any text in the chat to quote it in your message, or right-click for Copy and Quote.
+- **Copy code in one click**: every code block has a copy button.
+- **Older agents learn the new rules**: Codex and Grok agents made before an update get what changed in the app's rules with their next
+  message, and Claude agents always run with the current ones.
+- **An agent's words are never shown as yours**: a first message or a message an agent sends from its terminal shows as that agent's, so
+  the agent receiving it never takes it for your words.
+- **Spoken orders that name a folder act at once**: "make a Codex agent under webapp" makes it, without asking again.
+- **Pictures stay in the Jauvex agent's chat**: a picture you sent it is still there when the chat opens again.
+- **Voice never mutes you mid-sentence**: auto-mute waits while you are talking.
+- **Answered questions calm down**: a yellow box you clicked, or that you replied after, is no longer highlighted.
+- **Clearer labels**: "Full access (YOLO)", and Codex credits read as a number ("Credits: 62,500"). Settings says why an idle chat compacts a
+  little earlier.
+- **Fixes**: no "Send now" on a message waiting for a compaction; the help button always reaches the Jauvex agent; an update no longer counts
+  the Jauvex agent itself as busy; a Codex sign-in refreshed elsewhere is picked up again; a YOLO Claude agent is never stuck on a permission
+  card nobody sees.
+- **A lead is woken only when it asked to wait**: the app no longer guesses a wait from an agent's words, and the wait order takes an
+  agent's exact name or id, so it never binds a different agent with a similar name.
+- **Agents can't raise what agents may do**: an agent's order can lower a provider's permission level, never raise it; only you can, in
+  Settings, Safety.
+- **Safer downloads**: the app no longer accepts Brotli-compressed answers from the web, which a flaw in Node.js made unsafe; link previews,
+  open models and updates use gzip or nothing.
+- **Agents keep everything organized**: every agent is told, first after security, to keep everything in order: files and folders, temp
+  work and the processes it started, code, branches and versions, tasks, decisions, instructions, agents, workflows, messages, secrets and
+  memory. No stray copies or leftovers in your folders.
+- **Arch Linux and Omarchy**: `sh scripts/install-arch.sh` installs and builds the app on Arch and Omarchy (Hyprland on Wayland), with
+  whisper-server, a `jauvex` command and an entry in the app launcher.
+- **A message with no answer says so**: when an agent's reply is empty, or a turn is cut off or lost, the line under your message says
+  "<agent> didn't reply", with Send again, instead of leaving it looking swallowed.
+- **The voice keeps talking**: Kokoro, the spoken voice on Linux and Windows, no longer crashes after several minutes of speech.
+- **"Hmm" sounds like "hmm"**: the voice on Linux and Windows says "Mmm", "Hmm" and "Mm-hmm" as sounds instead of spelling them letter by letter.
+- **The voice comes back by itself**: if Kokoro ever stops, it starts again on its own, so your chats are not left silent until you switch
+  voice off and on.
+- **No voice servers left behind**: restarting, updating or resetting the app now stops its speech servers too, so the next start can
+  always listen.
+- **Messages between agents arrive whole**: a message to another agent with a code block in it is no longer cut at that code block.
+- **Replies reach Codex agents**: an agent addressed by a longer id with a hyphen in it, as Codex agents often are, is found again.
+- **No more "OUTCOME: done" at the end of answers**: the line a workflow reads is left out of the chat, of what the voice says and of
+  answers sent back to other agents.
+- **Updates on a copy in the making**: a copy built from a version in the making (1.8.0-dev) is offered the release and greets you after
+  an update, as any other copy does.
+- **Long dictations heard better**: a long spoken message is split only at a pause between words, never in the middle of one, so names
+  and phrases no longer come back garbled.
+- **Pictures with spaces in their path show**: an agent's picture whose path has spaces, `%20` or a Windows drive shows in the chat
+  instead of raw text.
+- **Voice turns off when you say so**: a chat never listens twice, so your words no longer arrive twice, and turning voice off while it
+  starts really stops it.
+- **Never a blank window**: if the window's page crashes, fails to load, hangs or comes up empty, it loads again by itself (your running
+  agents carry on), and the debug panel says what happened.
+- **No more "JavaScript error" dialog when a program hangs up**: when Codex or a sign-in closes while the app is still writing to it, the
+  app carries on instead of showing a fatal error box.
+- **No more blinking text under the orb**: with voice on, the newest line of an agent's answer no longer flickers half drawn on a Mac.
+- **The message box always fits**: on a short window, with a picture attached or a long draft, the message box and its buttons stay whole
+  at the bottom; the dashboard and the messages above it make room instead.
+- **Nothing spills out of the chat**: long paths, links, words, pictures and tables wrap or shrink to fit the chat, and code blocks scroll
+  inside themselves.
+- **The welcome screen fits a small window**: at 900 by 600 everything on it shows without scrolling.
+- **Signing in to Grok works right away**: after `grok login`, new Grok agents start without restarting the app.
+
 ## 1.7.2: 2026-10-07
 
 - **A lead agent waits for its team**: when an agent's plan waits for other agents to finish ("start the third when the first two are

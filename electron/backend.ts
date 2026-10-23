@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { openView, saveOpen, listOpenModels } from './openmodels.js';
 import { noResponse } from '../shared/delivery.js';
 import { shortTitle } from '../shared/roster.js';
 import { inSlots } from '../shared/folder-order.js';
@@ -25,6 +26,8 @@ const JAUVEX_LOG = path.join(path.dirname(STATE_FILE), 'jauvex-transcript.json')
  * pointing at a folder that no longer existed. CVC_JAUVEX_HOME moves it (the checks). */
 export { JAUVEX_HOME };
 export { APP_ROOT };
+/** The models of the user's own server, for the composer's menu, the one set up first. */
+async function openModelOptions(): Promise<ModelOption[]> { const v = openView(); if (!v?.baseUrl) return []; const ids = await listOpenModels(v.baseUrl, '').catch(() => (v.model ? [v.model] : [])); const all = v.model && !ids.includes(v.model) ? [v.model, ...ids] : ids; return all.map((id) => ({ id, label: id, ...(id === v.model ? { isDefault: true } : {}) })); }
 async function ensureHome(dir: string, readme: string): Promise<void> { await fs.mkdir(dir, { recursive: true }); const f = path.join(dir, 'README.md'); await fs.access(f).catch(() => fs.writeFile(f, readme)); }
 const jauvexReadme = () => `# The Jauvex agent\n\nThe home of the app's own agent: its notes go here, and it stays here whatever happens to the app's folder.\nThe app is installed at ${ROOT} (its source, README.md, AGENTS.md); its settings and this agent's transcript are in ${path.dirname(STATE_FILE)}.\n`;
 /** A Jauvex agent left at an old home moves to JAUVEX_HOME; a second one (made by a moved install) goes. True when the state changed. */
@@ -72,7 +75,7 @@ async function addProject(dir: string): Promise<Project> {
 
 /** A session's files where its provider looks for another folder's sessions (T-217, electron/move.ts). */
 async function moveSessionFiles(provider: Provider, sessionId: string, from: string, to: string): Promise<void> {
-  if (provider === 'codex') await codex.moveThread(sessionId, to); else if (provider === 'grok') await grok.moveSession(sessionId, from, to); else await moveClaudeSession(sessionId, from, to);
+  if (provider === 'codex' || provider === 'open') await codex.moveThread(sessionId, to); else if (provider === 'grok') await grok.moveSession(sessionId, from, to); else await moveClaudeSession(sessionId, from, to);
 }
 /** What the app keeps for a session, from its old folder to its new one: its place in the list (a workflow's or a board's chat has none),
  *  its provider, its settings, its context, and Codex's permissions from before YOLO. */
@@ -208,7 +211,7 @@ export const backend = {
     if (!clean) throw new HttpError(400, 'path is required');
     return addProject(clean);
   },
-  /** The folders in a new order (T-255; the user, 2026-10-01: "I want to be able to rearrange the folders"): the ids given take the places they
+  /** The folders in a new order (T-255): the ids given take the places they
    *  held in the list, in the order given; the app's own folder, which the panel does not show, stays where it is. */
   orderFolders: async (ids: string[]) => { if (!Array.isArray(ids)) throw new HttpError(400, 'ids'); const state = await loadState(); const byId = new Map(state.projects.map((p) => [p.id, p])); state.projects = inSlots(state.projects.map((p) => p.id), ids.map(String)).map((id) => byId.get(id)!); await saveState(state); return true; },
   removeProject: async (id: string) => { const state = await loadState(); state.projects = state.projects.filter((p) => p.id !== id); if (state.ui?.sel?.projectId === id) state.ui.sel = null; await saveState(state); return true; },
@@ -234,13 +237,13 @@ export const backend = {
   messages: async (id: string, sessionId: string, before?: number, limit = 150): Promise<MessagesPage> => {
     const { project } = await projectOr404(id);
     const provider = providerOf(project, sessionId);
-    const all = provider === 'codex' ? await codex.transcript(sessionId) : provider === 'grok' ? await grok.transcript(sessionId, project.path) : await transcript(project.path, sessionId);
+    const all = provider === 'codex' || provider === 'open' ? await codex.transcript(sessionId) : provider === 'grok' ? await grok.transcript(sessionId, project.path) : await transcript(project.path, sessionId);
     const end = before === undefined ? all.length : Math.max(0, Math.min(all.length, before));
     const start = Math.max(0, end - Math.min(500, Math.max(1, limit)));
     return { total: all.length, start, messages: all.slice(start, end) };
   },
-  /** The Jauvex agent's chat, which the app keeps its own copy of, past the start of that copy (T-272, from the other edition's fix; the user,
-   *  2026-10-01: "There's not even a load earlier messages"): the agent's own session's messages before the first of `uuids` it has (the
+  /** The Jauvex agent's chat, which the app keeps its own copy of, past the start of that copy (T-272, from the other edition's fix: no way to
+   *  load earlier messages): the agent's own session's messages before the first of `uuids` it has (the
    *  copy's earliest, or the first shown), at most `limit`, and how many come before those. None when it has none of them: the copy is not
    *  this session's (an earlier provider's), and nothing is guessed. */
   /** The Jauvex agent's dashboard file, kept by the agent in its own folder (T-276): '' when it has none yet, or one too big to be a dashboard.
@@ -248,7 +251,7 @@ export const backend = {
   dashboard: async (): Promise<string> => { const f = path.join(JAUVEX_HOME, DASHBOARD_FILE); void dashboardCheck(f).catch(() => {}); /* due for an update? (T-279) */ try { if ((await fs.stat(f)).size > 256_000) return ''; return await fs.readFile(f, 'utf8'); } catch { return ''; } },
   sessionBefore: async (id: string, sessionId: string, uuids: string[], limit = 150): Promise<{ messages: ChatMessage[]; left: number }> => {
     const { project } = await projectOr404(id); const provider = providerOf(project, sessionId);
-    const all = provider === 'codex' ? await codex.transcript(sessionId) : provider === 'grok' ? await grok.transcript(sessionId, project.path) : await transcript(project.path, sessionId);
+    const all = provider === 'codex' || provider === 'open' ? await codex.transcript(sessionId) : provider === 'grok' ? await grok.transcript(sessionId, project.path) : await transcript(project.path, sessionId);
     const want = new Set((Array.isArray(uuids) ? uuids : []).filter((u): u is string => typeof u === 'string').slice(0, 400)); const i = all.findIndex((m) => want.has(m.uuid));
     if (i <= 0) return { messages: [], left: 0 }; const start = Math.max(0, i - Math.min(500, Math.max(1, Number(limit) || 150)));
     return { messages: all.slice(start, i), left: start };
@@ -259,7 +262,7 @@ export const backend = {
     const { project } = await projectOr404(id); const name = String(title ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
     if (!name) throw new HttpError(400, 'A session needs a name');
     const provider = providerOf(project, sessionId);
-    if (provider === 'codex') await codex.rename(sessionId, name); else if (provider === 'grok') await grok.rename(sessionId, name, project.path); else await renameSession(sessionId, name, { dir: project.path });
+    if (provider === 'codex' || provider === 'open') await codex.rename(sessionId, name); else if (provider === 'grok') await grok.rename(sessionId, name, project.path); else await renameSession(sessionId, name, { dir: project.path });
     return true;
   },
   setPrefs: async (id: string, sessionId: string, prefs: SessionPrefs) => {
@@ -285,7 +288,7 @@ export const backend = {
   newRun: async (id: string, file: string) => newRun((await projectOr404(id)).project.path, file),
   saveRun: async (id: string, file: string, md: string) => { await saveRun((await projectOr404(id)).project.path, file, md); return true; },
   deleteWorkflow: async (id: string, file: string) => deleteWorkflow((await projectOr404(id)).project.path, file),
-  /** A workflow moved to another folder (T-217; the user, 2026-09-29: its files moved "but the sessions of the agents were not"): its file,
+  /** A workflow moved to another folder (T-217: its files moved, its agents' sessions did not): its file,
    *  its folder beside it, and its chat's session, so the chat opens there with its conversation. The session's move failing puts the files
    *  back: nothing is left half moved. Its steps' agents stay where they are (they are found by name, wherever they live). */
   moveWorkflow: async (fromId: string, file: string, toId: string) => {
@@ -293,7 +296,7 @@ export const backend = {
     if (!to) throw new HttpError(404, 'Unknown folder'); if (from.id === to.id) throw new HttpError(400, 'it is in that folder already');
     const chat = await workflowChat(from.path, file); await moveWorkflowFiles(from.path, file, to.path);
     if (chat.sessionId) {
-      const provider = (['claude', 'codex', 'grok'] as const).find((p) => p === chat.provider) ?? providerOf(from, chat.sessionId);
+      const provider = (['claude', 'codex', 'grok', 'open'] as const).find((p) => p === chat.provider) ?? providerOf(from, chat.sessionId);
       try { await moveSessionFiles(provider, chat.sessionId, from.path, to.path); } catch (e) {
         await moveWorkflowFiles(to.path, file, from.path).catch(() => { /* left where it went: the error says so */ });
         throw new HttpError(409, `${file} stayed in ${from.name}: its chat's session could not move (${(e as Error).message})`); }
@@ -347,7 +350,11 @@ export const backend = {
     if (agent) { agent.state = stateText; agent.questions = questionsText; agent.runs = [run, ...agent.runs].slice(0, 20); agent.updatedAt = run.at; await saveState(state); }
     return run;
   },
-  models: async (provider: Provider): Promise<ModelOption[]> => (provider === 'codex' ? codex.models() : provider === 'grok' ? grok.models() : []), // Claude's list is fixed in the UI
+  models: async (provider: Provider): Promise<ModelOption[]> => (provider === 'open' ? openModelOptions() : provider === 'codex' ? codex.models() : provider === 'grok' ? grok.models() : []),
+  // Open models (1.8.0): the connection as the window may see it (never the key), saved after the server answered, and the server's models
+  openModels: async () => openView(),
+  openModelsSave: async (baseUrl: string, model: string, key: string | null) => { const v = saveOpen(String(baseUrl ?? ''), String(model ?? ''), key === null ? null : String(key ?? '')); codex.openKeyChanged(); return v; },
+  openModelsList: async (baseUrl: string, key: string) => listOpenModels(String(baseUrl ?? ''), String(key ?? '')), // Claude's list is fixed in the UI
   saveRunStep: async (id: string, file: string, n: number, text: string) => { await saveRunStep((await projectOr404(id)).project.path, file, n, text); return true; },
   runStepReply: async (id: string, file: string, n: number) => runStepReply((await projectOr404(id)).project.path, file, n),
   runFiles: async (id: string, file: string) => runFiles((await projectOr404(id)).project.path, file),

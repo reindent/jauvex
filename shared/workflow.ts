@@ -4,10 +4,10 @@
 //
 // The definition:   # Title, a paragraph, `when:` `folder:` `on failure:` lines, then one `## N. [Step](<name>/step.md) → Agent` per step,
 //                   in order: its name, linked to the file of its instructions, and who does it; `→ you` makes a step a human-in-the-loop
-//                   gate; `done:` ends it. That is all a step is (the user, 2026-09-27). Older files, still read: the instructions as free
+//                   gate; `done:` ends it. That is all a step is. Older files, still read: the instructions as free
 //                   text under the heading, with `in:` `out:` lines; `then: done → Next · failed → stop, tell the user` names the outcomes (with
 //                   none, the usual ones: outcomes() below), every part after the first a branch.
-// Tries (T-197, the user, 2026-09-28): `tries: N` under `when:` is how many times a step may come round with no decision of the user's in
+// Tries (T-197): `tries: N` under `when:` is how many times a step may come round with no decision of the user's in
 //                   between (DEFAULT_TRIES when there is none); a step's own `tries: N` line, in its instructions, overrides it for that step.
 //                   A decision of the user's starts the count again: a loop that goes through them has no limit; one between agents alone does.
 // A run record:     # Run N, `started:` `result:` `took:` lines, then `## N. Step` sections with `took:` `started:` `result:` `said:`.
@@ -32,9 +32,7 @@ export type StepState = [kind: 'ok' | 'run' | 'wait' | 'er' | '', text: string];
 /** What the sidebar shows for a workflow; latest.waiting: its live run waits for a person at a step of theirs (marked yellow). */
 export type WorkflowInfo = { file: string; name: string; when: string; steps: number; runs: number; latest: { n: number; result: string; took: number | null; started: string; waiting?: boolean; asks?: string /* what the person is asked there: the FOR YOU line of the step before */ } | null;
   modified?: number /* ms: the last change of its file or its steps' instructions (not its runs) */ };
-/** The order of a folder's workflows in the sidebar (the user, 2026-09-29: "when it needs a human supervision, it should be on top, 100% ...
- *  when a workflow is running, that is considered as an update. It should move to the top ... then by those that were last modified, not
- *  created or last run"): the ones waiting for a person, then the ones running, then the rest by their last change, the newest first. */
+/** The order of a folder's workflows in the sidebar (a run counts as an update; creation and the last run do not): the ones waiting for a person, then the ones running, then the rest by their last change, the newest first. */
 export function sortWorkflows<T extends WorkflowInfo>(list: T[]): T[] {
   const live = (w: T) => !!w.latest && /^running/i.test(w.latest.result);
   const tier = (w: T) => (live(w) && w.latest!.waiting ? 0 : live(w) ? 1 : 2);
@@ -43,15 +41,14 @@ export function sortWorkflows<T extends WorkflowInfo>(list: T[]): T[] {
 export type WorkflowState = { runs: Run[]; latest: Run | null; live: boolean; st: Record<number, StepState>; last: Record<number, string>; said: Record<number, [string, string]>; avg: number | null; stepAvg: (number | null)[]; finished: number; text: string /* for the workflow's chat, English */; line: string /* the same, shown in the window */; sel: number };
 
 const ARROW = /\s*(?:→|->)\s*/;
-/** A step's name in its heading, linked to the file of its instructions: `[Script](news-video/script.md)`. */
+/** A step's name in its heading, linked to the file of its instructions: `[Draft](recipe-letter/draft.md)`. */
 export const STEP_LINK = /^\[([^\]]*)\]\(\s*<?([^)\s>]+)>?\s*\)$/;
 export const GATE = /^(you|me|the user|a human|human|user|operator)$/i; // "→ you" is the word; a person's name still works for old files
-/** What a step is called: its title when it has one, else its instructions, cut short (the user, 2026-09-27: "the title of a workflow
- *  step should go after description and should be editable and optional ... if it's not set, then just use the description with
- *  ellipses"); a step with neither is a new step. */
+/** What a step is called: its title when it has one, else its instructions, cut short
+ *  with an ellipsis (the title is optional and editable); a step with neither is a new step. */
 export const stepTitle = (s: { name: string; note: string }): string => { if (s.name.trim()) return s.name.trim(); const t = s.note.trim(); if (!t) return 'New step';
   return t.length <= 48 ? t : `${t.slice(0, 48).replace(/\s+\S*$/, '').replace(/[\s,;:.]+$/, '')}…`; };
-/** The workflow's own folder, as a step's link starts with it: `news-video` for workflows/news-video.md. */
+/** The workflow's own folder, as a step's link starts with it: `recipe-letter` for workflows/recipe-letter.md. */
 export const workflowBase = (workflowFile: string): string => /(?:^|\/)([^/]+)\.md$/.exec(workflowFile)?.[1] ?? '';
 /** A step's instructions file as a heading may link it (relative to workflows/): a markdown file directly in the workflow's own folder, never
  *  its README, its runs or anything outside it. What the app reads and writes for a step, and nothing else. */
@@ -59,7 +56,7 @@ export const workflowBase = (workflowFile: string): string => /(?:^|\/)([^/]+)\.
 export const realSteps = (def: Pick<Workflow, 'steps'>): number => def.steps.filter((s) => !!s.agent.trim()).length;
 /** A file of a folder's workflows/ that is a workflow: it has steps that say who does them, or at least a `when:` line (one whose steps are
  *  being written, or broken by a typo, stays listed). A rules document or notes kept beside the workflows has neither: it is not listed, and
- *  never runs (T-251: a shared rules file, workflows/video-rules.md, showed as a fourth workflow; "runs" answered for it). */
+ *  never runs (T-251: a shared rules file, workflows/letter-rules.md, showed as a workflow; "runs" answered for it). */
 export const isWorkflow = (def: Pick<Workflow, 'steps' | 'when'>): boolean => realSteps(def) > 0 || !!def.when.trim();
 export const stepFileOk = (workflowFile: string, stepFile: string): boolean => { const base = workflowBase(workflowFile); const m = /^([^/\\]+)\/([^/\\]+\.md)$/.exec(stepFile);
   return !!base && !!m && m[1] === base && !/^readme\.md$/i.test(m[2]!) && !m[2]!.startsWith('.'); };
@@ -118,8 +115,7 @@ export function stateFor(def: Workflow, runsIn: Run[]): WorkflowState {
   const k = live ? Number(Object.keys(st).find((i) => st[Number(i)]![0] === 'run' || st[Number(i)]![0] === 'wait') ?? 0) : 0;
   const text = !latest ? 'Never run' : live ? `Run #${latest.n} · step ${k || '?'} of ${total} · started ${latest.started.slice(-5)}` : `${FINISHED.test(latest.result) ? 'Idle' : 'Stopped'} · last run #${latest.n}: ${latest.result}${latest.took != null ? ` · ${fmt(latest.took)}` : ''}${avg != null ? ` · average ${fmt(avg)} over ${finished.length} run${finished.length > 1 ? 's' : ''}` : ''}`; /* told to the workflow's chat: English */
   const line = !latest ? ui('workflow.line.never') : live ? ui('workflow.line.live', { n: latest.n, step: k || '?', total, at: latest.started.slice(-5) }) : [ui(FINISHED.test(latest.result) ? 'workflow.line.idle' : 'workflow.line.stopped', { n: latest.n, result: latest.result }), latest.took != null ? fmt(latest.took) : '', avg != null ? ui('workflow.line.average', { avg: fmt(avg), count: finished.length }) : ''].filter(Boolean).join(' · '); /* the same, shown in the window */
-  // the step the workflow is at (the user, 2026-09-27: "the current step it's at, if not initiated then first step, if already finished then last
-  // step"): the live run's, else the last one the latest run reached, else the first
+  // the step the workflow is at: the live run's, else the last one the latest run reached, else the first
   const reached = latest ? Math.max(0, ...Object.keys(latest.steps).map(Number).filter((i) => i >= 1 && i <= total)) : 0;
   return { runs, latest, live, st, last, said, avg, stepAvg, finished: finished.length, text, line, sel: k || reached || 1 };
 }
@@ -134,13 +130,21 @@ export function formatRun(run: Run, def: Workflow): string {
 // ---- running: the outcomes of a step, the one a reply names, and where each leads
 export type Outcome = { name: string; to: string };
 export type Target = { kind: 'step'; n: number } | { kind: 'done' } | { kind: 'stop'; note: string };
-/** The `then:` line as outcomes: `done → Next · failed → stop, tell the user`. A step is an agent and its instructions (the user, 2026-09-27:
- *  "a step is just an agent and instructions ... that's all"): with no then line it has the usual outcomes, an agent's step done (on to the
- *  next) or failed (the run stops), a step of yours continue (on to the next: the user, 2026-09-27, "the approved button is misleading.
- *  The agent is asking me a question that is not necessarily something to approve") or changes (back to the step before, with the notes). */
+/** The `then:` line as outcomes: `done → Next · failed → stop, tell the user`. A step is an agent and its instructions, nothing
+ *  more: with no then line it has the usual outcomes, an agent's step done (on to the
+ *  next) or failed (the run stops), a step of yours continue (on to the next: not "approved",
+ *  since what an agent asks is not always something to approve) or changes (back to the step before, with the notes). */
 export const outcomes = (step: WorkflowStep): Outcome[] => { const parts = step.then.split('·').map((x) => x.trim()).filter(Boolean).map((x) => { const a = ARROW.exec(x); return a ? { name: x.slice(0, a.index).trim(), to: x.slice(a.index + a[0].length).trim() } : { name: x, to: 'next' }; });
   return parts.length ? parts : step.gate ? [{ name: 'continue', to: 'next' }, { name: 'changes', to: 'back to the step before with your notes' }] : [{ name: 'done', to: 'next' }, { name: 'failed', to: 'stop, tell the user' }]; };
 const squash = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, '');
+/** A reply as a person reads it (from Pro: agents ended answers with "OUTCOME: done", odd for a person to read): without its
+ *  trailing OUTCOME line(s), which only the workflow runner reads, from the raw text (matchOutcome). A reply that is nothing but the line
+ *  shows as `done` instead ('' when none is given); a line that merely mentions OUTCOME inside a sentence stays. */
+export function withoutOutcome(text: string, done = ''): string {
+  const lines = text.split('\n'); let cut = false;
+  while (lines.length) { const last = lines[lines.length - 1]!; if (!last.trim()) { lines.pop(); continue; } if (/^\s*\**\s*OUTCOME\s*[:：]/i.test(last)) { lines.pop(); cut = true; continue; } break; }
+  const rest = lines.join('\n').trimEnd(); return rest.trim() ? rest : cut ? done : text;
+}
 /** The outcome a reply names on its OUTCOME line (the last one wins), matched to the step's outcomes without case or punctuation, exact
  * before contained; with one outcome only, or none written (done, then), a reply without the line still counts. Null: the runner asks once
  * more, then stops the run. */
@@ -149,9 +153,8 @@ export function matchOutcome(step: WorkflowStep, reply: string): Outcome | null 
   if (!named) return all.length === 1 || !step.then.trim() ? all[0]! : null;
   const want = squash(named); return all.find((o) => squash(o.name) === want) ?? all.find((o) => want.includes(squash(o.name)) || squash(o.name).includes(want)) ?? null;
 }
-/** What a step's agent tells the user to do at the step after it, theirs: its reply's FOR YOU line (the last one wins), '' when there is none.
- *  The user, 2026-09-27, at a number-guessing workflow's approval: "there's no instruction or anything ... the previous step ... should have
- *  asked ... make it generic". */
+/** What a step's agent tells the user to do at the step after it, theirs: its reply's FOR YOU line (the last one wins), '' when there is none
+ *  (T-169: a step of yours must say what to do, asked by the step before it, whatever the workflow). */
 export const askOf = (reply: string): string => { const all = [...reply.matchAll(/^\s*\**\s*FOR YOU\s*[:：]\s*\**\s*(.+?)\s*\**\s*$/gim)]; return all.length ? all[all.length - 1]![1]!.trim() : ''; };
 /** The step a gate's user is answering: the one before it with words in this run (the last one that spoke, when none before it did). */
 export const stepBefore = (run: Run | null | undefined, n: number): number => { if (!run) return 0; const ks = Object.keys(run.steps).map(Number).filter((k) => k !== n && run.steps[k]?.said).sort((a, b) => b - a); return ks.find((k) => k < n) ?? ks[0] ?? 0; };
@@ -180,7 +183,7 @@ export function stepMessage(def: Workflow, n: number, run: Run, runFolder: strin
 }
 
 // ---- triggers: the `when:` line. manual (the Run button, a command, a word to an agent); a schedule ("every Monday 09:00",
-// "every weekday 8:30", "every day at 7pm", "every 2 hours", "every 30 minutes"); an event ("after News video", a workflow of the same
+// "every weekday 8:30", "every day at 7pm", "every 2 hours", "every 30 minutes"); an event ("after Recipe letter", a workflow of the same
 // folder finishing done). Schedules fire while the app is open: a slot is waited for ten minutes; one missed while the app was closed is
 // the setting's (missedSlot: run it when the app opens, ask the user, or nothing).
 export type Trigger = { kind: 'manual' } | { kind: 'every'; minutes: number } | { kind: 'at'; days: number[] /* 0 Sunday .. 6; empty: every day */; h: number; m: number } | { kind: 'after'; workflow: string }
@@ -188,7 +191,7 @@ export type Trigger = { kind: 'manual' } | { kind: 'every'; minutes: number } | 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 export function parseTrigger(when: string): Trigger {
   const w = when.toLowerCase().trim().replace(/\ba\.\s?m\.?/g, 'am').replace(/\bp\.\s?m\.?/g, 'pm'); let m: RegExpExecArray | null;
-  // A window (the user, 2026-09-29: "anytime between 9 and 12 a.m."): "every weekday between 9am and 12pm", "anytime between 9 and 12".
+  // A window (T-204): "anytime between 9 and 12 a.m.", "every weekday between 9am and 12pm", "anytime between 9 and 12".
   if (!/^(?:after|when)\s/.test(w) && (m = /\bbetween\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:and|to|-)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/.exec(w))) {
     const h1 = Number(m[1]), m1 = Number(m[2] ?? 0), h2 = Number(m[4]), m2 = Number(m[5] ?? 0); const s2 = m[6]; const s1 = m[3] ?? (s2 === 'pm' ? (h1 < h2 || h1 === 12 ? 'pm' : 'am') : s2);
     const at = (h: number, s: string | undefined) => (s === 'pm' ? (h % 12) + 12 : s === 'am' ? h % 12 : h);
@@ -246,8 +249,8 @@ export function isDue(tr: Trigger, lastStarted: string | null | undefined, now =
   const started = lastStarted ? new Date(lastStarted.replace(' ', 'T')) : null; if (started && !Number.isNaN(started.getTime()) && started.getTime() >= slot.getTime()) return null;
   return slot;
 }
-/** What the app does with a schedule it missed while it was closed (T-208; the user, 2026-09-29: "if a workflow was missed because the app
- *  was closed, it should at least be prompted"): run it as soon as the app opens, tell the user and ask (the default), or nothing. In the
+/** What the app does with a schedule it missed while it was closed (T-208: a run missed while the app was
+ *  closed is at least offered): run it as soon as the app opens, tell the user and ask (the default), or nothing. In the
  *  settings' order: the first option runs it. */
 export type MissedPolicy = 'run' | 'alert' | 'nothing';
 export const MISSED_DEFAULT: MissedPolicy = 'alert';

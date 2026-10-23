@@ -19,8 +19,8 @@ const main = { limitId: 'codex', limitName: null, normalModelSlug: null, primary
 const x = codexFromLimits({ rateLimits: main, rateLimitsByLimitId: { codex: main, codex_astra: { ...main, limitId: 'codex_astra', limitName: 'gpt-6-astra', primary: { usedPercent: 5, windowDurationMins: 300, resetsAt: null }, secondary: null, credits: null } } }, now);
 check('Codex: its 5 hours and week, then a model\'s own limit, named after the model', x.windows.map((w) => w.label).join('|') === '5 h|7 d|5 h gpt-6-astra', x.windows.map((w) => w.label).join('|'));
 check('Codex: the model\'s limit counts only while that model is in use', x.windows[2]?.model === 'gpt-6-astra' && !x.windows[0]?.model);
-check('Codex: the plan and the credits', x.plan === 'pro' && x.notes?.[0] === 'Credits balance: 42.', JSON.stringify([x.plan, x.notes]));
-check('Codex: unlimited credits say so', codexFromLimits({ rateLimits: { ...main, credits: { hasCredits: true, unlimited: true, balance: null } } }, now).notes?.[0] === 'Credits: unlimited.');
+check('Codex: the plan and the credits', x.plan === 'pro' && x.notes?.[0] === 'Credits: 42', JSON.stringify([x.plan, x.notes]));
+check('Codex: unlimited credits say so', codexFromLimits({ rateLimits: { ...main, credits: { hasCredits: true, unlimited: true, balance: null } } }, now).notes?.[0] === 'Credits: unlimited');
 check('Codex with no windows: not available, and why', !codexFromLimits({ rateLimits: { primary: null, secondary: null } }, now).available);
 
 // Grok (T-133): its plan's credits (x.ai/billing), as its own usage view reads them. The shape seen from a SuperGrok Plus account on 2026-09-24:

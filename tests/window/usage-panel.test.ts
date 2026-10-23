@@ -3,7 +3,7 @@ import { connect, sleep, check, done, V } from './lib.ts';
 import { execFileSync } from 'node:child_process';
 const { js, close } = await connect(); await sleep(2500);
 // The usage battery's panel (T-98), on the stand-ins: a Claude chat's battery shows the tightest window that counts (the 5 hours, 38 % left);
-// a click opens the panel with one tab per provider (2026-09-24: "have them with tabs ... the selected tab is the selected provider"),
+// a click opens the panel with one tab per provider (the chat's provider's tab selected),
 // Claude's selected: every window of Claude (Fable's own week greyed: another model); Codex's tab, its windows and model limit; Grok's,
 // its credits; each tab says what is left at a glance; the plans, extra usage, credits and when each window resets; Refresh keeps it open;
 // Escape closes it.
@@ -23,7 +23,7 @@ check('Claude: the week, days ahead', /7 days\s*82 % left/.test(text) && /resets
 check("Claude: Fable's own week is there, marked as another model's", /7 days, Fable\s*60 % left/.test(text) && text.includes('another model: not counted in this chat') && (await js(`${V}.querySelectorAll('.use-pop .use-row.other').length`)) === 1);
 check('Claude: extra usage', text.includes('Extra usage is on: 24 % of its monthly limit used.'));
 await js(`[...${V}.querySelectorAll('.use-pop .use-tab')].find((t) => t.textContent.startsWith('Codex')).click()`); await sleep(200); const cx = await js(pop);
-check('Codex\'s tab: 5 hours, the week, its model limit, the credits', cx.includes('Codex · Pro plan') && !cx.includes('Claude · Max plan') && /5 hours\s*70 % left/.test(cx) && /7 days\s*30 % left/.test(cx) && /5 hours, gpt-6-astra\s*95 % left/.test(cx) && cx.includes('Credits balance: 42.'), cx.slice(0, 500));
+check('Codex\'s tab: 5 hours, the week, its model limit, the credits', cx.includes('Codex · Pro plan') && !cx.includes('Claude · Max plan') && /5 hours\s*70 % left/.test(cx) && /7 days\s*30 % left/.test(cx) && /5 hours, gpt-6-astra\s*95 % left/.test(cx) && cx.includes('Credits: 42'), cx.slice(0, 500));
 await js(`[...${V}.querySelectorAll('.use-pop .use-tab')].find((t) => t.textContent.startsWith('Grok')).click()`); await sleep(200); const gk = await js(pop);
 check('Grok\'s tab: its plan and the week of credits, and when it resets', gk.includes('Grok · Mock plan') && /7 days\s*65 % left/.test(gk) && /35 % used · resets in [45] d/.test(gk), JSON.stringify(gk.slice(0, 400)));
 await js(`${V}.querySelector('.use-refresh').click()`); await sleep(1500);

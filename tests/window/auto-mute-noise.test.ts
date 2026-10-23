@@ -4,7 +4,7 @@
 import { connect, sleep, check, done, V } from './lib.ts'; import { readFileSync } from 'node:fs'; import path from 'node:path';
 const { js, close } = await connect(); await sleep(2000);
 // T-127. A sound during the auto-mute countdown (a breath, a knock) stopped it for good: talking stops the countdown, and only a sent
-// message started it again, but a sound with no words in it sends nothing (the user, 2026-09-24: "5, 4, 3, and then it stopped").
+// message started it again, but a sound with no words in it sends nothing: the countdown stopped part-way and never came back.
 // The file: "Reply with the single word OK.", 2 s of silence, half a second of noise, then silence.
 await js("window.desktop.api('setUi', { voice: { autoMute: true, autoMuteSec: 6 } })"); await sleep(300);
 await js('location.reload()'); await sleep(4000);

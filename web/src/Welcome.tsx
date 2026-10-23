@@ -92,7 +92,7 @@ export function Welcome({ onDone, defaultProvider, onDefault, jauvexMove, onJauv
       await land('claude', claude?.signedIn ? { state: 'ok', detail: cl } : !SIGN_IN_IN_APP ? byCli('claude', cl) : { state: 'no', detail: t('welcome.check.signIn.inAppClaude', { status: cl }), action: { label: t('welcome.check.signIn.button', { name: 'Claude' }), run: () => void window.desktop.accountLogin('claude') } });
       const cx = codex?.signedIn ? (codex.who ? t('welcome.check.signIn.okAs', { name: 'Codex', who: codex.who }) : t('welcome.check.signIn.ok', { name: 'Codex' })) : t('welcome.check.signIn.not', { name: 'Codex' });
       await land('codex', codex?.signedIn ? { state: 'ok', detail: cx } : !SIGN_IN_IN_APP ? byCli('codex', cx) : { state: 'no', detail: claude?.signedIn ? t('welcome.check.signIn.inAppCodexLater', { status: cx }) : t('welcome.check.signIn.inAppCodex', { status: cx }), action: { label: t('welcome.check.signIn.button', { name: 'Codex' }), run: () => void window.desktop.accountLogin('codex') } });
-      /* Ready means its server answered: a model file can be there and still be one Whisper cannot load (2026-09-24, on a new Mac: "Whisper
+      /* Ready means its server answered: a model file can be there and still be one Whisper cannot load (2026-09-24: "Whisper
          is ready" was said while the server had just failed). It has been starting since the screen opened. */
       const server = async (): Promise<VoiceStatus | null> => { set('whisper', { detail: t('welcome.check.whisper.starting') }); for (let i = 0; i < 90 && !stopped.current; i++) { const st = await window.desktop.voiceStatus().catch(() => null); if (st && st.whisper !== 'starting') return st; await wait(700); } return null; };
       const up = setup?.whisperBinary && setup.models.length ? await server() : null; if (stopped.current) return;
@@ -118,7 +118,7 @@ export function Welcome({ onDone, defaultProvider, onDefault, jauvexMove, onJauv
   const allDone = rows.every((r) => r.state !== 'wait'); const ready = allDone && rows.filter((r) => r.state === 'no').every((r) => r.id === 'codex' || r.id === 'claude') && rows.some((r) => (r.id === 'claude' || r.id === 'codex') && r.state === 'ok') && rows.find((r) => r.id === 'whisper')?.state === 'ok';
   return (
     <div className={`welcome ${phase} stage-${stage}`} role="dialog" aria-label={t('welcome.aria')} style={{ '--orb-dy': `${dy}px` } as CSSProperties}>
-      <div className="welcome-drag" aria-hidden="true" /> {/* the window moves by its top edge, as by its title bar, which the welcome covers (the user, 2026-10-01: "It doesn't seem like it's draggable") */}
+      <div className="welcome-drag" aria-hidden="true" /> {/* the window moves by its top edge, as by its title bar, which the welcome covers (it did not move) */}
       <button className="welcome-close" title={t('welcome.close')} onClick={() => { stopped.current = true; onDone(); }}>{t('welcome.skip')}</button>
       <div className="welcome-orb" ref={orbEl}><Orb size={168} level={level} phase={phase} /></div>
       <h1 className="welcome-text">{t('welcome.title')}</h1>

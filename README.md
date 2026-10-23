@@ -33,9 +33,10 @@ otherwise the app fetches the same install command, checks that it installs the 
 `~/.jauvex/personal/update/`, hands the runner to launchd and quits. The runner waits for the app to exit, runs the install command
 (it rebuilds the app on your Mac and opens it), opens the old app again if it does not finish, and removes it; its log is
 `update/update.log`. When the app opens on a newer version than the one it last ran, the Jauvex agent's chat opens and it tells you it is
-updated and what the versions since bring, from the app's own `CHANGELOG.md`, then checks that your folders and agents are all there (T-218). That message goes to the Jauvex agent's chat already in the window, whatever
-it was opened under (T-262; the user, 2026-10-01: "This session was active moments ago, possibly in another window ... is shown in the Jauvex
-agent ... after an update, and the new chat history wont show"): the window opens again on the chat that was on screen by its session, and a
+updated and what the versions since bring, from the app's own `CHANGELOG.md`, then checks that your folders and agents are all there (T-218). A version in the making, `x.y.z-dev`, counts as newer than every version before
+x.y.z and older than x.y.z itself (`newer` in `shared/update.ts`): such a copy is offered the release of its version, says it was updated, and
+shows what its own `## x.y.z-dev (in the making)` section brings so far; it once rejected the `-dev` and said nothing. That message goes to the Jauvex agent's chat already in the window, whatever
+it was opened under (T-262): the window opens again on the chat that was on screen by its session, and a
 lookup by the agent's own key alone opened a second, hidden chat of the same session, which took the turn (`jauvexOpen`,
 `tests/window/jauvex-one-chat.test.ts`).
 **What's new**, at the foot of the sidebar, asks jauvex.ai right then whether a newer version is out (T-245). Its notes open at
@@ -43,7 +44,7 @@ once, the newest releases from this copy's `CHANGELOG.md`, under a line that say
 that this copy (a clone) updates with git, or the site out of reach. A newer version on the app the install command made opens the Jauvex
 agent's chat instead: it says what that version brings and asks. While one is out its notice takes What's new's place and does the same.
 
-**Feedback** (Diego, 2026-10-04): the icon beside Settings opens the Jauvex agent with a note (`feedbackHello`): it opens with the app's own
+**Feedback**: the icon beside Settings opens the Jauvex agent with a note (`feedbackHello`): it opens with the app's own
 line (`feedback.opening`, in the app's language, word for word; a second click within ten minutes only brings its chat forward), gathers the report by voice or text, shows it, asks before attaching a screenshot or the app's recent
 log (`feedback --preview`: the screenshot is kept in the data folder's `feedback-screenshot.png`, the one the person saw is the one sent; the
 log loses keys, tokens, emails, long ids and the home folder, `shared/feedback.ts`, `tests/feedback.test.ts`), and sends it with the
@@ -56,6 +57,12 @@ Only the app the install command made updates itself; a clone updates with git (
 repository instead: `npm start` runs it from the clone, and `npm run app` makes the same app in `tmp/mac-app/Jauvex.app`
 (`scripts/mac-app.ts`: Electron's app renamed Jauvex, with the built app, the Whisper models, Claude and Codex inside, signed
 ad hoc on your Mac).
+
+### A signed disk image (1.8.0)
+
+To hand the app to someone directly, a Mac with a Developer ID makes a signed and notarized `jauvex-personal-<version>-mac-<arch>.dmg`
+from one commit: `node packaging/mac/release.ts` (`packaging/mac/RELEASE-ON-MAC.md` has the steps). It opens with no warning. A copy
+installed from it is not one the install command made: it hears of new versions, and runs the install command to update.
 
 ## Setting up on a fresh Mac
 
@@ -73,7 +80,9 @@ settings after) checks each of them and tells you what is missing.
    agent can walk you through the other.
 3. **Grok, optional**: Grok Build, xAI's coding agent, when it is on this Mac (`curl -fsSL https://x.ai/cli/install.sh | bash`,
    then `grok login`). Jauvex runs it as `grok agent stdio` with your Grok account and settings; without it, Grok is simply not
-   offered.
+   offered. Grok keeps its signed-in state in that process, so one started before `grok login` would keep saying "not signed in":
+   on that answer, with no Grok turn under way, the app asks a fresh process once (at most every 5 s), and a sign-in is seen at
+   once, with no restart of the app (`call` in `electron/grok.ts`, `tests/grok-signin.test.ts`).
 4. **whisper.cpp for the ears**: `npm start` installs it with Homebrew if it is missing and downloads the two models into
    `models/` (git-ignored): `ggml-small-q5_1.bin` for the transcript and `ggml-base-q5_1.bin` for the live words while you
    speak. Each is checked against the size and SHA-256 Hugging Face lists for it (`scripts/models.sh`): a download goes to a
@@ -107,7 +116,17 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   provider's mark on its rows. Tick the ones you want; they appear under the project in the sidebar.
 - **Folders fold, the sidebar resizes**: a click on a folder's name (its folder icon open or closed) folds its sessions
   away, and it stays folded after a reload. The sidebar's right edge drags to any width from 220 to 560 px, kept too.
-- **Folders move** (T-255; the user, 2026-10-01: "I want to be able to rearrange the folders. Right now I can't"): drag a folder by its
+- **The line above the chat under a workflow or a board drags** (as in Jauvex Pro): up for
+  a taller chat, down for a shorter one; the height is kept on this computer (`web/src/Grip.tsx`, `tests/window/chat-grips.test.ts`).
+- **A folder is a small tree** (as in Jauvex Pro's left panel): its agents, workflows and boards are three
+  groups hanging off the folder's line, each with its count and a plus (a new agent, workflow or board); a group shows three rows, then
+  "N more…", and folds from its name, kept on this computer; a folder's filter opens its agents in full. `tests/window/sidebar-groups.test.ts`.
+- **Tabs and a filter in the left panel** (as in Jauvex Pro): All, Agents,
+  Workflows and Boards. All shows each folder as its tree; each other tab shows that kind alone in every folder, every row, remembered on
+  this computer. The filter under them narrows every folder's agents, workflows and boards as it is typed (a folder whose name fits
+  shows whole, one with nothing that fits is hidden); Escape or its cross empties it. They stay at the top, with the Jauvex agent, while
+  the folders scroll. `tests/window/sidebar-tabs.test.ts`.
+- **Folders move** (T-255): drag a folder by its
   name onto another: over the upper half of that folder's name it goes above it, anywhere lower in it below; a line shows where. The
   app keeps the order, through a reload or a restart (`shared/folder-order.ts`, `tests/folder-order.test.ts`,
   `tests/window/folder-drag.test.ts`).
@@ -134,42 +153,35 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   tool results, cross-session messages) hidden unless you show system events (below). Long sessions page
   from the end ("Load earlier messages"). The Jauvex agent's chat, which the app keeps its own copy of, shows that copy's latest 150
   messages; "Load earlier" pages through the rest, then on into the agent's own session, so a copy cut short comes back (T-272, from the
-  other edition's fix: "There's not even a load earlier messages"). The person's words the copy recorded before its first session message
+  other edition's fix). The person's words the copy recorded before its first session message
   are not shown twice. `sessionBefore` in `backend.ts`, `tests/session-before.test.ts`, `tests/window/copy-earlier.test.ts`.
 - **Developer mode** (T-247), the glasses at the top right, off by default and remembered. Off, each run of an agent's tool calls,
   thoughts and system events between what it says is one row: "Working…" while it goes on, "Worked · 3 steps" after; a click opens it.
   Pictures a tool made stay in sight. On, every tool call and thought shows as its own row, as before.
-  In developer mode only, a lines icon beside the glasses shows the system events (T-259; the user, 2026-10-01: "The eye should only appear
-  when the goggles are active ... in between the bug and the goggles ... the system events icon makes no sense with an eye"); out of
+  In developer mode only, a lines icon beside the glasses shows the system events (T-259); out of
   developer mode they stay hidden, whatever it was set to.
-- **Reload** (T-261), the arrow at the top right: reloads the window as Cmd+R would (the user, 2026-10-01: "It should do a hard refresh on
-  the app without restarting the app"); running turns, queued messages and drafts carry on. It used to re-read the folders only, which the
+- **Reload** (T-261), the arrow at the top right: reloads the window as Cmd+R would (a hard refresh, with no
+  restart of the app); running turns, queued messages and drafts carry on. It used to re-read the folders only, which the
   window also does every 15 seconds and when it comes to the front.
 - **A light theme** (T-248), and the app follows the Mac: by default it is light, dark or auto as the Mac's own Appearance is set, and
   changes with it. Settings, General, Appearance can set Light or Dark for the app alone, or go back to Same as the Mac; applied at once and
-  kept. Light is "Paper": a white chat, an off-white left pane beside it, pure greys with no tint and near-black text, and the blue accent the one colour (the user, 2026-10-01: "come a bit closer for the other colors to this [TypeSafe] ... we definitely should have a bit of blue because it's our color"); a window paints in the chosen look from its first frame (it is also in the window's storage). Every colour of the stylesheet is
+  kept. Light is "Paper": a white chat, an off-white left pane beside it, pure greys with no tint and near-black text, and the blue accent the one colour; a window paints in the chosen look from its first frame (it is also in the window's storage). Every colour of the stylesheet is
   named, with a light counterpart, in the block at its end.
-- **Custom colours, with the Jauvex agent** (T-278; the user, 2026-10-01: "one more that says Custom. And when you do custom ... You're
-  going to talk with the Jauvex agent ... it will give you three ideas ... of colors. And then once you select one, You will be able to ...
-  modify ... to the colors that you want"). Settings, General, Appearance has a fourth choice, Custom: Settings close, the Jauvex agent's
+- **Custom colours, with the Jauvex agent** (T-278). Settings, General, Appearance has a fourth choice, Custom: Settings close, the Jauvex agent's
   chat opens, and the agent asks what you feel like, offers three palettes, puts on the one you pick and changes it as you say. A palette
   is a base (the light or the dark theme, whose other colours it keeps) and the colours it changes (the chat, the left pane, text, the
   accent ...), put on at once with `node scripts/jauvex.ts theme --custom '<JSON>'` and kept, a new window painting in it from its first
   frame; one whose text would be hard to read (body text under 4.5:1 on its background, quiet text or the accent under 3:1) is refused,
   with why. `theme` says the look on now, `theme --set light|dark|system` goes back. `shared/palette.ts` (`tests/palette.test.ts`),
   `tests/window/custom-theme.test.ts`.
-- **The dashboard** (T-276; the user, 2026-10-01: "a little dashboard, a half screen or one third of a screen on top, with the top three or
-  top five tasks that you need to do ... and some important things, notes", "people can customize their dashboards", and on the Jauvex
-  agent in this edition: "this should be available ... for ... the main Jauvex agent in the personal"). The Jauvex agent's chat opens with
+- **The dashboard** (T-276). The Jauvex agent's chat opens with
   it on top: a greeting with the day and the counts; Needs you: what the app knows waits on you (a workflow step waiting for you, an agent
   asking for permission, new replies, each with Open), then what the agent's `DASHBOARD.md` says waits on you; Today: the workflows' runs;
   Working now: your agents at work; Pinned: the agent's notes. The agent keeps `DASHBOARD.md` in its own folder (`~/.jauvex`), a `## You`
   section and `## Pinned` (`shared/dashboard.ts`, briefed in its instructions); the window reads it while the chat is on screen, every 30
   seconds and when it comes forward. Yours to arrange, kept on this computer: one third of the view, half, or folded to one line (three
   line icons, in the folders' style), and the cards you keep (`⋯`, which shows whole over the chat even folded). `web/src/Dashboard.tsx`;
-  `tests/dashboard.test.ts`, `tests/window/dashboard-window.test.ts`. The agent keeps it current (T-279; the user, 2026-10-01: "on
-  initialization ... it should rebuild this dashboard ... Or by Jauvex in the case of the personal version", "smart ... not too abuse of
-  the workspace agent"): while you look at it, the app asks the agent to bring it up to date when it is due (no file yet, a board of your
+  `tests/dashboard.test.ts`, `tests/window/dashboard-window.test.ts`. The agent keeps it current (T-279): while you look at it, the app asks the agent to bring it up to date when it is due (no file yet, a board of your
   folders changed since, or six hours old), never twice within half an hour, three hours before asking again when it was not done, and
   only once the agent has been idle for 20 seconds and you are not talking to it by voice (opened, its chat ran the request at once, and
   your first words went into that turn); the agent decides what matters most (`dashboardDue`, `dashboardNote`). It can be turned off: the
@@ -200,9 +212,9 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   the provider is the Jauvex agent's own; with no first message it starts with its own introduction, since an agent exists
   once it has had one: on 2026-09-24 one ordered without it was an empty chat that vanished; the agent is of the provider named, or none:
   the order looks at that provider's sign-in as it is now and refuses when it is signed out, T-229), `open` (a session, or the Jauvex agent, on screen; a session not in its folder's sidebar goes in it too: shown only as an open chat,
-  seven sessions an agent opened dropped out one by one as other chats took the eight open places, T-152, the user, 2026-09-26), `import` (a folder's existing sessions into its sidebar without opening them,
-  as its search button does; with no session named, the ones not listed yet: T-150, the user, 2026-09-26, after an agent asked to
-  import sessions opened them over the chat he was in), `send` (a message into a session),
+  seven sessions an agent opened dropped out one by one as other chats took the eight open places, T-152), `import` (a folder's existing sessions into its sidebar without opening them,
+  as its search button does; with no session named, the ones not listed yet: T-150: an agent asked to
+  import sessions opened them over the chat in use), `send` (a message into a session),
   `rename`, `settings` (default agent, Jauvex row, welcome next time), `welcome`, `reload`, `restart`. It writes a
   request file in `data/commands/`, the running app does the thing and answers in a result file, the script prints the
   JSON. Nothing but files: no port, no server.
@@ -216,8 +228,7 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   the app did not catch (a link in a place it does not watch) is stopped in the main process and sent to the pane too.
   Later the same pane takes terminals and browsers. Relative paths resolve against the session's folder; a link inside a file the
   pane shows resolves against that file's folder, and opens in the pane too (T-183). Each session keeps its own pane; the Jauvex agent's chat, when it has
-  none of its own, takes over the one you were looking at, so you go on with it through the app's own agent (the user, 2026-10-01:
-  "If you go to Jauvex, the right panel closes ... Keep interacting with the right panel through Jauvex"; `tests/window/pane-jauvex.test.ts`).
+  none of its own, takes over the one you were looking at, so you go on with it through the app's own agent (`tests/window/pane-jauvex.test.ts`).
 - **Boards** (T-171): a folder's to-do lists, plain markdown in the folder (`PROJECT.md`, `MARKETING.md`, `BOARD.md`, `ROADMAP.md`,
   `boards/*.md`): `## Section` headings (P0, P1, P2), items as `- [ ] **T-01 · Title** — body` with `[ ]` to do, `[~]` doing. A done
   task leaves the board, in the same edit, for the top of its done file beside it (`PROJECT-DONE.md`, `boards/x-DONE.md`), ending
@@ -233,7 +244,7 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   a yes (the question names the file and its done file); both files go, and its view closes (T-179). A new board: the folder's options (New board), or
   `new-board --name "..." [--folder ...]` on the command line, which writes `boards/<name>.md` from a template and opens it. A board an
   agent writes shows up within seconds (on a refresh, when the window comes back to the front, and every 15 s); markdown with no items
-  is not a board. **Its own chat** (T-199; the user, 2026-09-28: talking to boards, "it's very important"): under the board, "Talk to
+  is not a board. **Its own chat** (T-199): under the board, "Talk to
   this board", by text or by voice, as under a Jev agent. A session of its own in the folder (the Jauvex agent's provider), told on
   every message what the board is now (the board itself, or, past 30 KB, to read the file) and the boards format; it adds, takes,
   moves and finishes items by editing the board's files, and the board redraws after every answer. Its session is kept in the app's
@@ -241,11 +252,11 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   folder's list of agents. A folder reached through a symlink keeps its history too: Claude Code files a session by the real path,
   and the app looks there as well (`tests/window/board-chat.test.ts`).
 - **Only workflows are listed (T-251)**: a file of `workflows/` counts when a step says who does it (`## 1. Draft → Writer`, `→ you`) or
-  it has a `when:` line; rules or notes kept beside the workflows (a shared `video-rules.md`, listed as a workflow on 2026-09-30) are
+  it has a `when:` line; rules or notes kept beside the workflows (a shared `style-rules.md`, once listed as a workflow) are
   left out of the list, and a file with no such step never runs (`isWorkflow`, `realSteps` in `shared/workflow.ts`).
 - **Workflows** (T-210): a workflow is a markdown file in the folder, `workflows/<name>.md`, and a folder beside it, `workflows/<name>/`,
   with one file per step: its instructions. The workflow file has a title and a line, `when:`, then the steps in order, one heading each:
-  `## 1. [Script](news-video/script.md) → Video Agent`, the step's name linked to the file of its instructions, and who does it; `→ you`
+  `## 3. [Draft](recipe-letter/draft.md) → Writer Agent`, the step's name linked to the file of its instructions, and who does it; `→ you`
   makes a step a human-in-the-loop gate (never a person's name). A step's file holds only what its agent is told, in plain words. They are
   listed under the folder, between its sessions and its boards; a new one comes from the folder's options (New workflow) or
   `new-workflow --name "..."`, and starts as a Hello World that runs as it is: the Jauvex agent says hello, you approve, it writes the
@@ -257,15 +268,16 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
     then **Elsewhere** (the Jauvex agent first, then the other folders' agents), or you; its instructions; an optional title (without one,
     the step is called by its instructions, cut short). A + on the line between two steps adds one there; a step can be removed. Each edit
     rewrites only its part of the file (`shared/workflow-edit.ts`), and a step's file is made, renamed and removed with it; the app reads
-    and writes a step's file only in the workflow's own folder. **The sidebar's order** (T-224; the user, 2026-09-29: "when it needs a human
-    supervision, it should be on top, 100% ... then by those that were last modified, not created or last run"): the workflows waiting for
+    and writes a step's file only in the workflow's own folder. **The sidebar's order** (T-224): the workflows waiting for
     you first, then the running ones, then the rest by the last change of their file or their steps' instructions, the newest first
     (`sortWorkflows` in `shared/workflow.ts`, `tests/workflow-parse.test.ts`).
   - **Running one**: the Run button, or an agent's `run --workflow <name> --folder <name>` (a workflow written a moment ago is found: the
     folder is read again when the window's list does not have it yet), sends step 1 as one message to the agent it
     names, through the channel the agents already use, with its instructions, the previous step's words and how to end
     (`OUTCOME: <one of the step's outcomes>`); the reply's OUTCOME line picks what comes next; a reply without it is asked for once more,
-    then the run stops as failed; a step whose agent is not in the app fails the run and says so. A step of yours waits: its pane offers one
+    then the run stops as failed; a step whose agent is not in the app fails the run and says so. The OUTCOME line is the runner's, not
+    yours: a trailing one is left out of the chat, of what the voice says and of an answer that goes back to another agent (a reply that is
+    nothing but the line shows as "Done"; `withoutOutcome` in `shared/workflow.ts`), while the runner reads the reply as written. A step of yours waits: its pane offers one
     button per outcome and a note (continue goes on, changes goes back to the step before with your notes), and the step before it is told to
     end with a FOR YOU line saying plainly what to do there, to put what you decide on in the reply itself (the candidates, the figures, the
     draft) and to list the options as `CHOICE: <label> — <one line>` lines. Above the question, the pane shows what that step found: its whole
@@ -299,8 +311,7 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
     told on every message what the workflow is now, its steps' instructions included: it edits the files (the flow follows), and runs it,
     stops it or passes its gate on your word. It writes to the app's agents and hears back as any chat does: the router knows it as
     "<workflow> workflow" while its view is open and delivers to it there; a board's chat is reached the same way, as "<board> board".
-  - **Moving one to another folder** (T-217; the user, 2026-09-29: "The workflows were actually moved But the sessions of the agents were
-    not"): every provider files a session by the folder it works in, so a workflow moved by hand takes its files and leaves its chat's
+  - **Moving one to another folder** (T-217): every provider files a session by the folder it works in, so a workflow moved by hand takes its files and leaves its chat's
     session under the old folder, and its chat opens empty. `move-workflow --workflow <name> --to <folder> [--folder <its folder>]` moves
     the file, its folder (steps, runs, versions, `chat.json`) and the chat's session, and puts the files back if the session cannot move:
     Claude Code's transcript to the new folder's place (`<config>/projects/<folder, dashed>/`, by the folders' real paths, with what it
@@ -312,8 +323,20 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
     wherever it lives. Checks: `tests/move-session.test.ts` (a folder reached through a symlink too), `tests/window/move-workflow.test.ts`.
   - A workflow is deleted from its row's secondary click, after a yes, with its folder (instructions, runs, versions); one that runs is
     stopped first. Every agent that runs in a folder is told its workflows, and that a step of its own ends with the OUTCOME line.
+- **The message box is always whole**: at any window height the message box and its settings row stay in view at the bottom of the
+  chat. Its text box grows with what you type up to 220 px, never more than 22% of the window's height (worked out again when the
+  window is resized), then scrolls. Everything above the box is one area (`.chat-above`) that gives way first: the dashboard shrinks
+  down to 20% of it, the messages under it down to 26%, and past those floors that area scrolls; the window's grid rows are capped
+  at the window (`minmax(0, 1fr)`), so nothing tall can push the box out.
 - **Images an agent shows** (a markdown image with a local path, relative to its folder or absolute) load from the file
-  and never overflow the thread (at most the thread's width and 60% of the window's height).
+  and never overflow the thread (at most the thread's width and 60% of the window's height). A path with spaces shows too, as written,
+  in angle brackets (`![name](<path with spaces>)`, as agents are told) or with `%20`, and so does a Windows path (`C:\...`): before the
+  markdown is read such a path is put in the form markdown takes whole, and the address it leaves goes back to the file, a folder whose
+  real name holds `%2F` kept as it is (`shared/imagepath.ts`; it once showed as raw text, cut at the first space).
+- **Nothing in the chat is wider than the chat**: every part of a message (text, long words and paths, links, inline code, quotes,
+  pictures, tables, the yellow "needs you" box, the quote card above the message box) wraps or shrinks to the chat's width at any window
+  size; a code block keeps its lines and scrolls inside itself, its copy button on its right edge. Each item of the thread has
+  `min-width: 0` (a flex item is otherwise as wide as its longest unbreakable line) and wraps anywhere when it must.
 - **Images in a message**: paste a screenshot from the clipboard into the composer, drop image files on it, or pick them
   with the clip. They show as thumbnails until sent and in the thread after. Claude gets them inline; Codex gets each
   as a file under `data/uploads/`. Typed while a turn runs, they queue with their text: each queued bubble keeps the images
@@ -354,9 +377,10 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   **YOLO — full access** (asked for 2026-09-26) runs tools with no permission prompt and no provider sandbox: Claude's
   `bypassPermissions` with its required opt-in, Codex's `never` approvals with `dangerFullAccess`, Grok's `yoloMode`. Agents can
   then use everything this account can reach; it grants no administrator access, and the operating system's own limits still apply.
-  **Provider permissions** (Jauvex settings › Safety, or `settings --permission-provider claude --permission-mode yolo` on the
+  **Provider permissions** (Jauvex settings › Safety, or `settings --permission-provider claude --permission-mode ask` on the
   command line) set Ask, Auto or YOLO for every session of one provider, from each session's next turn; the composer then shows that
-  mode, locked; "Use session setting" (`--permission-mode session`) gives the choice back to each composer. Leaving YOLO gives Codex
+  mode, locked; "Use session setting" (`--permission-mode session`) gives the choice back to each composer. The command line, which
+  agents run, only lowers a level (1.8.0): raising one, or giving the choice back while it is below YOLO, is yours, in the window. Leaving YOLO gives Codex
   back the approvals and sandbox the thread had before it, a read-only one included, kept in the state across restarts.
   Codex sessions work the same way: replies stream, Stop interrupts the turn, and when Codex asks before running a
   command or writing files, the same card appears (Always = for the rest of the session). Approval policy and
@@ -369,6 +393,19 @@ your Mac from this source: `npm start` runs it from the Electron binary in `node
   A picture Grok makes (its `imagine` tool) shows under the tool's row, and the answer's link to it points at the file Grok saved
   in its own session folder: Grok writes it relative to that folder (`images/1.jpg`), which read against the project's folder
   was a broken image.
+- **Open models (1.8.0)**: a model of your own next to Claude, Codex and Grok: a local server (Ollama, LM Studio, vLLM) or OpenRouter,
+  through the OpenAI-style API. Accounts has an Open models section: pick a kind or type the address (`http://localhost:11434/v1`), a key
+  when the server needs one, then List models asks the server which models it has before anything is saved. The key is kept in the data
+  folder (`open-models.json`, readable by you only, backed up before a change) and never shown again in the window. An Open models agent
+  runs on Codex's engine with that server as its provider (`electron/openmodels.ts`, `shared/openmodels.ts`): Codex must be installed, its
+  account is not used. Its voice helper is Claude's. There is no usage meter: a server of your own has no plan.
+- **The chat's tools (1.8.0)**: what an agent needs from you shows in a yellow box (a `needs-you` block in its answer); a click on it
+  quotes it into your message. Select any part of the chat and reply to just that: one quote card sits above the message box, and a new
+  quote replaces it. A right-click on the thread copies the selection, the message or a link, or quotes them. Code blocks have a copy
+  button. When an agent offers answers to its question (an `options:` line, then `- Label: what it means`, as the agents are briefed), they
+  show as buttons under it, the recommended one marked, with a pen to write your own; a tap sends your answer with the question quoted
+  over it (Alt and a number picks one), and the box stays yellow until each of its questions is answered (as in Jauvex Pro). Your message shows what it quotes as a quote, and a click on the quote goes to the
+  message it quotes. `shared/needs.ts`, `shared/quote.ts`, `tests/window/needs-options.test.ts`.
 
 ## Languages
 
@@ -403,9 +440,32 @@ offer is for the Mac app only). What differs from the Mac, all handled by `start
    on a CPU it renders about three times faster than the 8-bit one) is downloaded into `models/kokoro/` and checked like Whisper's. It
    runs as a warm process of its own (`kokoro/server.mjs`), started when voice is switched on, and talks to the app in JSON lines,
    not over a port. The default voice is `af_heart`; the voice settings list Kokoro's others, and the speed slider works as on the Mac.
+   Its model is loaded without onnxruntime's memory arena (`enableCpuMemArena` and `enableMemPattern` off): the arena never shrinks and
+   doubles its next block, and after minutes of speech it asked for 2 GiB at once, which Electron's Node refuses by stopping the process
+   (SIGTRAP), and the voice died. Each render now takes the memory it needs and gives it back.
+   If it stops by itself after it has loaded, it is started again at once, at most three times an hour (then at the next voice-on), so
+   a crash never leaves every chat silent until voice is switched off and on; one that cannot load its model waits for the next voice-on.
    Kokoro speaks English only (its voices are American and British English): a reply in another language is read with English sounds.
+   Its phonemizer spells out a word with no vowel ("Mmm" came out "M M M"), so the sounds people write that way reach it as words it
+   says (`kokoro/speakable.mjs`, checked in `tests/kokoro-speakable.test.ts`): "mmm", "hm" and the like as "hmm", "mhm" and "mm-hmm" as
+   "uh-huh"; a date's "MM" and a lone "m" are left alone.
 5. **The window** has the system's own frame and no menu bar (Alt is push-to-talk). Where Chromium refuses the GPU, or there is
    none (a virtual screen), the orb is drawn by its software renderer.
+
+## On Arch Linux and Omarchy
+
+Omarchy (omarchy.org) is Arch Linux with the Hyprland desktop on Wayland. From a clone of this repository:
+
+```sh
+git clone https://github.com/reindent/jauvex && cd jauvex && sh scripts/install-arch.sh
+```
+
+`scripts/install-arch.sh` installs what the app needs with pacman (Node, git, Electron's libraries, cmake and a compiler), builds
+whisper-server once into `~/.local/bin`, builds the app with `start.sh` (Whisper's and Kokoro's models included), adds a `jauvex` command
+and an entry in the app launcher (Super+Space on Omarchy), and starts it. Run it again after a `git pull` to update. In a Wayland session
+`start.sh` tells Electron to draw on Wayland (left to choose, it took X11 through XWayland and drew no window), and Arch lets Chromium's sandbox use user namespaces, so `start.sh` asks for no sudo there (Ubuntu still needs its
+setuid helper). `sh tests/arch/check.sh` checks it in a fresh Arch container: the install as an ordinary user with sudo, then the app on a
+headless Wayland compositor (weston). Not checked there: Hyprland itself, a real microphone and speakers, and a GPU.
 
 ## On Windows, from source (T-283)
 
@@ -435,7 +495,7 @@ Press the white round button in the message box. All local except the two Claude
 - **Transcription settings** (voice settings): which Whisper model in `models/` to use (Automatic = the fastest), and
   "Names it should know". The names, plus the open folder's name, go to `whisper-server` as its initial prompt at
   start-up (the per-request prompt field is ignored by the server), so changing either restarts it. Measured on this
-  Mac with test phrases: small without names heard "Clothex / Cotex / Reigned-in"; small *with* names got every name
+  Mac with test phrases: small without names heard "Clothex / Cotex / North wind"; small *with* names got every name
   right in about 0.55 s; large-v3-turbo took about 2.2 s and still missed them. Whisper's ghosts are dropped: handed a knock or room noise it writes real phrases ("Thank you."), so a transcript is
   discarded when Whisper itself was unsure (very low confidence, a known ghost phrase at low confidence, or a no-speech
   probability over 0.6 on text that is short or doubtful: a real sentence Whisper was sure of is never dropped on that score alone,
@@ -482,7 +542,9 @@ Press the white round button in the message box. All local except the two Claude
   explicit message is a question and no block is needed to answer it; an answer does not bounce back again, so two
   agents cannot ping-pong on their own (and the app stops relaying after 30 agent-to-agent messages in ten minutes).
   A reply that goes back to its sender leaves out the blocks it addressed to other agents (they went to them) and says who
-  else was written to. A Claude agent that left a background job running (a shell command in the background, a monitor)
+  else was written to. Each message is read to its own closing fence (`agentBlocks` in `shared/delivery.ts`): a code block inside it,
+  opened with a language (```` ```ts ````), stays part of the message; a bare ```` ``` ```` ends it. A brief with a code block in it used to
+  be cut there, and the rest showed in the sender's chat instead of reaching the other agent (T-325). A Claude agent that left a background job running (a shell command in the background, a monitor)
   used to swallow the next message: its next turn answers only the job's "stopped" notice, empty, in under a second, which
   read as "the third message between agents fails". A Claude turn that ends like that sends its message again, once, with
   its reply address; and every agent is told not to start background work from a turn.
@@ -491,9 +553,10 @@ Press the white round button in the message box. All local except the two Claude
   agent once set up a file-based chat protocol instead). A Claude session also gets the same channel as two tools of its
   own, `mcp__jauvex__message_agent` and `mcp__jauvex__list_agents` (an in-process MCP server from the Agent SDK, answered
   by the window's router, never asking permission), for the models that look for a tool when told "talk to X". Agents are addressed by name (title or summary) or by the short id in brackets, which never changes (6 characters,
-  longer only where two ids share their start, as Codex ids often do); a fenced `list-agents` block gets the roster back
+  longer only where two ids share their start, as Codex ids often do, and then it may run past a hyphen, `[01a11d25-7b]`, which finds
+  its agent with or without the hyphen: FB-38); a fenced `list-agents` block gets the roster back
   (name, id, provider, folder, working or idle). The Jauvex agent is listed once, as "Jauvex", whatever its past sessions
-  across providers, and always, its chat open or not (T-151, the user, 2026-09-26: an agent that wanted to report a bug to it found
+  across providers, and always, its chat open or not (T-151: an agent that wanted to report a bug to it found
   three "Jauvex …" agents and not it, since it was listed only while its chat was open): a message to it opens its own chat in the
   background, with its session, or starts one; with no session yet, its folder's id stands in for its id; a session with no name of its own is shown by its first message, cut at 60 characters. Every exchange shows in both
   threads, marked "From agent X", and in the voice log. The briefing tells every agent all of this.
@@ -554,9 +617,15 @@ Press the white round button in the message box. All local except the two Claude
   line, stopped by its own pid): the app dies without them when it is killed, and each restart used to leave a pair behind.
   Only this install's are stopped (their model is in its own `models/`): on 2026-09-24 the other edition, started next to this
   one on the same ports, stopped both of this one's servers, and the wake phrase went with them. The editions use ports of
-  their own; one that finds its port taken by another install's server leaves it and says so in the flight recorder.
-- **The orb rides on the conversation.** In voice mode the thread runs on under the orb and fades out behind it (a mask, so
-  it works on any background); the last message rests just above it. The thread stays pinned to the bottom whatever
+  their own; one that finds its port taken by another install's server leaves it and says so in the flight recorder, unless no
+  copy of the app runs it any more (it carries the app's own words in its vocabulary and launchd or systemd took it over when its
+  app went): that one is stopped too. Every way the app leaves (quit, restart, an update, a reset) stops what it started, its
+  Whisper servers and Kokoro included (`exitApp` in `main.ts`): `app.exit` skips Electron's before-quit, and a restart once left
+  a pair of servers holding the ports, so the next copy could not listen.
+- **The orb rides on the conversation.** In voice mode the thread runs on under the orb and fades out behind it; the last
+  message rests just above it. The fade is a layer of the orb's own (`.voice-dock::before`, the chat's background, `--chat-bg`, over
+  the thread's last 168 px), never a mask on the scrolling thread: a mask there left a line of new text half drawn and blinking on a
+  Mac while an agent worked. The thread stays pinned to the bottom whatever
   grows (streamed text, a voice line being typed, a table rendering, the draft bubble, the orb appearing): only scrolling
   up lets go of the bottom.
 - **Voice**: with no voice picked the app uses the system's default voice. (Samantha renders a line in a third of the
@@ -594,16 +663,27 @@ Press the white round button in the message box. All local except the two Claude
   with its confidence; the job and the voice model's reply; the main model's reading of an order), and a click opens
   the whole of it: the state and questions sent to Jev with its probabilities, or the message sent to the model and
   its raw reply. That is where to see why a decision came out the way it did. The agents' turns too, Claude, Codex and Grok alike
-  (T-260; the user, 2026-10-01: "It has only Jev. But it doesn't say anything that is going on with Claude or Codex or Grok. I want to be
-  able to see that and that should be logged as well"): each line names the agent ("Claude 3f2a1c · reindent": provider, session,
+  (T-260): each line names the agent ("Claude 3f2a1c · acme": provider, session,
   folder) and says what was sent (and with what model, effort, pictures), what was steered in, each thought, word, tool call and
   result, a permission asked, a compaction, and how the turn ended (how long, what it cost, why it failed). The streamed text and
   the context numbers make no line. `shared/agent-log.ts` makes the lines (`tests/agent-log.test.ts`); `startChat` in `chat.ts`
   logs them for every provider; `tests/window/debugger-agents.test.ts`.
 - **What the voice did, on disk**: the debugger's events also go to `data/voice-debug.log` (rolled at 2 MB), including
   the fate of every line that was meant to be spoken (`said`, or `NOT said` and why). A window whose page dies, or any other
-  process of the app, is written there too, with why and the memory then; a page that crashed loads again by itself, at most
-  three times in ten minutes (T-271: a window that went black said nothing anywhere). `tests/window/window-crash.test.ts`.
+  process of the app, is written there too, with why and the memory then (T-271: a window that went black said nothing anywhere).
+- **Never a blank window**: whatever empties the window, it loads again by itself and says why in the flight recorder: a page that
+  crashed or ran out of memory, a load that failed, a page alive with nothing drawn in it, or a page that hangs. The page beats every
+  5 s (`app:alive`: alive, and whether anything is drawn), and the app reloads it when three beats in a row show nothing or no beat
+  came for 45 s (`reloadWindow`, `watchWindow` in `main.ts`; a computer's sleep is not counted), with a longer wait each time, the
+  waits starting over once a page has run for two minutes. A component that throws while drawing would take the whole page down: the
+  page's own error boundary (`web/src/Fallback.tsx`) says what threw and where, shows its own notice and reloads; thrown again right
+  after, it leaves a Reload button rather than loop. Every uncaught error in the page goes to the flight recorder, and after a crash of
+  the graphics process the window is painted again. `tests/window/window-crash.test.ts`, `tests/window/window-blank.test.ts`
+  (`CVC_TEST_HOOKS=1` lets a check break the page on purpose).
+- **No fatal dialog when a pipe closes**: a write to a program or a connection that has already hung up ("write EPIPE") used to become
+  Electron's fatal error dialog over the whole app. The programs the app writes to have their pipes guarded (`guardPipes` in
+  `electron/pipes.ts`: Codex, the sign-ins), and a closed pipe or connection that still slips through is caught in `main.ts`
+  (`pipeError`) and written to the flight recorder; the app carries on. Any other uncaught error still shows. `tests/pipes.test.ts`.
 - **Steering**: what you say out loud while the agent works reaches it *right away, without interrupting it*. It is
   added to the running turn as new information: the agent keeps its whole context and what it has done, reads your
   words at its next step and carries on ("use the staging database, not production", "don't touch the footer", "also
@@ -639,9 +719,9 @@ Press the white round button in the message box. All local except the two Claude
   ("restart the app"), or Jev at 0.85 or more. When nobody is sure (Jev leaning, unsure or absent, the voice model reading an
   order) it asks in one short line, shown and said ("Should I open a new agent in website? Say yes to open it; anything
   else goes to the agent as you said it"): a clear yes carries the order out, anything else sends the words it asked about to
-  the agent, as they were said. "Give me the handoff instructions so the other agent can work on this" once opened a new
+  the agent, as they were said. "Write up the notes so the other agent can take this over" once opened a new
   agent that way. Typed messages get the same treatment while voice mode is on. The order
-  may follow a few other words ("Okay, let's see if this works. Make a new Codex agent."): it is looked for sentence by
+  may follow a few other words ("Alright, one more thing. Make a new Codex agent."): it is looked for sentence by
   sentence, and inside a longer message it is only acted on when Jev is sure it is for the app. "... named X" / "call it X"
   names the agent: a Jev agent at once, a Claude or Codex session when its first turn ends (it shows in the title bar
   from the start), written to the provider like any rename.
@@ -672,10 +752,10 @@ Press the white round button in the message box. All local except the two Claude
   the voice channel's decisions go to Jev, TypeSafe's System One model (`electron/jev.ts`): it does not write text, it
   answers typed questions with probabilities, in about 250 ms against 1 to 3 s for the voice model. It decides: whether
   your thought is finished when you pause (a clear "no" holds the words, joins them to what you say next and sends one
-  message; held at most three times, 4.5 s each). A long dictation is closed at its next short pause once it passes 6 s, and at 12 s whatever the pauses, and the next words join it (not counted as a hold): every
+  message; held at most three times, 4.5 s each). A long dictation is closed only where you leave a gap: once it passes 6 s at a real pause between phrases (400 ms), once it passes 12 s at any gap between words (90 ms), never in the middle of a word (the 12 s cut once did, and names came back garbled: FB-21, `shared/voicecut.ts`), and at 45 s whatever happens; the next words join it (not counted as a hold): every
   transcription pass costs by the length of the audio, and a paragraph re-transcribed at each pause took seconds a pass, so the words
   landed late and the thought was cut in two. The fullest text any pass of a stretch heard is remembered: a final pass that heard far fewer words (a 14 s pass once came back as "I" where earlier passes had heard two sentences) is retried once, and the fuller text wins. Whole transcripts Whisper invents from near-silence ("Thank you for your time.", "Thanks for watching") are dropped whatever their score. The audio of every pass stays in `data/voice-audio` (the newest 120 files, never sent anywhere), named in the recorder, so a lost sentence can be replayed. One speculative pass at a time: a pause while the previous pass still runs skips it, whether it was a question or a thank-you (answered at once with
-  the voice answers in three stages: the quick line at once (Jev's fixed phrase, prepared during the pause), then the understanding (the voice model, told the quick line it comes after so it never repeats it, from the request and the last of the conversation: one or two sentences that say back what was said or asked, in its own words, and nothing else: never an answer, a plan or a promise, a request or a question back, a judgement or a guess, never a pronoun the user did not say; the answer is the third stage's (T-201; the user, 2026-09-28: it "should not attempt to solve the user's problem or answer the question"). Each line is checked before it is said, and every clause that does any of that is taken out (`shared/reflection.ts`). Skipped for a greeting, small talk or thanks (Jev's own question, else a rule on the words: no extra reply shape for the model), for anything under five words, or once the turn is already over), then the summary of the answer when it lands), and queue / steer / stop / replace while the main thread is busy, with the spoken line
+  the voice answers in three stages: the quick line at once (Jev's fixed phrase, prepared during the pause), then the understanding (the voice model, told the quick line it comes after so it never repeats it, from the request and the last of the conversation: one or two sentences that say back what was said or asked, in its own words, and nothing else: never an answer, a plan or a promise, a request or a question back, a judgement or a guess, never a pronoun the user did not say; the answer is the third stage's (T-201). Each line is checked before it is said, and every clause that does any of that is taken out (`shared/reflection.ts`). Skipped for a greeting, small talk or thanks (Jev's own question, else a rule on the words: no extra reply shape for the model), for anything under five words, or once the turn is already over), then the summary of the answer when it lands), and queue / steer / stop / replace while the main thread is busy, with the spoken line
   picked from a fixed set, in English, never the same line twice in a row. "Decisions" in the voice settings hands all of it back to the voice model. Below 0.6 confidence, in another language, over the 1.2 s budget, on any error, or with no key, the voice
   model decides as before. The key stays in the main process: never logged, never sent to the window. `CVC_JEV=off`
   switches it off. The voice settings say who is deciding.
@@ -688,7 +768,9 @@ Press the white round button in the message box. All local except the two Claude
   after this", stop "Okay, I'll take care of that right away, stopping now" / "Okay, stopping now", replace "Okay,
   switching to that right away" / "Got it, dropping this and switching now"; a stop word alone "Okay, stopped".
 - **Welcome screen** (opens by itself the first time the app runs, over the main window, and from Jauvex settings
-  after; the checks sit in two columns so the screen fits the window, hints and all): first the orb alone, a little bigger, in the middle of the screen; after a beat it slides up and shrinks into its place, the title fades in and the welcome is spoken (the name, one phrase on what the app is, and that the computer is being
+  after; the checks sit in two columns so the screen fits the window, hints and all, down to the smallest window, 900 x 600, where the
+  orb shrinks, the title goes and the padding and gaps tighten, so the heard line and the intro may wrap to two lines and still fit
+  without a scroll): first the orb alone, a little bigger, in the middle of the screen; after a beat it slides up and shrinks into its place, the title fades in and the welcome is spoken (the name, one phrase on what the app is, and that the computer is being
   checked), typed out on screen as it is said, and only then the checks
   a fresh Mac must pass appear, each with a spinner, landing one after another (so the Start button comes only after the
   last), on screen and out loud. With both providers signed in and no default agent yet it asks which one to start with.
@@ -729,6 +811,9 @@ Press the white round button in the message box. All local except the two Claude
   reads on its own.
 - **Voice can start while a turn runs**: the Stop button and the voice button sit side by side; voice joins the work in
   progress, and what you say steers the running turn.
+- **One listener per chat, and off means off**: the voice button reads what was last asked of it, not what the window drew (two quick
+  clicks once both saw voice off and each started a listener, so words arrived twice and the first listener never stopped), and voice
+  turned off while it was still starting stops the listener it was starting (`voiceWanted`, `voiceGen` in `App.tsx`).
 - **Controls**: end, mic mute, orb, speaker mute, settings (voice, speed, pause length, language, voice model). When the
   app loses focus a small floating controller stays on top; its microphone counts down with the app's before the auto-mute
   (T-178).
@@ -765,14 +850,14 @@ Press the white round button in the message box. All local except the two Claude
   mutes after that long with nobody talking, the last 5 s counting down the same way. With these, the user mutes by staying
   quiet and comes back by saying the phrase. The phrase is heard by the small live-words server; when that one is down, the
   main Whisper hears it instead, and a live server that stopped starts again when next needed (at most every 30 s). Why: on
-  2026-09-24 the small server died, the app never started it again, and every check heard nothing: the user said his phrase
+  2026-09-24 the small server died, the app never started it again, and every check heard nothing: the wake phrase was said
   again and again and the microphone stayed muted. The flight recorder says which server heard each check (`tests/wake-check.test.ts`).
 - Sessions come from the **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`): `listSessions({ dir })`,
   `getSessionInfo`, `getSessionMessages`. Same data the `claude` CLI uses, typed, with no CLI scraping and
   no parsing of `~/.claude` by hand. The same SDK's `query({ resume })` is the path for sending messages later.
   Claude Code keeps its sessions in `~/.claude`, or wherever `CLAUDE_CONFIG_DIR` points: the app starts through macOS, not from a
-  terminal, so it takes `CLAUDE_CONFIG_DIR` and `CODEX_HOME` from the login shell along with `PATH` (without that, a user who had
-  moved Claude Code's folder saw his Codex sessions listed and none of his Claude Code ones). When a folder lists no Claude Code
+  terminal, so it takes `CLAUDE_CONFIG_DIR` and `CODEX_HOME` from the login shell along with `PATH` (without that, with Claude Code's
+  folder moved, the Codex sessions were listed and none of the Claude Code ones). When a folder lists no Claude Code
   session, the debug panel says where the app looked.
 - Codex sessions come from **`codex app-server`** (`electron/codex.ts`): the JSON-RPC interface, one JSON object per
   line over stdio, that Codex's own clients use. `thread/list` from Codex's state database (`useStateDbOnly`: the
@@ -794,6 +879,15 @@ Press the white round button in the message box. All local except the two Claude
   first use, and never when no `grok` is on the Mac. Same login, config and store as the Grok CLI (`~/.grok`), nothing there
   read by hand. Its plan's credits come from `x.ai/billing`, what Grok's own usage view reads (the share of the period's included
   credits used, the period, on-demand spending, bought credits, the plan's name). Not yet: a Grok row on the welcome screen.
+- New rules reach agents made before an update (1.8.0): Claude Code would otherwise resend the briefing it recorded when a conversation began
+  (`snapshot: false` turns that off), Codex keeps a thread's first instructions, and Grok takes rules only when a session is made. For Codex and
+  Grok the app keeps which paragraphs of the briefing each conversation was given (`<data folder>/briefed.json`, `electron/briefed.ts`) and
+  sends what is new or changed once, after your words of the next turn, in a tag the chat never shows (`shared/rules-update.ts`); after a
+  compaction the whole briefing goes again. Typed text never carries that tag.
+- Every download from the web through Node (link previews, the open-models list, updates, feedback, the Whisper models on Windows) goes
+  through `electron/webget.ts`, not Node's `fetch`: it asks for gzip or deflate only and refuses any other encoding before reading it, so
+  a Brotli answer never reaches Node's Brotli decoder (a flaw there, CVE-2026-111497, let a hostile server run code; fixed in Node 24.22.1).
+  The pages themselves load in Chromium, not Node. `tests/webget.test.ts`.
 - `electron/chat.ts` routes each turn by the session's provider; every provider sends the UI the same `ChatEvent`s.
 - Two threads per chat. The main thread is the session itself (Claude or Codex, the model in the picker). The voice
   thread is a small model **from the same provider** (Haiku for Claude sessions; for Codex sessions the account's fast,

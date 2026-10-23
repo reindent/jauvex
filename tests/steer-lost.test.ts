@@ -1,4 +1,4 @@
-// Messages handed to a running Claude turn that the model never read (2026-09-23, twice): one said just before a stop was dropped by
+// Messages handed to a running Claude turn that the model never read (seen twice): one said just before a stop was dropped by
 // Claude Code with the rest of the turn, and one said as the turn was ending was taken up after the app had closed the turn. The turn's
 // end now says how many of the last ones were never read (`unsent`), and the window sends them again. With the stand-in, which drops
 // what waits when a turn is interrupted, as Claude Code does.
@@ -17,7 +17,7 @@ const turn = async (id: string, during: (chatId: string, evs: Ev[]) => Promise<v
 const answering = async (evs: Ev[]) => { for (let i = 0; i < 100 && !evs.some((e) => e.type === 'delta'); i++) await sleep(50); };
 const done = (evs: Ev[]) => evs.filter((e): e is Extract<Ev, { type: 'done' }> => e.type === 'done').at(-1);
 
-const stopped = await turn('lost-on-stop', async (id, evs) => { await answering(evs); await sleep(300); await chat.steerChat(id, 'what we can do later: import from the other app'); await sleep(200); await chat.stopChat(id); });
+const stopped = await turn('lost-on-stop', async (id, evs) => { await answering(evs); await sleep(300); await chat.steerChat(id, 'what we can do later: add a dark theme'); await sleep(200); await chat.stopChat(id); });
 check('a message handed over once the answer had started, then a stop: the end says it was never read', done(stopped)?.unsent === 1, JSON.stringify(done(stopped)));
 
 const read = await turn('read-later', async (id) => { await sleep(250); await chat.steerChat(id, 'and one more thing'); });

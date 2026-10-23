@@ -1,5 +1,5 @@
-// The thread as someone who is not a developer reads it (T-247; the user, 2026-09-30: "When it's disabled, then the users will not see bash
-// and all these tool calls ... They would just see ... working ... unless they click it ... it's for non-technical users"): what was said and
+// The thread as someone who is not a developer reads it (T-247: with developer mode off, people who
+// are not developers see no shell or tool calls, only that the agent is working, unless they click it): what was said and
 // written, the pictures a tool made, and each run of tool calls, thoughts and system events between them as one Working row. Pure:
 // tests/work-rows.test.ts.
 import type { Block, ChatMessage } from './types.js';
@@ -31,7 +31,7 @@ export function threadUnits(messages: ChatMessage[], showMeta: boolean): ThreadU
   flush(); return out;
 }
 
-/** Agent-to-agent traffic folded into one line in the person's chat (FB-14, as Jauvex Pro; a Pro user, 2026-10-05: a lead's reply to them was buried under its
+/** Agent-to-agent traffic folded into one line in the person's chat (FB-14, as Jauvex Pro: a lead's reply to them was buried under its
  *  messages with other agents): each run of messages from agents, answers to them and the work between, as one `agents` unit naming them.
  *  `agentOf` says whose a message unit is (an agent's name), or null when it is the person's or for the person. A run that holds no agent
  *  message is left as it was; work at a run's edges stays outside it. */

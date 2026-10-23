@@ -12,6 +12,7 @@ import { shortTitle } from '../shared/roster.js';
 import { clientBriefing, type Attachment, type Block, type ChatEvent, type ChatMessage, type ChatStart, type ModelOption, type PermissionDecision, type SessionInfo } from '../shared/types.js';
 import { tooLong, type ContextUsage } from '../shared/context.js';
 import { moveGrokSession } from './move.js';
+import { briefedWith, forgetBriefing, rulesUpdate } from './briefed.js';
 
 /**
  * Grok sessions, through `grok agent stdio`: the Agent Client Protocol (ACP: JSON-RPC 2.0, one JSON object per line over stdio) that
@@ -43,7 +44,7 @@ const errorText = (e: { code?: number; message?: string; data?: unknown }): stri
 };
 
 function boot(): Server {
-  const child = spawn(findGrok(), ['agent', '--no-leader', 'stdio'], { stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
+  const child = spawn(findGrok(), ['agent', '--no-leader', 'stdio'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, JAUVEX_AGENT: '1' /* an order typed in an agent's shell is an agent's */ } });
   const s: Server = { child, nextId: 1, waiting: new Map(), ready: Promise.resolve(), models: null };
   let stderr = ''; child.stderr?.on('data', (d: Buffer) => { stderr = (stderr + d.toString()).slice(-600); });
   const down = (why: string) => {
@@ -72,7 +73,18 @@ function write(s: Server, msg: Rpc): void { s.child.stdin?.write(`${JSON.stringi
 function rawCall<T>(s: Server, method: string, params: unknown): Promise<T> {
   return new Promise<T>((resolve, reject) => { const id = s.nextId++; s.waiting.set(id, { resolve: resolve as (v: unknown) => void, reject }); write(s, { id, method, params }); });
 }
-async function call<T>(method: string, params: unknown): Promise<T> { const s = (server ??= boot()); await s.ready; return rawCall<T>(s, method, params); }
+async function call<T>(method: string, params: unknown): Promise<T> {
+  const s = (server ??= boot()); await s.ready;
+  try { return await rawCall<T>(s, method, params); }
+  catch (e) { // the signed-in state lives in the agent process: one started before `grok login` keeps answering "not signed in" after it (from
+    // the other edition: a `models` call had started it signed out, and every new Grok agent was refused until the process was killed). On
+    // that answer, with no turn under way, a fresh process is asked once; a real signed-out state answers the same from it.
+    if (!/^Grok is not signed in/.test((e as Error).message) || server !== s || turns.size || Date.now() - lastRestart < RESTART_EVERY_MS) throw e;
+    lastRestart = Date.now(); restart(); const fresh = (server ??= boot()); await fresh.ready; return rawCall<T>(fresh, method, params); }
+}
+const RESTART_EVERY_MS = 5000; let lastRestart = 0;
+/** The agent process started afresh: what it had loaded (sessions, the voice's own) is loaded again on demand. */
+function restart(): void { shutdown(); loaded.clear(); }
 /** Grok's own methods (`_x.ai/...` on the wire): some answer `{ result: ... }`, some the value itself. */
 async function ext<T>(method: string, params: unknown): Promise<T> {
   const r = await call<unknown>(`_x.ai/${method}`, params);
@@ -213,12 +225,13 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   const s = (server ??= boot()); await s.ready;
   const permissions = req.permissions ?? 'ask'; let sessionId = req.sessionId; let model = req.model || undefined;
   if (sessionId && loaded.has(sessionId) && chosen.get(sessionId)?.permissions !== permissions && !turns.has(sessionId)) { await call('session/close', { sessionId }).catch(() => {}); loaded.delete(sessionId); } // Grok takes the permission mode when a session is loaded
+  // Grok takes the briefing once, when the session is made (`_meta.rules`, folded into its system prompt). The note on dictation goes in
+  // whatever the first message was: a session started by typing may be talked to later, and a typed message never carries the tag.
+  const rules = clientBriefing(true, req.vocabulary, !!req.steward, APP_ROOT, await folderFiles(project.path));
+  const made = !sessionId;
   if (!sessionId) {
-    // Grok takes the briefing once, when the session is made (`_meta.rules`, folded into its system prompt). The note on dictation goes in
-    // whatever the first message was: a session started by typing may be talked to later, and a typed message never carries the tag.
-    const rules = clientBriefing(true, req.vocabulary, !!req.steward, APP_ROOT, await folderFiles(project.path));
     const r = await call<{ sessionId: string; models?: ModelState }>('session/new', { cwd: project.path, mcpServers: [], _meta: { rules, ...(req.model ? { modelId: req.model } : {}), ...(req.effort ? { reasoningEffort: req.effort } : {}), ...grokPermissionOptions(permissions) } });
-    sessionId = r.sessionId; model = r.models?.currentModelId ?? model; loaded.add(sessionId); chosen.set(sessionId, { model: model ?? '', effort: req.effort ?? '', permissions });
+    sessionId = r.sessionId; model = r.models?.currentModelId ?? model; loaded.add(sessionId); briefedWith(sessionId, rules); chosen.set(sessionId, { model: model ?? '', effort: req.effort ?? '', permissions });
   } else if (!loaded.has(sessionId)) {
     const r = await call<{ models?: ModelState }>('session/resume', { sessionId, cwd: project.path, mcpServers: [], _meta: { ...(req.effort ? { reasoningEffort: req.effort } : {}), ...grokPermissionOptions(permissions) } });
     loaded.add(sessionId); chosen.set(sessionId, { model: r.models?.currentModelId ?? '', effort: req.effort ?? '', permissions }); model ??= r.models?.currentModelId;
@@ -234,14 +247,15 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   send({ chatId, type: 'init', sessionId, ...(model ? { model } : {}) });
   const ctx = project.context?.[sessionId] ?? null;
   if (req.compact) { await runTurn(s, sessionId, chatId, /^\/compact\b/i.test(req.text.trim()) ? req.text.trim() : '/compact', undefined, send, req.projectId, { ctx, model, compact: true }); return; } // Grok's own /compact, a turn of its own
-  await runTurn(s, sessionId, chatId, req.text, req.images, send, req.projectId, { ctx, model });
+  const update = made ? null : rulesUpdate(sessionId, rules); // a resume keeps the old rules: what changed since goes with this turn
+  await runTurn(s, sessionId, chatId, req.text + (update?.note ?? ''), req.images, send, req.projectId, { ctx, model, ...(update ? { given: update.given } : {}) });
 }
 
 /** The prompt's content: the text, then each image inline (Grok takes image blocks although its capabilities say otherwise). */
 function promptBlocks(text: string, images?: Attachment[]): unknown[] {
   return [...(text ? [{ type: 'text', text }] : []), ...(images ?? []).map((i) => ({ type: 'image', data: i.data, mimeType: i.mediaType }))];
 }
-function runTurn(s: Server, sessionId: string, chatId: string, text: string, images: Attachment[] | undefined, send: (e: ChatEvent) => void, projectId: string | undefined, opts: { ctx: ContextUsage | null; model?: string; compact?: boolean }): Promise<void> {
+function runTurn(s: Server, sessionId: string, chatId: string, text: string, images: Attachment[] | undefined, send: (e: ChatEvent) => void, projectId: string | undefined, opts: { ctx: ContextUsage | null; model?: string; compact?: boolean; given?: () => void /* the rules update went through */ }): Promise<void> {
   return new Promise<void>((resolve) => {
     const thread = new Thread(sessionId, `${Date.now().toString(36)}-`, (m) => send({ chatId, type: 'message', message: m }), {
       delta: (t) => send({ chatId, type: 'delta', text: t }),
@@ -261,7 +275,7 @@ function runTurn(s: Server, sessionId: string, chatId: string, text: string, ima
       } };
     turns.set(sessionId, entry);
     if (opts.compact) { entry.compactAt = Date.now(); entry.before = opts.ctx?.used; send({ chatId, type: 'compact', phase: 'start', trigger: 'manual', ...(entry.before !== undefined ? { before: entry.before } : {}) }); }
-    rawCall<PromptResult>(s, 'session/prompt', { sessionId, prompt: promptBlocks(text, images) }).then((r) => settle(entry, r), (e: Error) => entry.fail(e.message));
+    rawCall<PromptResult>(s, 'session/prompt', { sessionId, prompt: promptBlocks(text, images) }).then((r) => { opts.given?.(); settle(entry, r); }, (e: Error) => entry.fail(e.message));
   });
 }
 /** The prompt is answered. A message handed over after the turn's last step is not lost by Grok: it runs it as a prompt of its own
@@ -275,7 +289,7 @@ function settle(t: LiveTurn, r: PromptResult): void {
 }
 /** A compaction is over: said once, with the tokens before and after when Grok gave them. */
 function compacted(t: LiveTurn, ok: boolean, after?: number, before?: number, error?: string): void {
-  const b = before ?? t.before; t.compactAt = 0;
+  const b = before ?? t.before; t.compactAt = 0; if (ok) forgetBriefing(t.sessionId); // what the app added to its rules may be summed away: all of them again next turn
   t.send({ chatId: t.chatId, type: 'compact', phase: 'done', trigger: t.compact ? 'manual' : 'auto', ok, ...(error ? { error } : {}), ...(b !== undefined ? { before: b } : {}), ...(after !== undefined ? { after } : {}) });
 }
 

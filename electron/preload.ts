@@ -66,5 +66,7 @@ contextBridge.exposeInMainWorld('desktop', {
   onVoiceType: (cb: (text: string) => void): (() => void) => { const h = (_e: IpcRendererEvent, t: string) => cb(t); ipcRenderer.on('voice:type', h); return () => ipcRenderer.removeListener('voice:type', h); },
   miniSize: (w: number): void => ipcRenderer.send('mini:size', w),
   onVoiceCmd: (cb: (cmd: string) => void): (() => void) => { const h = (_e: IpcRendererEvent, cmd: string) => cb(cmd); ipcRenderer.on('voice:cmd', h); return () => ipcRenderer.removeListener('voice:cmd', h); },
+  alive: (drawn: boolean): void => ipcRenderer.send('app:alive', drawn), // the page's heartbeat, every few seconds, with whether anything is drawn in it (a blank window loads again by itself)
+  testHooks: process.env.CVC_TEST_HOOKS === '1', // a check may break the page on purpose (the probe in main.tsx)
   platform: process.platform,
 });

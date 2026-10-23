@@ -1,6 +1,5 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/folder-drag/claude
-// The folders of the left panel are moved by dragging (T-255; the user, 2026-10-01: "I want to be able to rearrange the folders. Right now I
-// can't, the project folders. In the left panel"): three folders added in order; the last one dragged by its name over the upper half of the
+// The folders of the left panel are moved by dragging (T-255): three folders added in order; the last one dragged by its name over the upper half of the
 // first one's name (a line shows above it) and dropped: it comes first, in the panel and in the app's own list of folders (`list`); another
 // dropped over the lower half of a name goes below that folder; a reload keeps the order. The folders are under this edition's own tmp/work.
 import { connect, sleep, check, done } from './lib.ts';

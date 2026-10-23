@@ -1,5 +1,5 @@
-// What a step's agent found, for the person at the gate after it (2026-10-03; the user, on a real run: the gate showed only "Pick a topic and
-// angle…" and the record only the first 240 characters of the reply, its opening narration, while six candidates sat in runs/004/candidates.md).
+// What a step's agent found, for the person at the gate after it (a gate showed only the question, and the record only the first 240
+// characters of the reply, its opening narration, while the candidates sat in a file of the run's folder).
 // Pure, and identical in Jauvex Personal and Jauvex Pro (tests/workflow-gate-reply.test.ts): the runner keeps a step's whole reply in its run
 // folder (stepFile, stepReplyText), the record's `said:` is the reply's result (saidOf), and the gate shows the question (questionOf), the
 // choices the agent offered (choicesOf: `CHOICE: <label> — <one line>`, up to six) and the run's files the reply names (linkedFiles).

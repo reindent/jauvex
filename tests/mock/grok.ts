@@ -106,6 +106,7 @@ async function runPrompt(s, promptId: string, first: string, respond?: (result: 
   for (const t of live.late ?? []) void runPrompt(s, `interject-fallback-${randomUUID()}`, t); // what came after the last step: Grok runs it as a prompt of its own
 }
 
+const SIGNED_IN = !process.env.MOCK_GROK_AUTH || existsSync(process.env.MOCK_GROK_AUTH);
 const methods = {
   initialize: () => ({ protocolVersion: 1, agentCapabilities: { loadSession: true, promptCapabilities: { image: false, audio: false, embeddedContext: true }, sessionCapabilities: { list: {}, resume: {}, close: {} } }, authMethods: [{ id: 'cached_token', name: 'cached_token' }], _meta: { agentVersion: '0.0.0-stand-in', modelState: MODELS } }),
   'session/new': (p) => {
@@ -123,7 +124,9 @@ const methods = {
     if (text.includes('[[too long]]')) throw Object.assign(new Error('Internal error'), { code: -32603, data: 'Prompt is too long: the request exceeds the context window' });
     void runPrompt(s, randomUUID(), text, respond); return undefined; // answered when the prompt is over
   },
-  '_x.ai/auth/info': () => ({ methodId: 'cached_token', email: 'mock@localhost', firstName: 'Mock', teamName: null }),
+  // MOCK_GROK_AUTH=<file>: signed in only if the file exists when this process starts, and never looked at again, as Grok keeps its auth in
+  // the process (the app starts it afresh after a sign-in: tests/grok-signin.test.ts)
+  '_x.ai/auth/info': () => { if (!SIGNED_IN) throw Object.assign(new Error('Authentication required'), { code: -32000 }); return { methodId: 'cached_token', email: 'mock@localhost', firstName: 'Mock', teamName: null }; },
   '_x.ai/auth/logout': () => ({ ok: true, was_logged_in: true }),
   '_x.ai/billing': () => { const now = Date.now(); const period = { type: 'USAGE_PERIOD_TYPE_WEEKLY', start: new Date(now - 2 * 86400_000).toISOString(), end: new Date(now + 5 * 86400_000).toISOString() }; // with MOCK_USAGE: a plan with some credits used
     return { config: { ...(process.env.MOCK_USAGE ? { creditUsagePercent: 35 } : {}), currentPeriod: period, onDemandCap: {}, onDemandUsed: {}, prepaidBalance: {} }, subscription_tier: 'Mock' }; },

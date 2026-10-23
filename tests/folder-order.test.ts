@@ -1,4 +1,4 @@
-// The order of the folders in the left panel (T-255; the user, 2026-10-01: "I want to be able to rearrange the folders"): where a dropped
+// The order of the folders in the left panel (T-255): where a dropped
 // folder goes, and how the new order is kept in the app's list of folders, which also holds one the panel does not show (the app's own).
 import { moveFolder, inSlots } from '../shared/folder-order.js';
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${!ok && got ? `: ${got}` : ''}`); if (!ok) failed++; };

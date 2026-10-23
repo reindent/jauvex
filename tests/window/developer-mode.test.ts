@@ -1,6 +1,6 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/developer-mode/claude MOCK_DELAY_MS=20
-// Developer mode (T-247; the user, 2026-09-30: "add one more for developer, like some glasses, and by default, should be disabled. When it's
-// disabled, then the users will not see bash and all these tool calls ... They would just see ... working ... unless they click it"): an
+// Developer mode (T-247: a glasses button, off by default; while it is
+// off, tool calls show only as work under way, opened on a click): an
 // agent's tool call (the Claude stand-in's Bash call, for a message with [[tool]] in it) shows as one Worked row; a click opens it; the
 // glasses at the top right show every tool call, and the choice is kept.
 import { connect, sleep, check, done, V } from './lib.ts';

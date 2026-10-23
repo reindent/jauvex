@@ -1,5 +1,4 @@
-// The agents' turns in the debugger (T-260; the user, 2026-10-01: "the debugger in the model part ... has only Jev. But it doesn't say
-// anything that is going on with Claude or Codex or Grok. I want to be able to see that and that should be logged as well"). Pure: what a
+// The agents' turns in the debugger (T-260: the Model tab showed only Jev, nothing of what Claude, Codex or Grok were doing). Pure: what a
 // turn's start and each of its events become as lines of the Model tab and of voice-debug.log. The streamed text (delta) and the context
 // meter's numbers say nothing a line would not say again: they make none.
 import type { ChatEvent, DebugEvent, Provider } from './types.js';
@@ -12,7 +11,7 @@ export const preview = (s: string, n = 160): string => { const f = flat(s); retu
 const cut = (s: string): string => (s.length > DETAIL_MAX ? `${s.slice(0, DETAIL_MAX)}\n… (${s.length - DETAIL_MAX} more characters)` : s);
 const json = (v: unknown): string => { try { return JSON.stringify(v, null, 2) ?? ''; } catch { return String(v); } };
 
-/** Who a line is about: the provider, the session's first characters and the folder ("Claude 3f2a1c · reindent"). */
+/** Who a line is about: the provider, the session's first characters and the folder ("Claude 3f2a1c · acme"). */
 export const agentWho = (provider: Provider, sessionId: string | null | undefined, folder: string): string =>
   `${PROVIDER_LABEL[provider]} ${sessionId ? sessionId.slice(0, 6) : 'new'} · ${folder}`;
 

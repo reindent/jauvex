@@ -1,4 +1,4 @@
-// What the right pane does with a web link (2026-10-06, Diego: a Markdown file served by a plain `python3 -m http.server`, as text/markdown,
+// What the right pane does with a web link (a Markdown file served by a plain `python3 -m http.server`, as text/markdown,
 // opened blank: Chromium shows no text/markdown page, it downloads it, and a webview downloads nothing). Pure: tests/page-kind.test.ts.
 // markdown: drawn as a page by the app; text: shown as plain text by the app; web: the page itself, in a webview, as before.
 export type PageKind = 'markdown' | 'text' | 'web';

@@ -1,6 +1,6 @@
-// The wake phrase, heard while muted (electron/voice.ts: wakeCheck). The incident (2026-09-24): the small live-words whisper-server died, the
-// app never started it again, and every check after that heard nothing ("0 words") in a millisecond: the user said his wake phrase over
-// and over and the microphone stayed muted. A real whisper-server pair on ports of its own; skipped where there is none.
+// The wake phrase, heard while muted (electron/voice.ts: wakeCheck). The failure it guards against: the small live-words whisper-server died,
+// the app never started it again, and every check after that heard nothing ("0 words") in a millisecond, so the wake phrase was never
+// heard and the microphone stayed muted. A real whisper-server pair on ports of its own; skipped where there is none.
 import path from 'node:path'; import { execFileSync } from 'node:child_process'; import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR = path.resolve('tmp/testdata-wake'); process.env.CVC_WHISPER_PORT = '4471'; process.env.CVC_LIVE_RETRY_MS = '1000';
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };
@@ -22,7 +22,7 @@ check('muted, the wake phrase is heard', first.woke, JSON.stringify(first));
 const pid = livePid(); const cmd = pid ? execFileSync('ps', ['-o', 'command=', '-p', String(pid)]).toString() : '';
 if (pid && cmd.includes('whisper-server') && cmd.includes(`--port ${LIVE}`)) process.kill(pid, 'SIGKILL'); // the check's own server, by its pid
 for (let t = 0; t < 5000 && livePid(); t += 100) await sleep(100);
-check('the live-words server is gone (as on 2026-09-24)', !livePid());
+check('the live-words server is gone', !livePid());
 const second = await voice.wakeCheck(audio, 'Hakuna Matata', 'auto');
 check('with it gone, the wake phrase is still heard (the main Whisper hears it)', second.woke, JSON.stringify(second));
 await sleep(1200); await voice.wakeCheck(audio, 'Hakuna Matata', 'auto');

@@ -1,7 +1,5 @@
-// The Jauvex agent's dashboard (T-276, from the other edition's, where it sits on a workspace's agent; the user, 2026-10-01: "when you open
-// a workspace ... a little dashboard, a half screen or one third of a screen on top, with the top three or top five tasks that you need to do
-// ... and some important things, notes", "it would be cool if people can customize their dashboards", and "this should be available only
-// for the workspace, or the main Jauvex agent in the personal"). It sits on top of the Jauvex agent's chat. What the app knows by itself
+// The Jauvex agent's dashboard (T-276, from the other edition's, where it sits on a workspace's agent: a small panel, a half or a third of the
+// screen, with the few tasks that wait on you and some notes, which each person can arrange; here on the Jauvex agent). It sits on top of the Jauvex agent's chat. What the app knows by itself
 // (workflow steps waiting for you, agents asking or with new replies, who is working, today's runs) it adds on its own; what only the Jauvex
 // agent knows (what waits on you, notes to keep in mind) the agent keeps in a file of its folder, DASHBOARD.md. The file's rules are the
 // other edition's, which has several people per workspace: here the person's section is "## You". Pure: tests/dashboard.test.ts.
@@ -44,12 +42,6 @@ export function itemsFor(f: DashboardFile, name: string): DashLine[] {
   return f.people.find((p) => { const k = p.name.toLowerCase(); return k === n || k === first || k.split(/\s+/)[0] === first; })?.items ?? [];
 }
 
-/** "Good morning, Diego": by the hour on this computer, with the first word of the person's name. */
-export const greetingFor = (hour: number, name: string): string => {
-  const first = name.trim().split(/\s+/)[0] ?? '';
-  return `${hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'}${first ? `, ${first}` : ''}`;
-};
-
 /** How a person has their dashboard: how much of the view it takes, and the cards they hid. Kept on their own computer. */
 export const DASH_CARDS = ['needs', 'today', 'working', 'pinned'] as const;
 export type DashCard = (typeof DASH_CARDS)[number];
@@ -65,11 +57,8 @@ export function dashPrefsFrom(raw: string | null | undefined): DashPrefs {
   } catch { return { ...DEFAULT_DASH }; }
 }
 
-/** When the app asks the Jauvex agent to bring its dashboard up to date (T-279, from the other edition's; the user, 2026-10-01: "on
- *  initialization ... the dashboard for the first time ... it should rebuild this dashboard ... rebuilt regularly, every now and then,
- *  whenever there's some critical thing, that should be handled by the workspace agent. Or by Jauvex in the case of the personal version",
- *  "smart ... keeps it up to date, somehow regularly, but not too abuse of the workspace agent ... from an agent or the boards are updated
- *  or some time has passed ... without over-updating"). Only while you look at it (the window reads the file), never twice within half an
+/** When the app asks the Jauvex agent to bring its dashboard up to date (T-279, from the other edition's: built at first, then kept current
+ *  when something changes or time passes, without asking the agent too often). Only while you look at it (the window reads the file), never twice within half an
  *  hour, and once asked and not done yet, three hours before asking again. Its reasons: no file yet, a board of your folders changed since
  *  the file did, or the file is six hours old. What happens between (a report, a decision, a question) the agent writes in its own turns. */
 export const DASH_GAP = 30 * 60_000; export const DASH_UNANSWERED = 3 * 3_600_000; export const DASH_STALE = 6 * 3_600_000;

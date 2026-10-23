@@ -1,5 +1,5 @@
-// A workflow's later step could not reach its agent (T-252; a tester's report, 2026-10-01: four runs failed at step 2, '"Alerts Codex" could
-// not be reached'). A run's delivery was made when the run started and kept the window's state of that moment: a step looked for its agent's
+// A workflow's later step could not reach its agent (T-252: runs failed at step 2, '"Stock Codex" could not
+// be reached'). A run's delivery was made when the run started and kept the window's state of that moment: a step looked for its agent's
 // chat among the chats open then, and one closed since (the app keeps eight) was waited for 9 s. Code that outlives a render (a run, a timer, a
 // listener) reaches the window's state through refs. This check reads the source, in milliseconds: the run delivers through the latest
 // delivery, and the delivery looks for the chats open now. The behaviour itself, run in the window: tests/workflow-reopened.test.mjs.

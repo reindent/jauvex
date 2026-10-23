@@ -26,10 +26,13 @@ await new Promise((r) => setTimeout(r, 50)); voice.cancelSpeech();
 const after = await Promise.all(many);
 check('a barge-in drops every sentence still waiting', after.every((a) => a === null), JSON.stringify(after.map((a) => (a ? a.byteLength : null))));
 check('and the next sentence is spoken as usual', !!(await voice.speak('Still here.', '', 185)));
-// Stopped by itself (2026-09-30 review): not started again at every sentence, only at the next voice-on.
-const [pid] = server(); if (pid) process.kill(pid, 'SIGKILL'); await new Promise((r) => setTimeout(r, 500));
-const t0 = Date.now(); const dead = await voice.speak('Anyone there?', '', 185);
-check('after it stopped, a sentence is not spoken and does not start it again', !!pid && dead === null && Date.now() - t0 < 200 && server().length === 0, `${Date.now() - t0} ms, ${server().length} running`);
+// One that had loaded and then died is started again at once, at most three times an hour (1.8.0: it used to stay silent until voice was
+// switched on again): a new process, not the one that died.
+const [pid] = server(); if (pid) process.kill(pid, 'SIGKILL');
+let back = false; for (let t = 0; t < 40 && !back; t++) { back = server().length === 1 && server()[0] !== pid; if (!back) await new Promise((r) => setTimeout(r, 250)); }
+check('after it stopped by itself, it is started again at once, a new process', !!pid && back, `${server().length} running`);
+const again = await voice.speak('Anyone there?', '', 185);
+check('the next sentence is spoken by the new one', !!again && server().length === 1, `${server().length} running`);
 voice.warmSpeech();
 check('the next voice-on starts it again', !!(await voice.speak('Back again.', '', 185)));
 voice.shutdown();

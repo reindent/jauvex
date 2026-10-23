@@ -1,8 +1,8 @@
 import path from 'node:path'; import http from 'node:http'; import { execFileSync } from 'node:child_process'; import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync } from 'node:fs';
 process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR ??= path.resolve('tmp/testdata'); process.env.CVC_WHISPER_PORT = '4473'; mkdirSync(process.env.CVC_DATA_DIR, { recursive: true });
-// Whisper that cannot start says why, at once. On 2026-09-24, on a new Mac whose small model an interrupted download had left incomplete,
-// the app waited out a whole minute for a server that had died in a second, then showed only the end of its crash backtrace ("whisper-server
-// exited (null). 9 dyld ... start + 6124"), and every word said meanwhile failed with it. A port another program holds is the other way it fails.
+// Whisper that cannot start says why, at once. With a small model that an interrupted download had left incomplete, the app used to wait
+// out a whole minute for a server that had died in a second, then show only the end of its crash backtrace, and every word said meanwhile
+// failed with it. A port another program holds is the other way it fails.
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };
 const bin = (() => { try { return execFileSync('which', ['whisper-server']).toString().trim(); } catch { return ''; } })();
 const good = ['ggml-base-q5_1.bin', 'ggml-small-q5_1.bin'].map((f) => path.resolve('models', f)).find((f) => existsSync(f));

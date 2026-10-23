@@ -1,5 +1,5 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/jauvex-reachable/claude CODEX_HOME=__ROOT__/tmp/testrun/jauvex-reachable/codex MOCK_DELAY_MS=5
-// The app's own agent is reachable from any agent, its chat open or not (T-151, the user, 2026-09-26: an agent wanted to report a bug
+// The app's own agent is reachable from any agent, its chat open or not (T-151: an agent wanted to report a bug
 // to it; "Jauvex" found three "Jauvex …" agents and not it, and its id from `list`, "no such agent": it was listed only while its chat was open).
 import { connect, sleep, check, done } from './lib.ts';
 import { execFileSync } from 'node:child_process';

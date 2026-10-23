@@ -3,7 +3,7 @@ const { cdp, js, close } = await connect(); await sleep(1500);
 // The wheel in the sidebar's footer opens Jauvex settings; "Open it now" opens the welcome.
 await js("document.querySelector('button[title=\"Jauvex settings\"]').click()"); await sleep(300);
 check('the wheel opens Jauvex settings', await js("!!document.querySelector('.modal.settings')"));
-// Tabs across the top (the user, 2026-09-24: the settings were "a freaking mess because there are no tabs"): General open first, one kind of
+// Tabs across the top (the settings had none): General open first, one kind of
 // setting per tab, and the window keeps its size from tab to tab.
 const tabs = "[...document.querySelectorAll('.modal.settings .settings-tab')].map((t) => t.textContent + (t.getAttribute('aria-selected') === 'true' ? '*' : '')).join(' | ')";
 check('Jauvex settings have tabs across the top, General open', (await js(tabs)) === 'General* | Voice | Context | Safety | Reset', await js(tabs));

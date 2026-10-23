@@ -1,9 +1,9 @@
-// What interrupts a busy agent, and when an idle chat compacts (Diego, 2026-10-07: a lone "Off." cut the Reindent agent's turn, and a
-// compaction at 90 % in the middle of a conversation hid the messages he sent meanwhile).
+// What interrupts a busy agent, and when an idle chat compacts (as in Jauvex Pro: a lone "Off." cut an agent's turn, and a
+// compaction at 90 % in the middle of a conversation hid the messages sent meanwhile).
 import { confirmStop } from '../shared/stop.ts';
 import { idleCompactPct, IDLE_COMPACT_MS, shouldCompact } from '../shared/context.ts';
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${!ok && got ? `: ${got}` : ''}`); if (!ok) failed++; };
-check('a model\'s "stop" on a fragment with no stop word reaches the turn instead', confirmStop('stop', 'Off.') === 'steer' && confirmStop('stop', 'Work for Reindent.') === 'steer');
+check('a model\'s "stop" on a fragment with no stop word reaches the turn instead', confirmStop('stop', 'Off.') === 'steer' && confirmStop('stop', 'Work for Northwind.') === 'steer');
 check('...a clear stop still stops, in English and Spanish', ['Stop.', 'ok stop that', 'cancel it', 'wait, wait', 'para', 'detente por favor', 'basta'].every((x) => confirmStop('stop', x) === 'stop'));
 check('steer, queue and replace are left as the model read them', confirmStop('steer', 'stop') === 'steer' && confirmStop('replace', 'Off.') === 'replace' && confirmStop('queue', 'x') === 'queue');
 check('an idle chat compacts ten points under the setting (80 % at 90), never under 40 %', idleCompactPct(90) === 80 && idleCompactPct(50) === 40 && idleCompactPct(45) === 40);

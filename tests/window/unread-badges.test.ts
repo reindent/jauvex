@@ -1,5 +1,5 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/unread-badges/claude MOCK_DELAY_MS=5 MOCK_THINK_MS=1500
-// New replies, per agent (T-226; the user, 2026-09-30: "Personal should have the badges"): a reply counts on its agent while that agent is not
+// New replies, per agent (T-226): a reply counts on its agent while that agent is not
 // on screen, and its row says how many; a reload keeps them; opening an agent clears its own count and only its own; a reply of the agent on
 // screen counts nothing; the Jauvex agent's row has one too; the badge keeps its size in every row.
 import { connect, sleep, check, done, V } from './lib.ts';

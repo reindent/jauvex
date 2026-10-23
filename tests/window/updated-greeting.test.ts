@@ -1,5 +1,5 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/updated-greeting/claude CODEX_HOME=__ROOT__/tmp/testrun/updated-greeting/codex MOCK_DELAY_MS=5 CVC_UPDATE_INSTALLED=1
-// After an update (T-218; the user, 2026-09-30: "the app should notify what the change log is about"): a first start only records the
+// After an update (T-218): a first start only records the
 // version; opened on a newer version than the last it ran, the app opens the Jauvex agent's chat and tells it, with what the versions
 // since bring from the app's own CHANGELOG.md, to say so and check the app; once: a reload tells nobody again.
 import { connect, sleep, check, done } from './lib.ts';

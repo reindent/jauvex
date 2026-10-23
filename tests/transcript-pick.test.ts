@@ -1,9 +1,9 @@
-// A stretch of speech keeps its fullest text (shared/transcript.ts): the case of 2026-09-22 and the ones around it.
+// A stretch of speech keeps its fullest text (shared/transcript.ts): a pass that heard "I" for two sentences, and the cases around it.
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };
 const { pickTranscript, suspicious, wakeMatch } = await import('../shared/transcript.ts');
-const best = "We don't mind. And if we add a third person that is maybe an employee, then we'll have the same permissions for now.";
+const best = "We can wait. And if we open a second shop that is maybe in the north, then we'll keep the same prices for now.";
 check('the pass that heard "I" where an earlier one heard two sentences is suspicious', suspicious('I', best));
-check('a retry that hears it all wins', pickTranscript('I', best, `${best} Right now the hardest part is the sync.`).by === 'retry');
+check('a retry that hears it all wins', pickTranscript('I', best, `${best} Right now the hardest part is the delivery.`).by === 'retry');
 check('a retry that fails too leaves the earlier pass', pickTranscript('I', best, 'I').text === best);
 check('a phantom dropped to nothing is caught the same way', pickTranscript('', best, null).by === 'earlier pass');
 check('a final pass that heard as much or more is kept as it is', pickTranscript(`${best} And more.`, best, null).by === 'final pass' && pickTranscript('Short one.', 'Hi there', null).by === 'final pass');

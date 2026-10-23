@@ -1,6 +1,5 @@
 // A chat the app keeps its own copy of (the Jauvex agent's) reaches back past that copy into the agent's own session (T-272, from the other
-// edition's fix; the user, 2026-10-01, of an agent there: "the workspace agent chat history is cut. There's not even a load earlier
-// messages": saves that overlapped had left its copy with its last 12 messages, its session with the whole conversation). Here a plain
+// edition's fix: an agent's chat history there was cut, with no way to load earlier messages: saves that overlapped had left its copy with its last 12 messages, its session with the whole conversation). Here a plain
 // Claude session of ten messages, read before the first of the ids a copy holds, a page at a time.
 import { mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs'; import path from 'node:path';
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${!ok && got ? `: ${got}` : ''}`); if (!ok) failed++; };

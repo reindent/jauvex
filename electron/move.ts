@@ -1,7 +1,5 @@
-// A session moved to another folder, where its provider files it (T-217; the user, 2026-09-29, of a workflow moved from one folder to
-// another on a server: "The workflows were actually moved But the sessions of the agents were not ... the chat sessions on Claude,
-// Codex, Grok, or whatever provider ... also need to be moved so that when the chat is loaded, they appear ... on the new moved
-// workflow"). Every provider keeps a session under the folder it works in, each its own way:
+// A session moved to another folder, where its provider files it (T-217: a workflow moved from one folder to another kept its chat
+// sessions under the old folder; whatever the provider, they must move with it so its chat loads in the new place). Every provider keeps a session under the folder it works in, each its own way:
 //   Claude Code  <CLAUDE_CONFIG_DIR or ~/.claude>/projects/<the folder, every character but a letter or a digit a dash>/<id>.jsonl, and
 //                a folder <id>/ beside it (its subagents' transcripts, long tool results); every line names its working folder (cwd).
 //   Grok         <GROK_HOME or ~/.grok>/sessions/<the folder, URL-encoded>/<id>/ (Grok's own guide, "Storage Layout" in 17-sessions.md;

@@ -1,12 +1,13 @@
 // needs: mic
 // wav: tests/fixtures/long-speech.wav
-import { connect, sleep, check, done, V } from './lib.ts';
+// env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/never-interrupt/claude CODEX_HOME=__ROOT__/tmp/testrun/never-interrupt/codex MOCK_DELAY_MS=5
+import { connect, sleep, check, done, V, ownAgents, rowOf } from './lib.ts';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 const { cdp, js, close } = await connect(); await sleep(1500);
 // The user is never interrupted: a line that is ready while they talk (10 s of speech from the fake microphone) waits; "Speaking" never overlaps "Hearing you".
-const rows = "[...document.querySelectorAll('.row:not(.ghost)')].filter((r) => r.querySelector('.provider-icon'))";
-await js(`${rows}[0].click()`); await sleep(1500);
+await ownAgents(js, ['Listener']);
+await js(`${rowOf('Listener')}.click()`); await sleep(1500);
 await js(`${V}.querySelector('.voice-start').click()`); // the capture starts: 1.5 s of silence, then ten seconds of talk
 await sleep(1200); await js(`${V}.querySelector('.voice-controls button[title="Voice settings"]').click()`); await sleep(200);
 await js(`${V}.querySelector('.mini-btn[title^="Say a short line"]').click()`); // a line the voice wants to say, ready in a couple of seconds, while the user talks

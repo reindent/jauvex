@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { RowGrip } from './Grip';
 import { Zap, Check, Plus } from 'lucide-react';
 import { api } from './api';
 import { parseWorkflow, stateFor, fmt, FINISHED, outcomes, parseTrigger, describeTrigger, GATE, stepFileOk, stepBefore, stepTitle, type Run, type Workflow, type WorkflowState } from '../../shared/workflow';
@@ -66,17 +67,15 @@ export function WorkflowView({ project, file, showPane, paneShows, paneOpen, ope
   useEffect(() => { const sid = chat?.sessionId; if (!mail || !sid) return;
     return mail.register(project.id, sid, chatName, provider, async (t, r) => { for (let i = 0; i < 40 && !inView.current; i++) await new Promise((res) => setTimeout(res, 100)); await inView.current?.(t, r as never); }); }, [mail, chat?.sessionId, project.id, chatName, provider]);
   useEffect(() => { if (loaded && !sel) setSel(String(st.sel)); }, [loaded, st.sel, sel]);
-  // Opened, or brought back to the front, with nothing in the pane: the step the workflow is at shows there (the user, 2026-09-27: "when
-  // clicking on a workflow item, when it opens, it should show the current step it's at, if not initiated then first step, if already
-  // finished then last step"). A pane the user left open stays as it is.
+  // Opened, or brought back to the front, with nothing in the pane: the step the workflow is at shows there (the live
+  // run's, else the last one reached, else the first). A pane the user left open stays as it is.
   useEffect(() => { if (loaded && active && !paneOpen()) { editRef.current = null; pickRef.current(String(st.sel)); } }, [loaded, active]); // eslint-disable-line react-hooks/exhaustive-deps
   const paneId = (id: string) => `${project.id}:${file}#${id}`;
   const pick = (id: string) => { setSel(id); showPane(paneTitle(id), detail(id), paneId(id)); }; pickRef.current = pick;
-  /** A step opens to be read, its editor behind Edit (the user, 2026-09-27: "the default view, when you see a step, it's the edit mode. I
-   *  think we should have a button to enable that"); a step just added opens in its editor. */
+  /** A step opens to be read, its editor behind Edit (reading is the default, editing a
+   *  button away); a step just added opens in its editor. */
   const editRef = useRef<string | null>(null); const show = (id: string) => { editRef.current = null; pick(id); };
-  // The pane follows the run (the user, 2026-09-27: "when I clicked approve ... the text was still open ... I had to go to the next step and
-  // come back"): a step's pane is drawn once, when it is opened, so it is drawn again when its run moves on there (the run reaches it, you
+  // The pane follows the run (after a decision, the pane must not keep showing the old step's text): a step's pane is drawn once, when it is opened, so it is drawn again when its run moves on there (the run reaches it, you
   // decide, it ends), as long as this workflow is on screen and the pane still shows that step.
   const step = /^\d+$/.test(sel) ? Number(sel) : 0; const before = step ? stepBefore(st.latest, step) : 0;
   const sig = step ? JSON.stringify([st.live, st.latest?.n ?? 0, st.st[step] ?? null, st.said[step] ?? null, st.latest?.steps[before]?.asks ?? '']) : '';
@@ -84,7 +83,7 @@ export function WorkflowView({ project, file, showPane, paneShows, paneOpen, ope
   useEffect(() => { const was = shown.current; shown.current = { sel, sig }; if (sig && was.sel === sel && was.sig && was.sig !== sig && active && paneShows(paneId(sel))) pickRef.current(sel); }, [sel, sig]); // eslint-disable-line react-hooks/exhaustive-deps
   const paneTitle = (id: string) => (id === 'start' ? t('workflow.pane.start') : id === 'done' ? t('workflow.done') : t('workflow.step.n', { n: id })); /* its name is the pane's first line, edited in place */
   const detail = (id: string): ReactNode => {
-    if (id === 'start') return <><WhenEditor when={def.when} onSave={(v) => { apply((m) => setMeta(m, { when: v })); reopen('start'); }} /><p>{rich(t('workflow.start.intro', { when: def.when || t('workflow.notSet') }), { code: <code>when:</code> })}</p><div className="kv"><b>{t('workflow.start.manual')}</b><span>{rich(t('workflow.start.manualText'), { code: <code>run --workflow</code> })}</span><b>{t('workflow.start.schedule')}</b><span>{rich(t('workflow.start.scheduleText'), { ex1: <code>every Monday 09:00</code>, ex2: <code>every weekday 8:30</code>, ex3: <code>every 2 hours</code> })}</span><b>{t('workflow.start.window')}</b><span>{rich(t('workflow.start.windowText'), { ex1: <code>anytime between 9 and 12 am</code>, ex2: <code>every weekday anytime between 14:00 and 16:30</code> })}</span><b>{t('workflow.start.event')}</b><span>{rich(t('workflow.start.eventText'), { ex: <code>after News video</code> })}</span></div><p className="pane-note">{t('workflow.start.thisOne', { what: describeTrigger(parseTrigger(def.when)) })}</p>{def.onFailure && <p>{t('workflow.start.onFailure', { what: def.onFailure })}</p>}</>;
+    if (id === 'start') return <><WhenEditor when={def.when} onSave={(v) => { apply((m) => setMeta(m, { when: v })); reopen('start'); }} /><p>{rich(t('workflow.start.intro', { when: def.when || t('workflow.notSet') }), { code: <code>when:</code> })}</p><div className="kv"><b>{t('workflow.start.manual')}</b><span>{rich(t('workflow.start.manualText'), { code: <code>run --workflow</code> })}</span><b>{t('workflow.start.schedule')}</b><span>{rich(t('workflow.start.scheduleText'), { ex1: <code>every Monday 09:00</code>, ex2: <code>every weekday 8:30</code>, ex3: <code>every 2 hours</code> })}</span><b>{t('workflow.start.window')}</b><span>{rich(t('workflow.start.windowText'), { ex1: <code>anytime between 9 and 12 am</code>, ex2: <code>every weekday anytime between 14:00 and 16:30</code> })}</span><b>{t('workflow.start.event')}</b><span>{rich(t('workflow.start.eventText'), { ex: <code>after Recipe letter</code> })}</span></div><p className="pane-note">{t('workflow.start.thisOne', { what: describeTrigger(parseTrigger(def.when)) })}</p>{def.onFailure && <p>{t('workflow.start.onFailure', { what: def.onFailure })}</p>}</>;
     if (id === 'done') return <><div className="wf-ed"><label>{t('workflow.done.label')}<Field value={def.done} placeholder={t('workflow.done.placeholder')} onSave={(v) => { apply((m) => setMeta(m, { done: v })); reopen('done'); }} /></label></div><p className="pane-note">{t('workflow.done.note')}</p></>;
     const n = Number(id); const s = def.steps[n - 1]; if (!s) return null; const avg = st.stepAvg[n - 1]; const slowest = avg != null && avg === Math.max(...st.stepAvg.filter((x): x is number => x != null));
     const waiting = s.gate && st.live && /^waiting/i.test(st.latest?.steps[n]?.result ?? ''); const b = stepBefore(st.latest, n); const from = b ? st.latest?.steps[b] : undefined;
@@ -131,15 +130,15 @@ export function WorkflowView({ project, file, showPane, paneShows, paneOpen, ope
     const to = was ? stepFileFor(file, name, files(d, s.file)) : s.file;
     if (!was || to === s.file) { apply((m) => setStep(m, n, { name })); return; }
     writePrompt(to, live.current.prompts[s.file] ?? s.prompt, 0); apply((m) => setStep(m, n, { name, link: to })); dropPrompt(s.file); };
-  /** A + on the line between two steps (the user, 2026-09-27, from a quiz builder's screenshot: "the only thing ... is the plus sign ... in
-   *  between there's a plus sign to add steps"): after the trigger and after each step, a step added at that place. */
+  /** A + on the line between two steps (a plus sign between steps adds one there):
+   *  after the trigger and after each step, a step added at that place. */
   const plus = (at: number) => <button className="wf-plus" title={t('workflow.addHere')} aria-label={t('workflow.addHereAria', { n: at })} onClick={(e) => { e.stopPropagation(); addAt(at); }}><Plus size={11} strokeWidth={2.5} /></button>;
   const editDefinition = () => showPane(file, <DefinitionEditor md={md} onChange={writeMd} />);
   /** A version of the workflow (T-169), as a run ran it: its file in the workflow's folder, versions/NNN.md, in the pane. */
   const openVersion = (v: number) => (readVersion ? readVersion(v) : openFile(`${project.path}/${file.replace(/\.md$/, '')}/versions/${String(v).padStart(3, '0')}.md`));
   // the agent a live run waits for: this window's runner knows
   const waitingFor = (): string | null => control.waitingFor();
-  /** The versions (the user, 2026-09-27: "where I'm supposed to see the versions ... how can I roll back to a previous version"): each with
+  /** The versions, and a way back to any of them: each with
    *  the runs that ran it, the one the workflow is now, and a way back to any other. */
   const openVersions = (notice = '') => showPane(t('workflow.pane.versions', { name: def.name }), <VersionsList v={live.current.versions} runs={live.current.st.runs} notice={notice} onOpen={openVersion} onRestore={(n) => void restore(n)} />, paneId('versions'));
   const restore = async (n: number) => { setErr(''); try { await flush(); const r = await api.restoreWorkflowVersion(project.id, file, n); editing.current = false; await load();
@@ -169,7 +168,7 @@ export function WorkflowView({ project, file, showPane, paneShows, paneOpen, ope
         <div className="def-link">{rich(t('workflow.foot.defined'), { file: <a href="#" onClick={(e) => { e.preventDefault(); editDefinition(); }}>{file}</a> })}</div>
       </div>
     </div>
-    {chat && <div className="jev-chat wf-chat"><header><b>{t('workflow.chat.title')}</b><span>{t('workflow.chat.sub', { provider: PROVIDER_LABEL[provider] })}</span></header>
+    {chat && <div className="jev-chat wf-chat"><RowGrip name="wf-chat-h" sizes="parent" /><header><b>{t('workflow.chat.title')}</b><span>{t('workflow.chat.sub', { provider: PROVIDER_LABEL[provider] })}</span></header>
       <Chat embed={embed} project={project} sessionId={chat.provider === provider ? chat.sessionId ?? null : null} active={active} info={null} showMeta={showMeta} onBusy={() => {}} onTurnEnd={() => {}} onNew={() => {}}
         onBridge={(b) => { inView.current = b ? (t, r) => b.deliver(t, r) : null; }} onReply={(text, replyTo) => { const sid = chatSid.current; if (sid && mail) mail.reply(project.id, sid, chatName, text, replyTo); }}
         onSession={(sid) => { const next = { provider, sessionId: sid }; setChat(next); void api.setWorkflowChat(project.id, file, next); }} /></div>}
@@ -182,7 +181,7 @@ export function WorkflowView({ project, file, showPane, paneShows, paneOpen, ope
 /** When a step of the run started, in ms (its record keeps the day of the run and the step's hour). */
 const startOf = (run: Run, n: number): number => { const at = Date.parse(`${run.started.slice(0, 10)}T${run.steps[n]?.started || '00:00'}`); return Number.isFinite(at) ? at : 0; };
 type GateContext = { project: Project; runFile: string; step: number; title: string; agent: string; startedAt: number; base: string; openFile: (path: string) => void; openAgent?: (name: string) => boolean };
-/** What the person decides on at a gate (the user, 2026-10-03: "when it asks me to choose something, it doesn't tell me what to choose"): the
+/** What the person decides on at a gate (a choice must say what to choose from): the
  *  whole reply of the agent step before it (kept in the run's folder as step-N.md), folded to a few lines; the files that step wrote or named
  *  in the run's folder, which open beside; and a way to its agent's chat. Its CHOICE lines, when it gave some, become picks. */
 function useGateReply(c: GateContext | null) {
@@ -233,7 +232,7 @@ function Field({ value, placeholder, onSave }: { value: string; placeholder: str
   return <input value={v} placeholder={placeholder} onChange={(e) => setV(e.target.value)} onBlur={save} onKeyDown={(e) => { if (e.key === 'Enter') { save(); (e.target as HTMLInputElement).blur(); } }} />;
 }
 /** A step in the pane: who does it, picked from the app's agents (or you, for an approval), and its instructions, typed. That is all a step
- *  is (the user, 2026-09-27, of a pane that also asked what a step takes, gives and where each outcome leads: "extremely over complicated";
+ *  is (a pane that also asked what a step takes, gives and where each outcome leads was too complicated;
  *  the steps run in order, a failed one stops the run, an approval's changes go back one step). Its name, above them, is edited in place;
  *  where its instructions are kept is said under them (a file of its own, T-168). */
 function StepEditor({ name, agent, text: first, where, groups, total, onName, onAgent, onText, onAdd, onRemove, onDone }: { name: string; agent: string; text: string; where: string; groups: StepAgents; total: number;

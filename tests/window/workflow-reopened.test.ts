@@ -1,6 +1,6 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/workflow-reopened/claude MOCK_DELAY_MS=5
-// A workflow's later step reaches its agent whatever became of that agent's chat during the run (T-252; a tester's report, 2026-10-01: four
-// runs failed at step 2, '"Alerts Codex" could not be reached', 9.2 s after step 1 ended). A run's delivery kept the chats open when it started:
+// A workflow's later step reaches its agent whatever became of that agent's chat during the run (T-252: runs failed at step 2,
+// '"Review Codex" could not be reached', some 9 s after step 1 ended). A run's delivery kept the chats open when it started:
 // the reviewer's chat was open then; while step 1 worked, more chats were opened and the app closed the idle reviewer's to make room (it keeps
 // eight); step 2 then waited 9 s for that closed chat. Here: Builder and Reviewer (the Claude stand-in, scripted), Reviewer's chat open at the
 // start, nine other chats opened while Build works. A folder of its own (tmp/reopened).

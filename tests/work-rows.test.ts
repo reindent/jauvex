@@ -1,5 +1,5 @@
-// Developer mode off (T-247; the user, 2026-09-30: "When it's disabled, then the users will not see bash and all these tool calls ... They
-// would just see ... working ... unless they click it ... it's for non-technical users"): what was said and written stays, the pictures a tool
+// Developer mode off (T-247: people who are not developers see no shell or tool calls, only that the agent
+// is working, unless they click it): what was said and written stays, the pictures a tool
 // made stay, and each run of tool calls, thoughts and system events between them is one unit, a Working row.
 const { threadUnits, foldAgents } = await import('../shared/thread.ts');
 import type { Block, ChatMessage } from '../shared/types.ts';
@@ -24,9 +24,9 @@ const withEvents = threadUnits(thread, true).map(show).join(' | ');
 check('with system events shown (the eye), they join the run they fall in', withEvents.startsWith('msg:Make the video | msg:On it. | work:Bash+event+thinking+Read+imagine | media:'), withEvents);
 const keys = threadUnits(thread, false).map((u) => u.key);
 check('every unit has its own key, and a run keeps its key as it grows', new Set(keys).size === keys.length && threadUnits(thread.slice(0, 4), false).find((u) => u.kind === 'work')?.key === threadUnits(thread, false).find((u) => u.kind === 'work')?.key, keys.join(','));
-// FB-14 (as Jauvex Pro; a Pro user, 2026-10-05: a lead's reply to them was buried under its messages with other agents): agent traffic folds into one line
+// FB-14 (as Jauvex Pro: a lead's reply to them was buried under its messages with other agents): agent traffic folds into one line
 { const m = (uuid: string, role: 'user' | 'assistant', text: string) => ({ uuid, role, blocks: [{ type: 'text' as const, text }], meta: false });
-  const msgs = [m('1', 'user', 'Diego asks'), m('2', 'user', '(from agent "Coding Agent") done'), m('3', 'assistant', 'Thanks, noted.'), m('4', 'user', '(from agent "Designer Agent") logo ready'), m('5', 'assistant', 'Diego, both are done.')];
+  const msgs = [m('1', 'user', 'Owen asks'), m('2', 'user', '(from agent "Coding Agent") done'), m('3', 'assistant', 'Thanks, noted.'), m('4', 'user', '(from agent "Designer Agent") logo ready'), m('5', 'assistant', 'Owen, both are done.')];
   const toAgent = new Set(['3']);
   const who = (u: ReturnType<typeof threadUnits>[number]) => { if (u.kind !== 'msg') return null; const tx = u.m.blocks.map((b) => (b.type === 'text' ? b.text : '')).join(''); const f = /^\(from agent "([^"]+)"/.exec(tx)?.[1]; return f ?? (toAgent.has(u.m.uuid.split(':')[0]!) ? 'Coding Agent' : null); };
   const f = foldAgents(threadUnits(msgs as never, false), who);

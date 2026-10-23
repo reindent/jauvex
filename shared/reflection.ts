@@ -1,10 +1,10 @@
-// Stage two of the voice, the understanding, is a reflection and nothing else (T-201; the user, 2026-09-28: it "should not attempt to solve the
-// user's problem or answer the question ... other than just reinforcing what the user said"; the resolution is stage three's). The voice
+// Stage two of the voice, the understanding, is a reflection and nothing else (T-201: it never solves the
+// problem or answers the question, it only says back what was said; the resolution is stage three's). The voice
 // model is told so; this is the net for what a small model still slips in, applied before the line is spoken (AGENTS.md: validate every line):
 // every clause that speaks for the work, asks the user for something, asks a question, judges or answers is taken out, and what is left
-// must still carry an understanding. Found in the logs: "I'll fix the connection stability ... now", "Sending that now.", "Tell me where the
+// must still carry an understanding. The shapes it catches: "I'll fix the importer ... now", "Sending that now.", "Tell me where the
 // summary is", "That's a fair point", "I'm doing well, thanks for asking. What can I help you with today?". What it cannot see, an answer
-// worded in the third person ("the loop limit would stop you"), is the prompt's to stop. Pure: the main process runs it on the voice model's
+// worded in the third person ("the retry limit would stop you"), is the prompt's to stop. Pure: the main process runs it on the voice model's
 // line before it is spoken.
 
 /** A bare quick line ("Sure, one moment"): stage one already said it. */
@@ -45,7 +45,7 @@ const CHEER = /^((great|perfect|nice|awesome|excellent|amazing|wonderful|fantast
 /** Where a plan joined by a comma, or by "and", "so" or "then", starts: "... picked up, so I'll check", "... is and I'll review it". Never at
  * a bare space: "You're asking whether I'll restart it" is a reflection. */
 const JOINED = new RegExp(`(?:,\\s+(?:(?:so|and|then|but|while)\\s+)?|\\s+(?:so|and|then|but)\\s+)(?:(?:first|now|also|just|then)\\s+)?(?=(?:i'll|i will|i'm going to|i am going to|let me|let's|we'll|we will|i'm (?:${VERBS}))\\b)`, 'i');
-/** A pronoun that says who someone is: the user's words may give one, the voice never guesses one (the user's rule for every agent). */
+/** A pronoun that says who someone is: the user's words may give one, the voice never guesses one (a rule for every agent). */
 const HE = /\b(he|him|his|himself)\b/i, SHE = /\b(she|her|hers|herself)\b/i;
 
 type Part = { text: string; end: string };

@@ -17,7 +17,7 @@ const stopped = await stopLeftovers(PORT); await new Promise((r) => setTimeout(r
 check('it is stopped by its own pid', stopped.length === 1 && stopped[0] === old.pid && !alive(old.pid!), `stopped ${stopped.join(',')}, pid ${old.pid}`);
 const none = await stopLeftovers(OTHER);
 check('a listener that is not whisper-server on the other port is left alone', none.length === 0 && other.listening, `stopped ${none.join(',')}`);
-// Another install's server on the same port (the other edition, run next to this one: 2026-09-24, starting Personal stopped Pro's two
+// Another install's server on the same port (the other edition, run next to this one: starting Personal once stopped Pro's two
 // servers and the wake phrase died with them) is never stopped: its model is not in this install's models folder.
 mkdirSync('tmp/other-install/models', { recursive: true }); const foreignModel = path.resolve('tmp/other-install/models', path.basename(model)); if (!existsSync(foreignModel)) symlinkSync(path.resolve(model), foreignModel);
 const foreign = spawn(bin, ['-m', foreignModel, '--host', '127.0.0.1', '--port', String(PORT), '-l', 'auto', '-nt'], { stdio: 'ignore' });

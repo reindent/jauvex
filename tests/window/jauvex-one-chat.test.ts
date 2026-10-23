@@ -1,6 +1,6 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/jauvex-one-chat/claude CODEX_HOME=__ROOT__/tmp/testrun/jauvex-one-chat/codex MOCK_DELAY_MS=5 CVC_UPDATE_INSTALLED=1
-// The Jauvex agent has one chat in the window, whatever opened it (T-262; the user, 2026-10-01, after an update: "This session was active moments
-// ago, possibly in another window ... is shown in the Jauvex agent ... and the new chat history wont show"). The window opens again on the chat
+// The Jauvex agent has one chat in the window, whatever opened it (T-262: after an update, the Jauvex agent's new messages did
+// not show in its chat). The window opens again on the chat
 // that was on screen, by its session; after an update the app tells the Jauvex agent so, and looked for its chat under a name of its own: not
 // finding it, it opened a second chat of the same session, hidden, and the agent's answer went there. Here: the Jauvex agent's chat on screen,
 // then the window opened as after an update; its message and the answer show in the chat on screen, with no warning.

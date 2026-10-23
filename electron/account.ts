@@ -1,4 +1,7 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
+import { guardPipes } from './pipes.js';
+import { openView } from './openmodels.js';
+import { openReady } from '../shared/openmodels.js';
 import path from 'node:path';
 import type { AccountEvent, AccountStatus, Provider } from '../shared/types.js';
 import * as codex from './codex.js';
@@ -35,6 +38,7 @@ export async function status(provider: Provider): Promise<AccountStatus> {
   if (process.env.CVC_SETUP_FAKE === 'missing') return { provider, signedIn: false } as AccountStatus; // window checks: the failing screen
   if (process.env.CVC_SETUP_FAKE === 'claude-only') return { provider, signedIn: provider === 'claude', who: '', plan: '', method: '' } as AccountStatus; // window checks: one provider only
   try {
+    if (provider === 'open') { const v = openView(); return { provider, signedIn: openReady(v), who: v?.baseUrl ?? '', plan: v?.model ?? '', method: '' }; } // open models: set up, not signed in
     if (provider === 'claude') {
       const r = await run(CLAUDE, ['auth', 'status', '--json']);
       const j = JSON.parse(r.out.slice(r.out.indexOf('{'))) as { loggedIn?: boolean; email?: string; subscriptionType?: string; authMethod?: string; apiProvider?: string };
@@ -49,6 +53,7 @@ export async function status(provider: Provider): Promise<AccountStatus> {
 
 export async function logout(provider: Provider): Promise<AccountStatus> {
   debug.log('note', `${provider}: signing out`, { by: 'app' });
+  if (provider === 'open') return status(provider); // nothing to sign out of: the connection is changed in Accounts
   if (provider === 'claude') await run(CLAUDE, ['auth', 'logout']); else if (provider === 'grok') await grok.logout(); else await codex.logout();
   return status(provider);
 }
@@ -67,7 +72,7 @@ export async function login(provider: Provider, withCode = false /* Codex: a one
     return true;
   }
   const [bin, args] = provider === 'grok' ? [grok.bin(), ['login']] : [CLAUDE, ['auth', 'login']];
-  const child = spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, FORCE_COLOR: '0', NO_COLOR: '1' } });
+  const child = guardPipes(spawn(bin, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, FORCE_COLOR: '0', NO_COLOR: '1' } })); // a reply typed after the sign-in ended: no fatal dialog
   flows.set(provider, child);
   const seen = new Set<string>();
   const onText = (d: Buffer) => { const text = d.toString().replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''); // no terminal colours in the panel

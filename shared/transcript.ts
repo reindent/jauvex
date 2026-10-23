@@ -1,5 +1,5 @@
 // Which text a stretch of speech keeps (pure, checked in tests/transcript-pick.test.ts).
-// On 2026-09-22 the pass over a whole 14-second stretch came back as "I" where the earlier passes over its first 5 and 7 seconds had
+// Once, the pass over a whole 14-second stretch came back as "I" where the earlier passes over its first 5 and 7 seconds had
 // heard two full sentences, and the app kept the "I": the sentences were lost. A pass that hears far fewer words than an earlier pass of
 // the same stretch is suspicious: the stretch is transcribed once more, and the fullest text is kept.
 export const wordsOf = (t: string): number => t.split(/\s+/).filter(Boolean).length;

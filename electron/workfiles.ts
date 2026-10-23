@@ -75,8 +75,8 @@ async function takeVersion(dir: string, file: string, snap: Awaited<ReturnType<t
   await fs.writeFile(versionPath(dir, file, n), `# ${snap.name} · version ${n}\n\ntaken: ${stamp()}, ${why}\nhash: ${snap.hash}\n\nThe workflow file as it was, then each step's instructions.\n${snap.files.map(([f, t]) => `\n## ${f}\n\n${fenced(t)}\n`).join('')}`);
   return n;
 }
-/** The version a run runs (T-169; the user, 2026-09-27: "versioned each time they are run and they change. Not before. If you modify one
- *  thing, I don't think we should version them. But it's per run"): the version the workflow is, to the byte, when there is one (the latest
+/** The version a run runs (T-169: per run, when the workflow changed, never on an edit
+ *  alone): the version the workflow is, to the byte, when there is one (the latest
  *  such: a workflow restored to an older version runs as that version), else a new one. */
 export async function versionFor(dir: string, file: string, run: number): Promise<number> {
   const snap = await snapshot(dir, file); const same = (await listVersions(dir, file)).filter((v) => v.hash === snap.hash).pop();
@@ -88,7 +88,7 @@ export async function workflowVersions(dir: string, file: string): Promise<{ ver
   const [snap, all] = await Promise.all([snapshot(dir, file), listVersions(dir, file)]);
   return { versions: all.map(({ n, taken }) => ({ n, taken })), current: all.filter((v) => v.hash === snap.hash).pop()?.n ?? null };
 }
-/** A workflow back to an older version (the user, 2026-09-27: "how can I roll back to a previous version ... of our workflow?"): its file
+/** A workflow back to an older version (a rollback): its file
  *  and each step's instructions as they were. What it is now is kept first as a version of its own when it is none (nothing is lost, and
  *  the restore can be undone the same way); a step's file the restored workflow no longer links goes. Only the workflow's file and files
  *  in its own folder are written. */
@@ -107,7 +107,7 @@ export async function restoreVersion(dir: string, file: string, v: number): Prom
 }
 export async function saveRun(dir: string, file: string, md: string): Promise<void> { if (!/^workflows\/[^/]+\/runs\/[^/]+\.md$/.test(file)) throw new Error('not a run record'); await fs.writeFile(path.join(dir, file), md); }
 /** A run's own folder (workflows/<name>/runs/NNN/, beside its record): the full reply of each agent step (step-N.md, the gate shows the one
- *  before it: the user, 2026-10-03, "when it asks me to choose something, it doesn't tell me what to choose") and what the steps wrote there. */
+ *  before it, so a choice says what to choose from) and what the steps wrote there. */
 const runDirOf = (dir: string, file: string): string => { if (!/^workflows\/[^/]+\/runs\/[^/]+\.md$/.test(file) || file.includes('..')) throw new Error('not a run record'); return path.join(dir, file.replace(/\.md$/, '')); };
 export async function saveRunStep(dir: string, file: string, n: number, text: string): Promise<void> { if (!Number.isInteger(n) || n < 1) throw new Error('not a step'); const d = runDirOf(dir, file); await fs.mkdir(d, { recursive: true }); await fs.writeFile(path.join(d, `step-${n}.md`), text.slice(0, 200_000)); }
 export async function runStepReply(dir: string, file: string, n: number): Promise<string | null> { if (!Number.isInteger(n) || n < 1) return null; try { return await fs.readFile(path.join(runDirOf(dir, file), `step-${n}.md`), 'utf8'); } catch { return null; } }
@@ -136,7 +136,7 @@ export type WorkflowChat = { provider?: string; sessionId?: string | null };
 const chatFile = (dir: string, file: string) => { if (!/^workflows\/[^/]+\.md$/.test(file)) throw new Error('not a workflow file'); return path.join(dir, 'workflows', path.basename(file, '.md'), 'chat.json'); };
 export async function workflowChat(dir: string, file: string): Promise<WorkflowChat> { try { return JSON.parse(await fs.readFile(chatFile(dir, file), 'utf8')) as WorkflowChat; } catch { return {}; } }
 export async function setWorkflowChat(dir: string, file: string, c: WorkflowChat): Promise<void> { const f = chatFile(dir, file); await fs.mkdir(path.dirname(f), { recursive: true }); await fs.writeFile(f, JSON.stringify(c, null, 2)); }
-/** A workflow deleted (the user, 2026-09-27: "I wanna be able to delete workflows and boards (with confirmation)"; the window asks first): its
+/** A workflow deleted (with a confirmation: the window asks first): its
  *  file and its folder beside it, the steps' instructions, the runs, the versions and its chat with them. Nothing else in the folder. */
 export async function deleteWorkflow(dir: string, file: string): Promise<void> {
   if (!/^workflows\/[^/]+\.md$/.test(file) || !workflowBase(file) || workflowBase(file).startsWith('.')) throw new Error('not a workflow file');

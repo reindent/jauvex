@@ -9,8 +9,8 @@ check('no remote, no origin', normalizeOrigin('') === '' && normalizeOrigin(null
 const dir = '/Users/x/Coding/acme/website'; const origin = 'github.com/acme/website';
 const wt = (id: string, url: string | null) => ({ cwd: `/Users/x/.codex/worktrees/${id}/website`, gitInfo: { originUrl: url } });
 check('a thread that ran in the folder belongs to it', threadBelongs({ cwd: dir, gitInfo: null }, dir, origin) && threadBelongs({ cwd: dir }, dir, ''));
-check('a worktree thread with the same origin belongs to it', threadBelongs(wt('0121', 'git@github.com:acme/website.git'), dir, origin) && threadBelongs(wt('3628', 'https://github.com/acme/website'), dir, origin));
-check('a worktree of another repository with the same folder name does not', !threadBelongs(wt('a1ee', 'git@github.com:other/website.git'), dir, origin));
-check('without an origin for the folder, worktree threads are left out', !threadBelongs(wt('0121', 'git@github.com:acme/website.git'), dir, ''));
-check('a thread from a subfolder or a sibling does not belong', !threadBelongs({ cwd: `${dir}/sub`, gitInfo: null }, dir, origin) && !threadBelongs({ cwd: '/Users/x/Coding/reindent', gitInfo: null }, dir, origin) && !threadBelongs({ cwd: '/Users/x/.codex/worktrees/0121/online', gitInfo: { originUrl: 'git@github.com:acme/website.git' } }, dir, origin));
+check('a worktree thread with the same origin belongs to it', threadBelongs(wt('7f3a', 'git@github.com:acme/website.git'), dir, origin) && threadBelongs(wt('9b2c', 'https://github.com/acme/website'), dir, origin));
+check('a worktree of another repository with the same folder name does not', !threadBelongs(wt('c4d1', 'git@github.com:other/website.git'), dir, origin));
+check('without an origin for the folder, worktree threads are left out', !threadBelongs(wt('7f3a', 'git@github.com:acme/website.git'), dir, ''));
+check('a thread from a subfolder or a sibling does not belong', !threadBelongs({ cwd: `${dir}/sub`, gitInfo: null }, dir, origin) && !threadBelongs({ cwd: '/Users/x/Coding/northwind', gitInfo: null }, dir, origin) && !threadBelongs({ cwd: '/Users/x/.codex/worktrees/7f3a/shop', gitInfo: { originUrl: 'git@github.com:acme/website.git' } }, dir, origin));
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

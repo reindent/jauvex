@@ -1,6 +1,5 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CVC_GROK_BIN=__ROOT__/tests/mock/grok CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/debugger-agents/claude CODEX_HOME=__ROOT__/tmp/testrun/debugger-agents/codex GROK_HOME=__ROOT__/tmp/testrun/debugger-agents/grok MOCK_DELAY_MS=5
-// The agents in the debugger (T-260; the user, 2026-10-01: "the debugger in the model part, it misses a lot of things. It has only Jev. But it
-// doesn't say anything that is going on with Claude or Codex or Grok. I want to be able to see that and that should be logged as well"): a
+// The agents in the debugger (T-260: it showed only Jev, nothing of Claude, Codex or Grok): a
 // turn of a Claude, a Codex and a Grok agent shows in the Model tab, each line saying which agent it is about (what was sent, a tool it ran,
 // what it said, how it ended), the whole of a line a click away; the same lines are in voice-debug.log.
 import { connect, sleep, check, done } from './lib.ts';

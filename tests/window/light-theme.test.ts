@@ -1,5 +1,4 @@
-// A light theme, following the Mac (T-248; the user, 2026-09-30: "we need a light theme for Jauvex", then "make it system aware, depends on
-// the system settings (light/dark/auto) or overriden in Jauvex settings"): with nothing chosen the window takes the Mac's appearance and
+// A light theme, following the Mac (T-248: light, dark, or the system's, unless chosen in the settings): with nothing chosen the window takes the Mac's appearance and
 // changes with it (the Mac's setting stood in for by the page's emulated prefers-color-scheme); Settings, General, Appearance: Light or Dark
 // hold whatever the Mac does, are kept, and paint from a reload's first frame; Same as the Mac follows it again. Screenshots: tmp/light-*.png.
 import { connect, sleep, check, done } from './lib.ts';

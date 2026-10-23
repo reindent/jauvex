@@ -1,0 +1,96 @@
+# A signed Mac release of Jauvex Personal (a disk image)
+
+For an agent on a Mac that holds a Developer ID. It turns one commit of this repository into `jauvex-personal-<version>-mac-<arch>.dmg`:
+Jauvex.app signed with that Developer ID, notarized by Apple and stapled, in a disk image that is signed, notarized and stapled too. Someone
+who gets the image opens it, drags Jauvex to Applications, and opens it with no warning.
+
+The install command (`curl -fsSL https://jauvex.ai/install | sh`) still builds Jauvex on each Mac and needs none of this. The image is for
+handing the app to someone directly. The script is `packaging/mac/release.ts`.
+
+## Rules
+
+- **The keys stay where they are.** The Developer ID's private key lives in this Mac's login keychain, and the notary API key in its own
+  file, readable by you only.
+  - Never print, copy, move, paste or upload them.
+  - The script passes the key's path to Apple's `notarytool` and reads nothing else from it.
+- **Only the built app and the image go to Apple**, for notarization; nothing else leaves this Mac.
+- **A release is built from its commit, exactly.**
+  - The checkout must be clean, at the commit you were given, and `package.json` must carry a plain number (`1.8.0`, never `1.8.0-dev`).
+  - Never change code here, and never sign by hand. A fix comes from the developers as a new commit.
+- **When a step stops, report it.** The script stops with `Stopped: <why>`. Send that line as it is, and work around nothing:
+  - no `--skip-notarize` for a release;
+  - no switching off Gatekeeper.
+
+## Before the first build (once)
+
+1. **Xcode command line tools.** `xcode-select -p` shows a folder; if not, run `xcode-select --install`.
+2. **Node.js 22.18 or newer, with npm** (`node -v`).
+3. **The Developer ID certificate** in the login keychain. `security find-identity -v -p codesigning` lists
+   `"Developer ID Application: <company> (<TEAM ID>)"`.
+   - If it is listed only without `-v` (`CSSMERR_TP_NOT_TRUSTED`), Apple's **Developer ID - G2** intermediate is missing; Xcode installs it,
+     and a Mac without Xcode has none.
+   - Download `DeveloperIDG2CA.cer` from https://www.apple.com/certificateauthority/ and check it is issued by Apple Root CA
+     (`openssl x509 -inform der -in DeveloperIDG2CA.cer -noout -issuer -subject`).
+   - Add it: `security import DeveloperIDG2CA.cer -k ~/Library/Keychains/login.keychain-db`.
+4. **A way to reach Apple's notary service**, one of:
+   - an App Store Connect API key: the `.p8` file (mode 600) and a JSON file beside it (mode 600) holding `{"issuer": "<Issuer ID>", "keyId": "<Key ID>"}`;
+   - or a notarytool keychain profile (`xcrun notarytool store-credentials <name>`).
+5. **A checkout of this repository**, kept for release builds.
+
+## Each build
+
+You get a commit, and where to fetch it from: a remote, or a git bundle (one file holding that commit, with its SHA-256) when the commit is
+not published yet. From a bundle:
+
+```sh
+curl -fsSLO <bundle link>; curl -fsSLO <bundle link>.sha256
+shasum -a 256 -c <bundle>.sha256          # must say OK
+git clone -b <branch in the bundle> <bundle> jauvex-personal && cd jauvex-personal
+git rev-parse HEAD                        # must be the commit you were given
+```
+
+From a remote, in the checkout:
+
+```sh
+git fetch <remote>                       # the remote you were given
+git checkout --detach <commit>           # exactly that commit; git status must show nothing
+node packaging/mac/release.ts --private-words <file> --notary-key <file.p8> --notary-json <file.json>
+#    or: node packaging/mac/release.ts --private-words <file> --notary-profile <name>
+```
+
+It takes about 10 to 20 minutes: the packages, the Whisper models the first time, the build, then two trips to Apple of a few minutes each.
+It says what it is doing as it goes, with a line every half minute while a step runs.
+
+1. **Builds** the app as the install command does: `npm ci`, the Whisper models, `npm run build`, then Jauvex.app (`scripts/mac-app.ts`).
+2. **Signs** every piece of code inside out, with the hardened runtime and a timestamp.
+   - The entitlements are in `packaging/mac/`: `entitlements.plist` for the app (JIT, microphone), `tools.plist` for the providers' programs.
+   - Claude's and Codex's programs keep their makers' signatures when those are already good for notarization.
+3. **Notarizes** Jauvex.app, staples its ticket, and checks Gatekeeper.
+4. **Makes the disk image** (Jauvex.app beside a link to Applications), then signs, notarizes and staples it.
+
+Useful options:
+- `--identity "<name>"`: when the keychain holds several Developer ID identities.
+- `--skip-notarize`: signed only, a trial (Gatekeeper refuses it). Never for a release.
+- `--keep`: keeps the work folder, `tmp/mac-release/<version>`.
+
+The image is for this Mac's CPU: on Apple silicon it is `arm64`.
+
+## After the build
+
+1. **Read the report.** `cat tmp/release/mac-<version>-report.md`. It must show:
+   - notarization `Accepted` for both the app and the image;
+   - Gatekeeper's `accepted` with `source=Notarized Developer ID`;
+   - the Node version inside the app.
+2. **Report back** in one message: the version and the commit, the report's table, and the image's SHA-256.
+3. **Keep the image** (`tmp/release/jauvex-personal-<version>-mac-<arch>.dmg`) where you were told to. `tmp/` is never committed.
+
+## If it stops
+
+| It says | What it means |
+|---|---|
+| no valid "Developer ID Application" identity | the certificate is not in this Mac's login keychain, or the G2 intermediate is missing (above) |
+| … must be readable by you only | the notary key's file mode is open: `chmod 600` it |
+| the checkout has changes | check out the commit, exactly, with nothing changed |
+| package.json says …-dev | that commit is not a release: ask for the release commit |
+| Apple did not accept … | its log is in `tmp/release/mac-<version>-notary-<part>.json`: send it as it is |
+| Gatekeeper does not accept … | send the lines it shows |

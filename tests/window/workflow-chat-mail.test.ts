@@ -1,6 +1,6 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/workflow-chat-mail/claude MOCK_DELAY_MS=5
-// A workflow's chat writes to the app's agents and hears back (T-205; the user, 2026-09-29: "the agent inside of Workflows try to contact
-// you when he couldn't"). Only the sidebar's chats were heard: a message-agent block in a workflow's chat went nowhere, and its message tool
+// A workflow's chat writes to the app's agents and hears back (T-205: a workflow's agent could not reach the other agents).
+// Only the sidebar's chats were heard: a message-agent block in a workflow's chat went nowhere, and its message tool
 // found no session. The router now hears a chat under a view, knows it by name ("<workflow> workflow", in the roster while its view is
 // open), and delivers to it there, never to a second copy of its session. (The stand-in answers a message ending in [[reply]] with the
 // words after it: here, a message block.)

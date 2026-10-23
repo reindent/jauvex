@@ -1,7 +1,7 @@
-// Feedback from inside the app (Diego, 2026-10-04): a bug report, feature request or idea, sent to Reindent through jauvex.ai
+// Feedback from inside the app: a bug report, feature request or idea, sent to Reindent through jauvex.ai
 // (POST /api/feedback; the site's feedback.py checks every field). Pure: what the person typed, checked as the site checks it, and the
 // log they agreed to attach, cleaned of anything secret first. Never a workspace's files, chats or keys.
-export const FEEDBACK_TYPES = ['bug', 'feature', 'idea', 'feedback', 'question'] as const; // Diego, 2026-10-04: Idea, Feedback, Bug, Question
+export const FEEDBACK_TYPES = ['bug', 'feature', 'idea', 'feedback', 'question'] as const; // the kinds the form offers: idea, feedback, bug, question
 export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 export type FeedbackForm = { type: FeedbackType; title: string; description: string; contact: string; screenshot: boolean; log: boolean };
 export const SHOT_FILE = 'feedback-screenshot.png'; // in the data folder: the screenshot the person was shown, the one sent

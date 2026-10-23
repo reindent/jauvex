@@ -1,4 +1,4 @@
-// Deleting a board (T-179, asked for 2026-09-27, "with confirmation"; the window asks first, tests/window/boards.test.ts): a board goes with
+// Deleting a board (T-179, with a confirmation: the window asks first, tests/window/boards.test.ts): a board goes with
 // its done file; nothing else in the folder, and nothing but a board. No app: a folder under the check's data folder.
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'; import path from 'node:path';
 import { deleteBoard, listBoards } from '../electron/workfiles.ts';

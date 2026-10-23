@@ -1,11 +1,12 @@
 // needs: mic
 // wav: tests/fixtures/reload-ui.wav
-import { connect, sleep, check, done, V } from './lib.ts';
+// env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/app-order-kept/claude CODEX_HOME=__ROOT__/tmp/testrun/app-order-kept/codex MOCK_DELAY_MS=5
+import { connect, sleep, check, done, V, ownAgents, rowOf } from './lib.ts';
 const { js, close } = await connect(); await sleep(2500);
 // An order the app handles itself (here "Reload the interface.", said out loud in a session) is kept with the session: after the
 // reload the user's words and the app's reply are still in the thread, in their place. A restart used to wipe both.
-const rows = "[...document.querySelectorAll('.row:not(.ghost)')].filter((r) => r.querySelector('.provider-icon.claude'))";
-await js(`${rows}[0].click()`); await sleep(1500); const title = await js("document.querySelector('.tb-name')?.textContent");
+await ownAgents(js, ['Orders']);
+await js(`${rowOf('Orders')}.click()`); await sleep(1500); const title = await js("document.querySelector('.tb-name')?.textContent");
 await js(`${V}.querySelector('.voice-start').click()`);
 let shown = false; for (let i = 0; i < 40 && !shown; i++) { await sleep(300); shown = await js(`[...${V}.querySelectorAll('.user .bubble')].some((b) => /reload the interface/i.test(b.textContent))`); }
 check('the order shows in the thread', shown);

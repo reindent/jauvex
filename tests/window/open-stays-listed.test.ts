@@ -1,5 +1,5 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/open-stays-listed/claude CODEX_HOME=__ROOT__/tmp/testrun/open-stays-listed/codex MOCK_DELAY_MS=5
-// A session an agent opens with the `open` order stays in its folder's sidebar (T-152, the user, 2026-09-26: an agent opened seven
+// A session an agent opens with the `open` order stays in its folder's sidebar (T-152: an agent opened seven
 // existing sessions of a folder; they showed while their chats were open, then dropped out a few at a time as other chats took the
 // eight open places, since opening had never put them in the folder's list).
 import { connect, sleep, check, done } from './lib.ts';

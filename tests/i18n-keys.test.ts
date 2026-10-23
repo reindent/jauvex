@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'; import path from 'node:path';
-// Every language has every key of English, none empty, the same {placeholders}; every key the code uses exists (the user, 2026-10-03:
-// "add a check that flags missing keys"); a third language is one file in shared/i18n and one line in LANGUAGES.
+// Every language has every key of English, none empty, the same {placeholders}; every key the code uses exists (a check that
+// flags missing keys); a third language is one file in shared/i18n and one line in LANGUAGES.
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };
 const { TABLES, LANGUAGES, resolveLanguage, setLanguage, t } = await import('../shared/i18n/index.ts');
 const en = TABLES.en as Record<string, string>;

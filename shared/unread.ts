@@ -1,4 +1,4 @@
-// New replies, per agent (T-226; the user, 2026-09-30: "Personal should have the badges"): a reply counts on its agent while that agent is
+// New replies, per agent (T-226, badges as the other edition has them): a reply counts on its agent while that agent is
 // not on screen, its row in the sidebar shows the count (the Jauvex agent's too), and opening the agent clears it. The counts are kept on this
 // computer, so a reload or a restart keeps them. Pure: tests/unread.test.ts.
 

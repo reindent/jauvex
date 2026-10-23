@@ -1,7 +1,6 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/move-workflow/claude MOCK_DELAY_MS=5
-// A workflow moved to another folder takes its chat along (T-217; the user, 2026-09-29, of a move on a server: "The workflows were actually
-// moved But the sessions of the agents were not ... the chat sessions on Claude, Codex, Grok, or whatever provider ... also need to be moved
-// so that when the chat is loaded, they appear ... on the new moved workflow"). Moved by hand, its files go and its chat's session stays
+// A workflow moved to another folder takes its chat along (T-217: the workflow's files moved but its chat's session did not,
+// whatever the provider). Moved by hand, its files go and its chat's session stays
 // filed under the old folder: the chat opens empty (the bug, reproduced first). `move-workflow` moves the session too: the conversation is
 // there in the new folder, and goes on there. An agent's session moves with `move-session`.
 import { connect, sleep, check, done, V, useWork } from './lib.ts';

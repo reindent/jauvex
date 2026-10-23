@@ -1,8 +1,11 @@
 import { APP_ROOT } from './backend.js';
 import { folderFiles } from './workfiles.js';
+import { openView, openKey } from './openmodels.js';
+import { OPEN_PROVIDER_ID, OPEN_KEY_ENV, codexOpenConfig } from '../shared/openmodels.js';
 import type { CodexPermissionBaseline } from '../shared/types.js';
 import { codexPermissionOptions } from '../shared/permissions.js';
 import { spawn, execFile, type ChildProcess } from 'node:child_process';
+import { guardPipes } from './pipes.js';
 import { shortTitle } from '../shared/roster.js';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
@@ -12,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { clientBriefing, type Attachment, type Block, type ChatEvent, type ChatMessage, type ChatStart, type ModelOption, type PermissionDecision, type SessionInfo } from '../shared/types.js';
 import { projectOr404, saveContext, saveState } from './backend.js';
 import { codexUsage, tooLong, type ContextUsage } from '../shared/context.js';
+import { briefedWith, forgetBriefing, rulesUpdate } from './briefed.js';
 
 /**
  * Codex sessions, through `codex app-server`: the JSON-RPC interface (one JSON object per line over stdio) that
@@ -29,7 +33,7 @@ let server: Server | null = null;
 function findCodex(): { bin: string; pathDir: string | null } {
   if (process.env.CVC_CODEX_BIN) return { bin: process.env.CVC_CODEX_BIN, pathDir: null }; // the stand-in (tests/mock/codex): checks with no account
   const win = process.platform === 'win32', arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
-  // The triple and the program's name as @openai/codex's own launcher (bin/codex.js) has them. Windows (a workshop tester, 2026-10-06): the app
+  // The triple and the program's name as @openai/codex's own launcher (bin/codex.js) has them. Windows (2026-10-06): the app
   // looked for the Mac or Linux build only, never found the one npm put here, and fell back to a `codex` on PATH, which a WinGet install of
   // Codex does not give (its program is codex-x86_64-pc-windows-msvc.exe): Codex was "not installed" until they made a codex.exe by hand.
   const triple = `${arch}-${process.platform === 'darwin' ? 'apple-darwin' : win ? 'pc-windows-msvc' : 'unknown-linux-musl'}`;
@@ -40,9 +44,21 @@ function findCodex(): { bin: string; pathDir: string | null } {
   return { bin: 'codex', pathDir: null }; // else: whatever `codex` the shell PATH has
 }
 
+let bootKey = '';
+/** A sign-in Codex's own server no longer has (a 401 with "token_revoked"): every Codex program on a computer shares one sign-in file, and
+ *  ChatGPT replaces its token whenever any of them refreshes it, so a server that kept the old one in memory for hours is refused while the file
+ *  is good. Codex does not read the file again by itself: the server is replaced as soon as no turn runs in it (fresh), and the new one reads it. */
+let authStale = false;
+const REVOKED = /token_revoked|invalidated oauth token|refresh_token_(?:reused|expired|invalidated)|401 Unauthorized/i;
+function staleSignIn(message: string | undefined): boolean { if (!message || !REVOKED.test(message)) return false; authStale = true; return true; }
+/** The server to use: replaced first, when no turn runs in it, if its sign-in went stale or the open-models key changed (read when it starts). */
+function fresh(): Server { if (server && (authStale || openKey() !== bootKey) && !turns.size) { authStale = false; shutdown(); } return (server ??= boot()); }
+/** A new open-models key: Codex's server starts again, with it, once no turn runs in it. */
+export function openKeyChanged(): void { if (server && openKey() !== bootKey && !turns.size) shutdown(); }
 function boot(): Server {
   const { bin, pathDir } = findCodex();
-  const child = spawn(bin, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...(pathDir ? { PATH: `${pathDir}:${process.env.PATH ?? ''}` } : {}) } });
+  const key = openKey(); bootKey = key; // open models (1.8.0): their key reaches Codex here only, never in a file of Codex's
+  const child = guardPipes(spawn(bin, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...(pathDir ? { PATH: `${pathDir}:${process.env.PATH ?? ''}` } : {}), ...(key ? { [OPEN_KEY_ENV]: key } : {}), JAUVEX_AGENT: '1' /* an order typed in an agent's shell is an agent's */ } })); // a write after Codex went: no fatal dialog (pipes.ts)
   const s: Server = { child, nextId: 1, waiting: new Map(), ready: Promise.resolve() };
   let stderr = ''; child.stderr?.on('data', (d: Buffer) => { stderr = (stderr + d.toString()).slice(-600); });
   const down = (why: string) => {
@@ -69,14 +85,14 @@ function rawCall<T>(s: Server, method: string, params: unknown): Promise<T> {
   return new Promise<T>((resolve, reject) => { const id = s.nextId++; s.waiting.set(id, { resolve: resolve as (v: unknown) => void, reject }); write(s, { method, id, params }); });
 }
 async function call<T>(method: string, params: unknown): Promise<T> {
-  const s = (server ??= boot()); await s.ready; return rawCall<T>(s, method, params);
+  const s = fresh(); await s.ready; return rawCall<T>(s, method, params);
 }
 // ---------- the signed-in account
 type Account = { type: 'apiKey' } | { type: 'chatgpt'; email: string | null; planType: string } | { type: string; email?: string | null; planType?: string };
 export function account(): Promise<{ account: Account | null; requiresOpenaiAuth: boolean }> { return call('account/read', {}); }
 export function logout(): Promise<unknown> { return call('account/logout', {}); }
 export function loginStart(): Promise<{ loginId: string; authUrl: string }> { return call('account/login/start', { type: 'chatgpt' }); }
-/** Signing in with a one-time code instead (FB-19, as Jauvex Pro: the browser sign-in failed on a tester's Windows, a code worked): a page to open, a code to type there. */
+/** Signing in with a one-time code instead (FB-19, as Jauvex Pro: the browser sign-in failed on a Windows computer, a code worked): a page to open, a code to type there. */
 export function loginStartCode(): Promise<{ loginId: string; verificationUrl: string; userCode: string }> { return call('account/login/start', { type: 'chatgptDeviceCode' }); }
 export function loginCancel(loginId: string): Promise<unknown> { return call('account/login/cancel', { loginId }); }
 let loginDone: ((ok: boolean, error: string | null) => void) | null = null;
@@ -84,14 +100,16 @@ export function onLoginCompleted(fn: (ok: boolean, error: string | null) => void
 /** The signed-in account's usage windows (percent used, window length, reset time). */
 type RateWindow = { usedPercent: number; windowDurationMins: number | null; resetsAt: number | null };
 export type RateSnapshot = { primary: RateWindow | null; secondary: RateWindow | null; planType?: string | null; limitId?: string | null; limitName?: string | null; normalModelSlug?: string | null; credits?: { hasCredits: boolean; unlimited: boolean; balance: string | null } | null }; // limitName: a model's own extra limit is named after the model
-export function rateLimits(): Promise<{ rateLimits: RateSnapshot; rateLimitsByLimitId?: Record<string, RateSnapshot | undefined> | null }> { return call('account/rateLimits/read', {}); }
+export async function rateLimits(): Promise<{ rateLimits: RateSnapshot; rateLimitsByLimitId?: Record<string, RateSnapshot | undefined> | null }> {
+  try { return await call('account/rateLimits/read', {}); } catch (e) { if (!staleSignIn((e as Error).message) || turns.size) throw e; return call('account/rateLimits/read', {}); } // a revoked token: once more, on a server that read the current sign-in
+}
 export function shutdown(): void { const s = server; server = null; s?.child.kill('SIGTERM'); }
 
 // ---------- protocol shapes (the subset this app reads; see `codex app-server generate-ts`)
 type Input = { type: string; text?: string };
 type Item = { type: string; id: string; text?: string; content?: Input[] | string[]; summary?: string[]; command?: string; cwd?: string; aggregatedOutput?: string | null; exitCode?: number | null; status?: string;
   changes?: { path: string; kind: { type: string }; diff: string }[]; server?: string; tool?: string; arguments?: unknown; result?: { content: unknown[] } | null; error?: { message: string } | null; query?: string };
-type Thread = { id: string; preview: string; name: string | null; createdAt: number; updatedAt: number; cwd: string; gitInfo: { branch: string | null; originUrl?: string | null } | null };
+type Thread = { id: string; modelProvider?: string; preview: string; name: string | null; createdAt: number; updatedAt: number; cwd: string; gitInfo: { branch: string | null; originUrl?: string | null } | null };
 /** A git remote in one form, so the same repository is recognised whatever the transport: github.com/acme/website. */
 export function normalizeOrigin(url: string | null | undefined): string {
   if (!url) return ''; let u = url.trim().toLowerCase().replace(/\.git\/?$/, '').replace(/\/+$/, '');
@@ -115,7 +133,7 @@ export async function listSessions(dir: string): Promise<SessionInfo[]> {
   const origin = await gitOrigin(dir); const out: SessionInfo[] = []; let cursor: string | null = null; let seen = 0;
   do {
     const page: { data: Thread[]; nextCursor: string | null } = await call('thread/list', { limit: 100, sortKey: 'updated_at', useStateDbOnly: true, ...(cursor ? { cursor } : {}) });
-    for (const t of page.data) { seen++; if (!threadBelongs(t, dir, origin)) continue; out.push({ provider: 'codex', sessionId: t.id, summary: t.name || shortTitle(t.preview ?? '') || 'Codex session', customTitle: t.name || undefined, lastModified: t.updatedAt * 1000, createdAt: t.createdAt * 1000, firstPrompt: t.preview || undefined, gitBranch: t.gitInfo?.branch ?? undefined, cwd: t.cwd }); }
+    for (const t of page.data) { seen++; if (!threadBelongs(t, dir, origin)) continue; out.push({ provider: t.modelProvider === OPEN_PROVIDER_ID ? 'open' : 'codex', sessionId: t.id, summary: t.name || shortTitle(t.preview ?? '') || 'Codex session', customTitle: t.name || undefined, lastModified: t.updatedAt * 1000, createdAt: t.createdAt * 1000, firstPrompt: t.preview || undefined, gitBranch: t.gitInfo?.branch ?? undefined, cwd: t.cwd }); }
     cursor = page.nextCursor;
   } while (cursor && seen < 3000);
   return out;
@@ -153,7 +171,7 @@ export async function transcript(threadId: string): Promise<ChatMessage[]> {
   return messages;
 }
 
-// One program writes to a Codex thread at a time (Codex 0.159: "thread <id> already has an active writer"; a tester's turn failed with it,
+// One program writes to a Codex thread at a time (Codex 0.159: "thread <id> already has an active writer"; a turn failed with it,
 // 2026-09-30; T-250, from the other edition's 3df63e9). The program that has a thread loaded is its writer, idle or not, and lets it go only
 // about a minute after its last subscriber leaves. This app kept every thread it had used loaded for as long as it ran, so no other Codex
 // program (the Codex app, VS Code, the terminal) could use it, and theirs blocked this one the same way. Now a thread is let go when its turn
@@ -194,7 +212,7 @@ export async function models(): Promise<ModelOption[]> {
 type LiveTurn = { projectId?: string; server: Server; chatId: string; threadId: string; turnId: string | null; send: (e: ChatEvent) => void; pending: Map<string, (d: PermissionDecision) => void>; items: Map<string, Item>; error: string; fail: (why: string) => void; finish: (turn: Turn) => void;
   compact: boolean; ctx: ContextUsage | null; model?: string; compactAt: number; before?: number; tooLong: boolean }; // compact: a turn that only compacts (thread/compact/start); ctx: how full the context is (T-74)
 /** Options of one turn: a compaction instead of a message, and what is known of the context so far. */
-type TurnOpts = { compact?: boolean; ctx?: ContextUsage | null; model?: string };
+type TurnOpts = { compact?: boolean; ctx?: ContextUsage | null; model?: string; started?: () => void /* Codex took the turn */ };
 const turns = new Map<string, LiveTurn>(); // by threadId: Codex runs one turn per thread at a time
 const permissionBaselines = new Map<string, CodexPermissionBaseline>();
 const loaded = new Set<string>();          // threads this server process has already started or resumed
@@ -208,10 +226,18 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   // so leaving it restores even a read-only sandbox.
   const rememberPermissions = (id: string, r: { approvalPolicy?: unknown; sandbox?: unknown }) => { if (r.approvalPolicy !== undefined && r.sandbox !== undefined) permissionBaselines.set(id, { approvalPolicy: r.approvalPolicy, sandboxPolicy: r.sandbox }); };
   let threadId = req.sessionId; let model = req.model;
-  const s = (server ??= boot());
+  // Open models (1.8.0): a thread of theirs starts and resumes with Codex's provider sent to the user's own server (shared/openmodels.ts)
+  const open = (req.sessionId ? project.providers?.[req.sessionId] : req.provider) === 'open';
+  const ov = open ? openView() : null;
+  if (open && (!ov?.baseUrl || !(req.model || ov.model))) { send({ chatId, type: 'done', ok: false, error: 'Open models are not set up yet: add the server and a model in Accounts.' }); return; }
+  if (open && !req.model) model = ov!.model;
+  const via = open ? { modelProvider: OPEN_PROVIDER_ID, config: codexOpenConfig(ov!.baseUrl, ov!.hasKey) } : {};
+  if (open) openKeyChanged();
+  const s = fresh();
   const spoken = { developerInstructions: clientBriefing(!!req.voice, req.vocabulary, !!req.steward, APP_ROOT, await folderFiles(project.path)) }; // every session is told where it is running; dictated text is read for intent
-  if (!threadId) { const r = await call<{ thread: Thread; model: string; approvalPolicy?: unknown; sandbox?: unknown }>('thread/start', { cwd: project.path, ...(req.model ? { model: req.model } : {}), ...spoken }); threadId = r.thread.id; model = r.model; rememberPermissions(threadId, r); loaded.add(threadId); }
-  else if (!loaded.has(threadId)) { const r = await resumeHeld<{ model: string; approvalPolicy?: unknown; sandbox?: unknown }>({ threadId, excludeTurns: true, ...spoken }, () => send({ chatId, type: 'status', text: 'Waiting: another program has this Codex session open (Codex lets only one write to it). It goes on once that program lets it go.' }), Number(process.env.CVC_CODEX_HELD_MS) || HELD_MS); model ??= r.model; rememberPermissions(threadId, r); loaded.add(threadId); }
+  const made = !threadId;
+  if (!threadId) { const r = await call<{ thread: Thread; model: string; approvalPolicy?: unknown; sandbox?: unknown }>('thread/start', { cwd: project.path, ...(model ? { model } : {}), ...via, ...spoken }); threadId = r.thread.id; model = r.model; briefedWith(threadId, spoken.developerInstructions); rememberPermissions(threadId, r); loaded.add(threadId); }
+  else if (!loaded.has(threadId)) { const r = await resumeHeld<{ model: string; approvalPolicy?: unknown; sandbox?: unknown }>({ threadId, excludeTurns: true, ...via, ...(open && model ? { model } : {}), ...spoken }, () => send({ chatId, type: 'status', text: 'Waiting: another program has this Codex session open (Codex lets only one write to it). It goes on once that program lets it go.' }), Number(process.env.CVC_CODEX_HELD_MS) || HELD_MS); model ??= r.model; rememberPermissions(threadId, r); loaded.add(threadId); }
   if (turns.has(threadId)) throw new Error('This session is already running a turn.');
   let restore = project.codexPermissionBaseline?.[threadId];
   if (req.permissions === 'yolo' && !restore) {
@@ -220,11 +246,12 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
     project.codexPermissionBaseline = { ...project.codexPermissionBaseline, [threadId]: restore }; await saveState(state);
   }
   if (!req.hidden && !project.sessions.includes(threadId)) project.sessions.unshift(threadId);
-  if (project.providers?.[threadId] !== 'codex') { project.providers = { ...project.providers, [threadId]: 'codex' }; await saveState(state); }
+  const kind = open ? 'open' : 'codex'; if (project.providers?.[threadId] !== kind) { project.providers = { ...project.providers, [threadId]: kind }; await saveState(state); }
   send({ chatId, type: 'init', sessionId: threadId, model });
   const opts: TurnOpts = { ctx: project.context?.[threadId] ?? null, ...(model ? { model } : {}) };
   if (req.compact) { await runTurn(s, threadId, chatId, '', undefined, {}, send, req.projectId, { ...opts, compact: true }); return; } // Codex compacts as a turn of its own
-  await runTurn(s, threadId, chatId, req.text, req.images, { ...(req.model ? { model: req.model } : {}), ...(req.effort ? { effort: req.effort } : {}), ...codexPermissionOptions(req.permissions, restore) }, send, req.projectId, opts);
+  const rules = made ? null : rulesUpdate(threadId, spoken.developerInstructions); // a thread keeps its first instructions: what changed since goes with this turn
+  await runTurn(s, threadId, chatId, req.text + (rules?.note ?? ''), req.images, { ...(req.model ? { model: req.model } : {}), ...(req.effort ? { effort: req.effort } : {}), ...codexPermissionOptions(req.permissions, restore) }, send, req.projectId, { ...opts, ...(rules ? { started: rules.given } : {}) });
 }
 
 /** Start one turn in a loaded thread and resolve when it is over; everything in between goes to `send`. */
@@ -241,15 +268,15 @@ function runTurn(s: Server, id: string, chatId: string, text: string, images: At
       if (projectId && entry.ctx && entry.ctx.window > 0) void saveContext(projectId, id, entry.ctx).catch(() => { /* shown, just not kept */ }); send(e); resolve(); };
     const entry: LiveTurn = { projectId, server: s, chatId, threadId: id, turnId: null, send, pending: new Map(), items: new Map(), error: '', compact: !!opts.compact, ctx: opts.ctx ?? null, ...(opts.model ? { model: opts.model } : {}), compactAt: 0, tooLong: false,
       fail: (why) => end({ chatId, type: 'done', ok: false, sessionId: id, error: why, ...(tooLong(null, why) ? { tooLong: true } : {}) }),
-      finish: (turn) => { const ok = turn.status !== 'failed'; const error = turn.error?.message || entry.error || 'The turn failed.'; end({ chatId, type: 'done', ok, sessionId: id, ...(turn.durationMs ? { durationMs: turn.durationMs } : {}), ...(ok ? {} : { error, ...(entry.tooLong || tooLong(null, error) ? { tooLong: true } : {}) }) }); } };
+      finish: (turn) => { const ok = turn.status !== 'failed'; const error = turn.error?.message || entry.error || 'The turn failed.'; if (!ok) staleSignIn(error); end({ chatId, type: 'done', ok, sessionId: id, ...(turn.durationMs ? { durationMs: turn.durationMs } : {}), ...(ok ? {} : { error, ...(entry.tooLong || tooLong(null, error) ? { tooLong: true } : {}) }) }); } };
     turns.set(id, entry);
     (opts.compact ? call<{ turn?: Turn }>('thread/compact/start', { threadId: id }) : call<{ turn?: Turn }>('turn/start', { threadId: id, input: inputItems(text, images), ...extra })) // a compaction answers {} at once; its turn is announced by turn/started
-      .then((r) => { if (r?.turn?.id) entry.turnId ??= r.turn.id; }, (e: Error) => { if (turns.get(id) === entry) entry.fail(e.message); });
+      .then((r) => { if (r?.turn?.id) entry.turnId ??= r.turn.id; opts.started?.(); }, (e: Error) => { if (turns.get(id) === entry) entry.fail(e.message); });
   });
 }
 /** A compaction item ended (or its turn did): said once, with the tokens before and, when the server re-counted them, after. */
 function compacted(t: LiveTurn, ok: boolean): void {
-  const since = t.compactAt; t.compactAt = 0;
+  const since = t.compactAt; t.compactAt = 0; if (ok) forgetBriefing(t.threadId); // what the app added to its instructions may be summed away: all of them again next turn
   t.send({ chatId: t.chatId, type: 'compact', phase: 'done', trigger: t.compact ? 'manual' : 'auto', ok, ...(t.before !== undefined ? { before: t.before } : {}), ...(t.ctx && t.ctx.at >= since ? { after: t.ctx.used } : {}) });
 }
 
@@ -265,7 +292,7 @@ function onNotification(method: string, p: Record<string, unknown>): void {
   else if (method === 'item/started') { const item = p.item as Item; t.items.set(item.id, item); if (item.type === 'commandExecution' || item.type === 'fileChange' || item.type === 'mcpToolCall' || item.type === 'webSearch') { const msg = normalizeItem(String(p.turnId), item); if (msg) send({ chatId, type: 'message', message: { ...msg, blocks: msg.blocks.filter((b) => b.type !== 'tool_result') } }); } } // the call shows at once (no result yet); the completed item replaces it, same uuid
   else if (method === 'item/completed') { const item = p.item as Item; if (item.type === 'userMessage') return; // the UI already shows what was typed
     const msg = normalizeItem(String(p.turnId), item); if (msg) send({ chatId, type: 'message', message: msg }); }
-  else if (method === 'error') { if (!p.willRetry) t.error = (p.error as { message?: string } | undefined)?.message ?? ''; if (!p.willRetry && JSON.stringify(p.error ?? '').includes('contextWindowExceeded')) t.tooLong = true; } // Codex compacts and retries on its own first
+  else if (method === 'error') { if (!p.willRetry) { t.error = (p.error as { message?: string } | undefined)?.message ?? ''; staleSignIn(t.error); /* a revoked sign-in: the next turn runs on a server that read the current one */ } if (!p.willRetry && JSON.stringify(p.error ?? '').includes('contextWindowExceeded')) t.tooLong = true; } // Codex compacts and retries on its own first
   else if (method === 'turn/completed') t.finish(p.turn as Turn);
 }
 
@@ -319,7 +346,7 @@ async function voiceThreadFor(model: string, instructions: string): Promise<stri
 }
 /** One throwaway turn on a fresh ephemeral thread (checks and probes): the assistant's text. `start` is merged into thread/start. */
 export async function runOnce(text: string, start: Record<string, unknown> = {}, cwd = os.tmpdir()): Promise<string> {
-  const s = (server ??= boot()); await s.ready;
+  const s = fresh(); await s.ready;
   const r = await call<{ thread: Thread }>('thread/start', { cwd, ephemeral: true, approvalPolicy: 'never', sandbox: 'read-only', ...start });
   let out = ''; await runTurn(s, r.thread.id, `once:${randomUUID()}`, text, undefined, {}, (e) => { if (e.type === 'message' && e.message.role === 'assistant') out += e.message.blocks.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' '); });
   return out;

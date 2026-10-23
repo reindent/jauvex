@@ -1,6 +1,6 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/import-sessions/claude CODEX_HOME=__ROOT__/tmp/testrun/import-sessions/codex MOCK_DELAY_MS=10
-// A folder's existing sessions come into its sidebar with the `import` order (T-150, the user, 2026-09-26: an agent asked to import
-// some agents' sessions had only `open`, and opened them over the chat he was in, none of them in the sidebar).
+// A folder's existing sessions come into its sidebar with the `import` order (T-150: an agent asked to import
+// some agents' sessions had only `open`, and opened them over the chat on screen, none of them in the sidebar).
 import { connect, sleep, check, done } from './lib.ts';
 import { execFileSync } from 'node:child_process';
 const { js, close } = await connect(); await sleep(2500);

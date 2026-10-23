@@ -1,6 +1,6 @@
 // env: CVC_SETUP_FAKE=claude-only CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/new-agent-provider/claude CODEX_HOME=__ROOT__/tmp/testrun/new-agent-provider/codex MOCK_DELAY_MS=5
-// An order for an agent of a provider makes an agent of that provider, or none (T-229, from the other edition; the user, 2026-09-29, on a
-// server: "I'm asking Reindent agent to create a Codex agent and keeps creating a Claude agent instead"). A new chat took the last chosen
+// An order for an agent of a provider makes an agent of that provider, or none (T-229, from the other edition: an agent asked for a Codex agent
+// kept creating Claude agents). A new chat took the last chosen
 // provider only when the window thought it signed in, and fell back to another one otherwise; the window looked at sign-ins once, at start.
 // Here Codex answers "not signed in".
 import { connect, sleep, check, done, useWork } from './lib.ts';

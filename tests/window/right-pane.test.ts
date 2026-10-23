@@ -1,10 +1,11 @@
-import { connect, sleep, check, done, V } from './lib.ts'; import { writeFileSync } from 'node:fs'; import path from 'node:path';
+// env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/right-pane/claude CODEX_HOME=__ROOT__/tmp/testrun/right-pane/codex MOCK_DELAY_MS=5
+import { connect, sleep, check, done, V, ownAgents, rowOf } from './lib.ts'; import { writeFileSync } from 'node:fs'; import path from 'node:path';
 const { js, close } = await connect(); await sleep(2500);
 // A file or a link an agent shows opens in the right pane, never in the window itself: markdown rendered, text as is, images
 // shown, pages framed and muted; a navigation the app did not catch goes to the pane too; the pane closes.
+await ownAgents(js, ['Pane one', 'Pane two']);
 const root = process.cwd(); const appUrl = await js('location.href');
-const rows = "[...document.querySelectorAll('.row:not(.ghost)')].filter((r) => r.querySelector('.provider-icon'))";
-await js(`${rows}[0].click()`); await sleep(1500);
+await js(`${rowOf('Pane one')}.click()`); await sleep(1500);
 const clickLink = (href) => js(`(() => { const a = document.createElement('a'); a.href = ${JSON.stringify(href)}; a.textContent = 'x'; ${V}.querySelector('.scroll').appendChild(a); a.click(); a.remove(); })()`);
 await clickLink(path.join(root, 'README.md')); await sleep(1500);
 check('a markdown file opens in the right pane, rendered', (await js("document.querySelector('.pane-title')?.textContent")) === 'README.md' && (await js("!!document.querySelector('.pane-body .pane-md h1, .pane-body .pane-md h2')")));
@@ -26,7 +27,7 @@ check('the pane closes', !(await js("!!document.querySelector('.pane')")));
 const title = () => js("document.querySelector('.pane-title')?.textContent ?? null");
 await clickLink(path.join(root, 'README.md')); await sleep(1200);
 const a = await js("document.querySelector('.tb-name')?.textContent"); const aRow = await js("document.querySelector('.row.on .row-title')?.textContent");
-await js(`${rows}.find((r) => !r.classList.contains('on')).click()`); await sleep(1500);
+await js(`${rowOf('Pane two')}.click()`); await sleep(1500);
 check('another session does not show the first one\'s pane', (await js("document.querySelector('.tb-name')?.textContent")) !== a && (await title()) === null);
 await js("document.querySelector('button[title^=\"Back\"]').click()"); await sleep(1500); // the app's own Back: exactly the session before
 check('back on the first session, its pane is there again', (await title()) === 'README.md' && (await js("document.querySelector('.tb-name')?.textContent")) === a, String(await title()));

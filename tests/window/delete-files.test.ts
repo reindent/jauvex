@@ -1,5 +1,4 @@
-// Deleting a workflow or a board from the sidebar (the user, 2026-09-27: "I wanna be able to delete workflows and boards (with
-// confirmation)"): a row's secondary click offers it; the confirm names what goes; no deletes nothing; yes deletes the files, takes the row
+// Deleting a workflow or a board from the sidebar, with a confirmation: a row's secondary click offers it; the confirm names what goes; no deletes nothing; yes deletes the files, takes the row
 // away and closes the view that showed it. The backend's part: tests/delete-files.test.ts.
 import { connect, sleep, check, done, useWork } from './lib.ts';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs'; import path from 'node:path';

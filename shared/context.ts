@@ -1,7 +1,7 @@
 // How full an agent's context is, and when the app compacts it (T-74). Pure, shared by the main process and the window;
 // checked in tests/context.test.ts.
 //
-// The incident behind it (2026-09-23): a Claude session sat at 962K of its 1M window, one short message pushed it over, and the
+// The incident behind it: a Claude session sat near the top of its 1M window, one short message pushed it over, and the
 // messages after it went unanswered or failed with "Prompt is too long" while the app showed nothing: no meter, no "compacting".
 
 /** The tokens the agent's last request carried, against its model's window. `maxOutput`: the model's default answer size (Claude). */
@@ -16,7 +16,7 @@ export const autoCompactPct = (ui?: { autoCompact?: number } | null): number => 
 export const contextPercent = (u?: ContextUsage | null): number | null => (u && u.window > 0 ? Math.min(100, Math.round((u.used / u.window) * 100)) : null);
 /** The meter's colour: white, yellow from half full, red from 80 %. */
 export const contextLevel = (pct: number): 'ok' | 'mid' | 'high' => (pct >= 80 ? 'high' : pct >= 50 ? 'mid' : 'ok');
-/** 962484 -> "962K", 1000000 -> "1M", 1500000 -> "1.5M". */
+/** 951320 -> "951K", 1000000 -> "1M", 1500000 -> "1.5M". */
 export const tokens = (n: number): string => (n >= 1e6 ? `${+(n / 1e6).toFixed(2)}M` : n >= 1000 ? `${Math.round(n / 1000)}K` : String(Math.round(n)));
 
 type ClaudeUsage = { input_tokens?: number | null; cache_creation_input_tokens?: number | null; cache_read_input_tokens?: number | null };
@@ -42,6 +42,6 @@ export function claudeCompactEnv(pct: number, known?: ContextUsage | null): Reco
 
 /** The request did not fit the window: Claude's result (`terminal_reason`, or its text), Codex's error (`contextWindowExceeded`). */
 export const tooLong = (reason?: string | null, text?: string | null): boolean => reason === 'prompt_too_long' || reason === 'blocking_limit' || /prompt is too long|context window|contextWindowExceeded/i.test(text ?? '');
-/** A chat idle this long, past ten points under the setting (80 % at the default 90), compacts then (Diego, 2026-10-07, as Jauvex Pro): not mid-conversation. */
+/** A chat idle this long, past ten points under the setting (80 % at the default 90), compacts then (as in Jauvex Pro): not mid-conversation. */
 export const IDLE_COMPACT_MS = 180_000;
 export const idleCompactPct = (pct: number): number => Math.max(40, pct - 10);

@@ -40,8 +40,8 @@ export class Runner {
   private async goto(n: number): Promise<void> {
     if (this.over) return; if (n < 1 || n > this.def.steps.length) { await this.finish('done'); return; }
     // A step coming round more times than its tries with no decision of the user's in between is a loop between agents: the run stops. A
-    // decision of theirs starts the count again (decide below), so a loop through them has no limit (T-197; the user, 2026-09-28: "agents
-    // should not do it more than six times ... but for humans, I wouldn't add that, definitely not").
+    // decision of theirs starts the count again (decide below), so a loop through them has no limit (T-197: agents alone get a limit,
+    // a person's decisions none).
     const tries = triesOf(this.def, n); this.visits[n] = (this.visits[n] ?? 0) + 1;
     if (this.visits[n]! > tries) { await this.finish(`stopped: step ${n} (${stepTitle(this.def.steps[n - 1]!)}) came round ${tries + 1} times with no decision of yours, more than its ${tries} ${tries === 1 ? 'try' : 'tries'}`); return; }
     this.run.steps[n] = { started: stamp().slice(-5), took: null, result: '', said: '' }; await this.enter(n, false);

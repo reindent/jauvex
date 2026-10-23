@@ -1,12 +1,12 @@
-// The agents' turns in the debugger's Model tab (T-260; the user, 2026-10-01: "It has only Jev. But it doesn't say anything that is going on
-// with Claude or Codex or Grok. I want to be able to see that and that should be logged as well"): what a turn's start and each of its events
+// The agents' turns in the debugger's Model tab (T-260: it showed only Jev, nothing of what Claude, Codex
+// or Grok were doing): what a turn's start and each of its events
 // become, and how many lines each tab keeps.
 import { agentWho, eventLines, keep, KEEP, steered, toolHint, turnStart } from '../shared/agent-log.js';
 import type { ChatEvent, DebugEvent } from '../shared/types.js';
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : ` ${got}`}`); if (!ok) failed++; };
 const msg = (role: 'assistant' | 'user' | 'system', blocks: any[], extra = {}): ChatEvent => ({ chatId: 'c', type: 'message', message: { uuid: 'u', role, blocks, meta: false, ...extra } });
 
-check('who: the provider, the session\'s start and the folder', agentWho('codex', '019a2b3c-dead', 'reindent') === 'Codex 019a2b · reindent' && agentWho('grok', null, 'x') === 'Grok new · x');
+check('who: the provider, the session\'s start and the folder', agentWho('codex', '019a2b3c-dead', 'acme') === 'Codex 019a2b · acme' && agentWho('grok', null, 'x') === 'Grok new · x');
 const start = turnStart({ text: 'Fix the\nbutton', model: 'opus', effort: 'high', voice: true, images: 2 });
 check('a turn\'s start: what was sent and with what', start.text === 'turn starts (model opus, effort high, by voice, 2 pictures): "Fix the button"' && start.detail === 'Fix the\nbutton', start.text);
 check('a compact turn says so', turnStart({ text: '/compact', compact: true }).text.startsWith('compact asked'));

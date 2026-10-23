@@ -1,4 +1,4 @@
-// One program writes to a Codex thread at a time (T-250; a tester's turn failed with "thread <id> already has an active writer", 2026-09-30).
+// One program writes to a Codex thread at a time (T-250; a tester's turn failed with "thread <id> already has an active writer").
 // Codex 0.159 keeps a thread's writer for the program that has it loaded, idle or not, until about a minute after its last subscriber leaves
 // (probed on the real Codex). The app lets a thread go when its turn is over, so other Codex programs can have it; a thread
 // another program holds is waited for (the chat says so) and, held past the wait, refused in plain words. The Codex stand-in holds a

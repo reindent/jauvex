@@ -38,3 +38,21 @@ export async function useWork(js?: (expression: string) => Promise<any>): Promis
     if (id) { await js(`window.desktop.api('removeProject', ${JSON.stringify(id)})`); await js('location.reload()'); await sleep(3000); // the window reads the folders again
       for (let i = 0; i < 40 && (list().folders ?? []).some((f: any) => f.name === 'scratch'); i++) await sleep(250); await sleep(500); } }
 }
+
+/** The sidebar row of a session, by its name. */
+export const rowOf = (name: string) => `[...document.querySelectorAll('.row:not(.ghost)')].find((r) => r.querySelector('.row-title')?.textContent === ${JSON.stringify(name)})`;
+/** Agents of the check's own, in scratch, on the stand-ins (the check's `// env:` points the app at tests/mock and at config folders of its own). The
+ *  fixture's sessions are on disk only where it was made (a provider files a session by the folder's real path): in a new clone a check that
+ *  opened one found its chat empty, with no thread to click in (2026-10-23, nine checks). Each agent gets a first turn, so its session is on
+ *  disk, and the window reads the folders again; the newest comes first in its folder, above the fixture's. */
+export async function ownAgents(js: (expression: string) => Promise<any>, names: string[], provider = 'claude'): Promise<void> {
+  const { execFileSync } = await import('node:child_process');
+  const list = (): any => { try { return JSON.parse(execFileSync('node', ['scripts/jauvex.ts', 'list'], { encoding: 'utf8' })); } catch { return {}; } };
+  const ready = (name: string) => (list().folders ?? []).find((f: any) => f.name === 'scratch')?.sessions?.some((s: any) => s.name === name && !s.busy);
+  for (const name of names) {
+    execFileSync('node', ['scripts/jauvex.ts', 'new-agent', '--provider', provider, '--folder', 'scratch', '--name', name, '--kickoff', '[[reply]]Ready.'], { encoding: 'utf8' });
+    for (let i = 0; i < 80 && !ready(name); i++) await sleep(250);
+  }
+  await js('location.reload()'); await sleep(2500);
+  for (let i = 0; i < 40 && !(await js(`!!${rowOf(names.at(-1)!)}`)); i++) await sleep(250);
+}

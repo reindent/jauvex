@@ -1,4 +1,4 @@
-// The order of the folders in the left panel (T-255; the user, 2026-10-01: "I want to be able to rearrange the folders. Right now I can't"):
+// The order of the folders in the left panel (T-255: the folders could not be rearranged):
 // a folder dragged by its name onto another goes before or after it, and the order is kept in the app's state (its list of folders). Pure,
 // checked in tests/folder-order.test.ts.
 

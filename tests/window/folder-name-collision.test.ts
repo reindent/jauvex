@@ -1,5 +1,5 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/folder-name-collision/claude MOCK_DELAY_MS=5
-// --folder by name picks a folder before the app's own (T-254; a server's agents, 2026-10-01: a folder named "Jauvex", and `new-agent --folder
+// --folder by name picks a folder before the app's own (T-254: a folder named "Jauvex", and `new-agent --folder
 // Jauvex` and `new-board --folder Jauvex` put two agents and a board in the app's own folder, whose name is Jauvex too). Here: a folder named
 // Jauvex (under this edition's own tmp/work), a board and an agent made for it by name; the app's own folder is still reached by its path.
 import { connect, sleep, check, done } from './lib.ts';

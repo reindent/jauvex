@@ -1,4 +1,4 @@
-// A Markdown link served over the web opens as a page in the right pane (2026-10-06, Diego: a .md served by a plain `python3 -m http.server`,
+// A Markdown link served over the web opens as a page in the right pane (2026-10-06: a .md served by a plain `python3 -m http.server`,
 // as text/markdown, opened blank: Chromium downloads that type, and a webview shows nothing). shared/page-kind.ts decides; main asks first.
 import { connect, sleep, check, done } from './lib.ts'; import { mkdirSync, writeFileSync } from 'node:fs'; import path from 'node:path'; import { spawn } from 'node:child_process';
 const dir = path.join(process.env.CVC_DATA_DIR!, 'served'); mkdirSync(dir, { recursive: true });

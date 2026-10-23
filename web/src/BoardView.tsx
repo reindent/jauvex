@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { RowGrip } from './Grip';
 import { api } from './api';
 import { BOARD_FORMAT, doneFileOf, parseBoard, type Board, type BoardItem, type BoardSection } from '../../shared/board';
 import { BOARDS_FORMAT_TEXT, PROVIDER_LABEL, type Project, type Provider } from '../../shared/types';
@@ -84,7 +85,7 @@ export function BoardView({ project, file, onChanged, chatProvider = 'claude', a
           </section>))}
       </div>
     </div>
-    {chat && <div className="jev-chat board-chat"><header><b>{t('board.chat.title')}</b><span>{t('board.chat.sub', { provider: PROVIDER_LABEL[provider] })}</span></header>
+    {chat && <div className="jev-chat board-chat"><RowGrip name="board-chat-h" sizes="parent" /><header><b>{t('board.chat.title')}</b><span>{t('board.chat.sub', { provider: PROVIDER_LABEL[provider] })}</span></header>
       <Chat embed={embed} project={project} sessionId={chat.provider === provider ? chat.sessionId ?? null : null} active={active} info={null} showMeta={showMeta} onBusy={() => {}} onTurnEnd={redraw} onNew={() => {}}
         onBridge={(b) => { inView.current = b ? (t, r) => b.deliver(t, r) : null; }} onReply={(text, replyTo) => { const sid = chatSid.current; if (sid && mail) mail.reply(project.id, sid, chatName, text, replyTo); }}
         onSession={(sid) => { const next = { provider, sessionId: sid }; setChat(next); void api.setBoardChat(project.id, file, next); }} /></div>}

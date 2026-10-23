@@ -1,5 +1,5 @@
-// The Jauvex agent's chat as the app keeps it is never lost to saves that overlap (T-269, from the other edition's fix; the user, 2026-10-01,
-// of an agent there: "Reindent Agent lost its chat???": its transcript held one message, written the second a burst of replies came in).
+// The Jauvex agent's chat as the app keeps it is never lost to saves that overlap (T-269, from the other edition's fix: an agent
+// there lost its chat: its transcript held one message, written the second a burst of replies came in).
 // Every save read the whole file, added its message and wrote the whole file back: saves that overlapped dropped each other's message, and
 // one that read the file while another was writing it found it half written, took it for a first message, and wrote that alone. The same for
 // the chats' notes. Quick: the backend alone, on this check's own data folder.

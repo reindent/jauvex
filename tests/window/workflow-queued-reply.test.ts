@@ -1,5 +1,5 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/workflow-queued-reply/claude MOCK_DELAY_MS=5
-// Only the reply to a step's own message closes that step (T-253; a server's agents, 2026-10-01: while the Social Media Agent worked on
+// Only the reply to a step's own message closes that step (T-253: while a step's agent worked on
 // step 1, two messages for it waited in its queue; after step 1 its answer to them, ending "OUTCOME: done", was taken as step 3's outcome, which it
 // had not started: step 3 done in 7 seconds, the run over, the next workflow started with no sources). A reply with no address of its own was
 // taken by any run waiting for its agent; that is only for a turn a reloaded window took back, whose address it cannot know, and never when the

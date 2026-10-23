@@ -44,12 +44,15 @@ feature and why it works the way it does: read the relevant part before changing
    watches its data folder): the window reloads and takes the running turns back; nothing else is touched. The user
    can also say "reload the interface". `touch ~/.jauvex/personal/restart-app` is the full relaunch, for main-process builds, and is
    the way to restart from a turn without the launchd script. A reload keeps the user's queued messages and unsent text
-   (they live in localStorage per chat); it once wiped them, and the user saw his messages disappear. Every other action in the app (folders, agents, sessions,
+   (they live in localStorage per chat); it once wiped them. Every other action in the app (folders, agents, sessions,
    settings, the welcome) is `node scripts/jauvex.ts <command>`: a request file in `~/.jauvex/personal/commands/` that the running app
    answers (`list` first, for ids). The Jauvex agent, the built-in session in this folder, is briefed to use it.
 3. **Never kill by name** (`pkill`, `killall`). Find the PID, confirm with `ps -p <pid> -o command=`, kill that PID only.
 4. **One commit per finished feature or fix**, before starting the next. Plain messages, no AI attribution trailer.
-   Commit on `master` and push to `origin` (github.com/reindent/jauvex) when the user asks.
+   Branches: `main` is what is released, each release tagged (vX.Y.Z); `dev` is the version in the making
+   (X.Y.Z-dev). Each piece of work gets a short branch named for it (`fix/open-browser`, `feature/movable-panels`), merged into `dev` and
+   deleted right after; at a release `dev` merges into `main` and is tagged. No stale branches: what is merged is deleted, what is not is
+   merged or kept as an `archive/<name>` tag. Nothing is pushed to `origin` without the owner's explicit authorisation for that push (rule 14).
 5. **Nothing in the look may copy a vendor** (marks, orb, colours). The provider marks on session rows are the one
    exception: they identify whose session it is.
 6. **The user talks; speech may only interrupt the voice, never the work.** What is said while an agent works is
@@ -59,9 +62,30 @@ feature and why it works the way it does: read the relevant part before changing
 8. Stay inside this repository. Tests use `tmp/scratch` as their project folder and `tmp/testdata*` as data folders.
 9. **The spoken voice stays the system's default** (`voice: ''`). Never switch it for speed or anything else unless the
    user asks: a faster-rendering voice was tried and sounded robotic.
-10. **The licence and the owner are Diego's alone.** Jauvex Personal is open source under Apache-2.0 and owned by Reindent LLC, its sole
-   copyright holder. No agent changes `LICENSE`, `NOTICE`, the `license` or `author` fields in `package.json`, or any copyright line
-   without Diego's explicit word (Reindent's workspace conventions, CONVENTIONS.md §5, Licences). When unsure, ask before committing.
+10. **Only the owner decides the licence and the ownership.** Jauvex Personal is open source under Apache-2.0, with one sole copyright
+   holder (`LICENSE`, `NOTICE`). No agent changes `LICENSE`, `NOTICE`, the `license` or `author` fields in `package.json`, or any copyright
+   line without the owner's explicit word (the workspace conventions, CONVENTIONS.md §5, Licences). When unsure, ask before committing.
+11. **A version in the making carries -dev**, so it can be told apart from a release: while it is built or tested, its branch has the next number with -dev
+   (1.7.3-dev) in `package.json` and the lock file, so the foot of the sidebar shows it. The plain number goes in only when it is packaged.
+12. **Keep everything organized** (the first rule after security): every file, folder, branch and note has one right home,
+   used the first time; no stray copies, test leftovers, empty folders or loose files; one branch per piece of work, deleted once merged or
+   abandoned; temporary work in `tmp/`, cleaned when done. The agents running inside the app are told the same (`clientBriefing`).
+
+13. **Nothing identifiable, ever: codes, not names.** No person's, client's or company's name (the owner's and the owner's companies'
+   included, beyond the licence and copyright lines, which only the owner changes), no personal email (the company's public business addresses are fine), phone, street address, server or host name, IP
+   or Tailscale address, home path, and no quote of anyone, in code, comments, tests, fixtures, examples, commit messages, branch names, tags
+   or the changelog. A need that came from a person or a client is referred to by its ticket id (FB-122, T-433); example data uses invented
+   names (`Acme`, `Northwind`, `Owen`); a quote becomes "the user". Code ported from the other edition is read line by line for all of this
+   before it is committed. **Real data is never test data.** Tests, fixtures, examples and demos are never built from a live Jauvex, its
+   dashboards, sessions or boards, or from client folders: a real case may only shape a reproduction, and every value in it is invented. The
+   author's name stays where it belongs (git author, copyright, licence); what goes is only citing him as the one behind a change, his quotes
+   and his personal data. The clone's hooks (the owner's names guard: pre-commit, commit-msg, pre-push) refuse a change holding a word of the private
+   list kept outside the repository, a personal email, a 100.x address or a home path; they are never bypassed (`--no-verify` is forbidden).
+
+14. **Development happens privately, on the owner's machines; GitHub gets only what the owner authorises.** No branch, tag or release
+   upload goes to `origin` without the owner's explicit word for that push. A signed Mac disk image is made on the owner's Mac from a git bundle of the release commit, by an
+   agent that only builds, signs, notarises, checks the built app for private words, and hands back the image and its SHA-256: it never
+   commits or pushes.
 
 ## Who decides what (the voice channel)
 
@@ -100,8 +124,7 @@ session is working: do not restart.
   `__ROOT__` stands for this repository. Add a check with every feature and every bug fix (reproduce the bug first, then
   show the same check passing), a pure one where it can be (a decision taken out into `shared/`): a fix without a
   reproduction is a guess.
-- **How long checks may take (Diego, 2026-10-04, for the Jauvex Personal Development Agent and every agent here: "they don't need to
-  test the whole software every time they develop a feature. It's only before deploying or releasing a version"):** while building
+- **How long checks may take (every agent here: the whole software is not tested for every feature, only before a release):** while building
   a feature or a fix, run only quick checks for what changed: `npm run typecheck` and that part's checks by name
   (`sh tests/run.sh <name>`, backend or window), or a quick look at it working. The full suite (`npm test`, `npm run check`), the
   full app check, packaging audits and other slow checks run once, right before a release is packaged. No new checks only to satisfy this.
@@ -165,10 +188,13 @@ debug panel.
   chat to another, the old chat's "off" lands after the new chat's "on"; one flag muted the new one. Leftover whisper-servers
   on the app's ports are stopped by pid at start (`stopLeftovers`), only this install's (its model is in its own
   `models/`): the other edition, started next to this one on the same ports, once stopped both of this one's servers (2026-09-24).
+  Another install's is stopped only when no copy runs it any more (`orphanedAppServer`: its vocabulary holds the app's own words and launchd
+  or systemd took it over). Every way the app leaves goes through `exitApp` in `main.ts`, which stops what the app started: `app.exit` skips
+  before-quit, where that was done, and a restart left its Whisper servers on the ports.
 - whisper-server that cannot start (a model it cannot load, a port that is taken) prints its error, returns, and then fails a ggml
   Metal assertion on the way out, printing a backtrace: the end of its output is only that backtrace. Read the lines before
-  `GGML_ASSERT` (`whisperFailure` in `voice.ts`), and stop waiting when its process ends (`waitForServer`): on 2026-09-24, on a new
-  Mac, the app showed "exited (null). 9 dyld ... start + 6124" after waiting out a whole minute, for a small model an interrupted
+  `GGML_ASSERT` (`whisperFailure` in `voice.ts`), and stop waiting when its process ends (`waitForServer`): the app once
+  showed "exited (null). 9 dyld ... start + 6124" after waiting out a whole minute, for a small model an interrupted
   download had left incomplete (start.sh took any file of that name for done; `scripts/models.sh` checks sizes and SHA-256 now).
 - Colours (T-248): use the theme's tokens (`var(--bg)`, `var(--fg)`, `var(--line)`, `var(--accent)`...). A colour written as a literal in a
   rule is named in the block at the end of `web/src/styles.css` (`--k-<hex>`, its dark value and its light counterpart); a new literal
@@ -198,8 +224,10 @@ debug panel.
   the 4400s or the 9400s** (the window 9451, Whisper 4451 and 4452, the voice checks 4471 and 4472, whisper-cannot-start 4473: the quick checks run all at once, and it once met wake-check's
   Whisper on 4471); the other edition's checks keep to
   4331 to 4373 and 9333 to 9382, and run on the same Mac: on 2026-09-30 both used 4351 and 4352 and broke each other's runs. A new check
-  takes its ports in this range. The fixture's sessions are found by the scratch
-  folder's real path: a new, empty scratch folder in its place failed eight checks that open one. A run record's own result is the
+  takes its ports in this range. The fixture's sessions are on disk only on the machine that made it (a provider files a session by the
+  folder's real path): in a new clone, ten checks that opened one failed (2026-10-23). A check that opens a session makes its own on the
+  stand-ins (`ownAgents` and `rowOf` in `tests/window/lib.ts`, with the stand-ins in its `// env:` line); one that needs a real provider
+  opens a new chat (no turn). A run record's own result is the
   `result:` line of its header; `/^result: done/m` also matches a step's line.
 - The app's own agent lives in `~/.jauvex` (`JAUVEX_HOME`, `CVC_JAUVEX_HOME` in the checks: `run.sh` gives each check its own
   home, never the user's). Never make an agent's home depend on where
@@ -222,6 +250,9 @@ debug panel.
   spoken voice there is Kokoro (`kokoro/`, its own package and lockfile, Linux only; `KOKORO` in `voice.ts`, `tests/kokoro-speech.test.ts`;
   `CVC_TTS=kokoro` picks it on a Mac). Find the app there by `node_modules/electron/dist/electron`, not `Electron.app`; `scripts/restart.sh`
   uses setsid instead of launchd.
+- Arch and Omarchy (2026-10-11): `scripts/install-arch.sh` (pacman, whisper.cpp built into `~/.local/bin`, a launcher entry); `start.sh` skips the
+  sudo for Electron's sandbox where `unshare -Ur` works (Arch), keeps it where it fails (Ubuntu 24.04+). `sh tests/arch/check.sh` checks it in a
+  podman Arch container on a headless weston; it is not part of `npm test`.
 - Windows (T-283, from source): a fresh Windows 11 has no Visual C++ runtime, and Electron's install step failed with "Cannot find native
   binding" (its zip extractor's native module needs `vcruntime140.dll`); PATH's folders are split by ";" and a program is `name.exe`
   (`findOnPath` in `voice.ts` takes both); there is no `lsof` or `ps` (`netstatListeners`, CIM for a command line), and netstat's state word

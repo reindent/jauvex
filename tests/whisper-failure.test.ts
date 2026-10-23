@@ -1,19 +1,19 @@
 import path from 'node:path';
 process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR ??= path.resolve('tmp/testdata');
-// whisperFailure: why whisper-server stopped, from what it printed, never the crash backtrace it prints on the way out (2026-09-24: the app
-// said only "whisper-server exited (null). 9 dyld ... start + 6124" for a model an interrupted download had left incomplete).
+// whisperFailure: why whisper-server stopped, from what it printed, never the crash backtrace it prints on the way out (once the app said
+// only "whisper-server exited (null). 9 dyld ... start + 4096" for a model an interrupted download had left incomplete).
 const { whisperFailure } = await import('../electron/voice.ts');
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };
-const backtrace = `/private/tmp/ggml-20260626-5236-zw8xfu/ggml-0.15.3/src/ggml-metal/ggml-metal-device.m:622: GGML_ASSERT([rsets->data count] == 0) failed
+const backtrace = `/private/tmp/ggml-20260101-1000-abc123/ggml-0.15.3/src/ggml-metal/ggml-metal-device.m:600: GGML_ASSERT([rsets->data count] == 0) failed
 WARNING: Using native backtrace. Set GGML_BACKTRACE_LLDB for more info.
-0   libggml-base.0.15.3.dylib           0x000000010495d818 ggml_print_backtrace + 276
-1   libggml-base.0.15.3.dylib           0x000000010499ef3c ggml_abort + 156
-9   dyld                                0x000000019093acac _ZNK5dyld423LibSystemHelpersWrapper4exitEi + 172
-10  dyld                                0x000000019093abc8 start + 6124
+0   libggml-base.0.15.3.dylib           0x0000000101000100 ggml_print_backtrace + 200
+1   libggml-base.0.15.3.dylib           0x0000000101000200 ggml_abort + 100
+9   dyld                                0x0000000190000300 _ZNK5dyld423LibSystemHelpersWrapper4exitEi + 120
+10  dyld                                0x0000000190000400 start + 4096
 `;
 const loading = `whisper_init_from_file_with_params_no_state: loading model from '/Applications/Jauvex.app/Contents/Resources/app/models/ggml-small-q5_1.bin'
 whisper_model_load: model size    =   60.81 MB
-whisper_model_load: ERROR not all tensors loaded from model file - expected 479, got 80
+whisper_model_load: ERROR not all tensors loaded from model file - expected 479, got 112
 whisper_init_with_params_no_state: failed to load model
 error: failed to initialize whisper context
 `;

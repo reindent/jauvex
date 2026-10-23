@@ -1,7 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment } from 'react';
 import { pickTranscript, suspicious, wordsOf } from '../../shared/transcript';
 import { failureText } from '../../shared/failure';
 import { customThemeNote, readPalette } from '../../shared/palette';
+import { quoteParts } from '../../shared/quote';
+import { personReplies } from '../../shared/needs';
+import { needsClick, needsInput, needsKey, restoreHeld } from './needsAnswer';
+import { quote } from './chatTools';
 import { dashboardNote, parseDashboard, type DashboardFile } from '../../shared/dashboard';
 import { Dashboard, type DashboardProps, type DashEvent, type DashNeed, type DashWorker } from './Dashboard';
 import { keep } from '../../shared/agent-log';
@@ -17,12 +21,13 @@ import typesafeMark from '../../assets/typesafe.png'; // TypeSafe's mark, on Jev
 import { Glasses, Copy, EyeOff as HideIcon, Pencil, Bug, Logs, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, Paperclip, Settings, MessageSquareWarning, Move, Keyboard, ChevronRight, Eye, FolderPlus, Folder, FolderOpen, Laptop, Mic, PanelLeft, Plus, RotateCw, Search, SlidersHorizontal, Settings2, Square, SquarePen, Trash2, MicOff, Volume2, VolumeX, AudioLines, Wrench, Brain, X, Check, ShieldQuestion } from 'lucide-react';
 import { localSrc, md } from './md';
 import { Pane, type PaneTarget } from './Pane';
-import { findAgents, findFolderIn, matchSession, shortIds, shortTitle } from '../../shared/roster';
+import { exactAgents, findAgents, findFolderIn, matchSession, shortIds, shortTitle } from '../../shared/roster';
 import { FEEDBACK_TYPES, type FeedbackType } from '../../shared/feedback';
+import { wireChatTools, QUOTE_EVENT } from './chatTools';
 import { checkLine, justUpdated, offersUpdate, shouldAsk, updatedNote, updateNote, type CheckedStatus, type UpdateStatus } from '../../shared/update';
 import { changelogSince, recentNotes } from '../../shared/changelog';
 import { answerIs, stopSaysMore } from '../../shared/orders';
-import { ACK_MODEL_KEY, DICTATED_TAG, JAUVEX_HELLO, settledVoice, PAUSE_MAX_MS, feedbackHello, feedbackOnError, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
+import { ACK_MODEL_KEY, orderMaySetProviderPermissions, DICTATED_TAG, JAUVEX_HELLO, settledVoice, PAUSE_MAX_MS, feedbackHello, feedbackOnError, SIGN_IN_IN_APP, type AgentRequestEvent, type JauvexEntry, type UiState, type AgentCommand, type AgentResult, type Attachment, PROVIDERS, PROVIDER_LABEL, VOICE_DEFAULTS, kickoffMessage, type CommandDetails, providerOf, type VoiceCommand, type AppCommand, type Block, type BusyTriage, type DebugEvent, type ChatEvent, type ChatMessage, type ModelOption, type PermissionDecision, type Project, type Permissions, type Provider, type SessionInfo, type SessionPrefs, type VoiceSettings, type VoiceStatus } from '../../shared/types';
 import { ago, api, pickFolder, size } from './api';
 import { VoiceEngine, clean, type VoicePhase } from './voice';
 import { Orb } from './Orb';
@@ -30,9 +35,10 @@ import { JevPad } from './JevPad';
 import { BoardView } from './BoardView';
 import { WorkflowView, type RunControl, type StepAgents, type EmbeddedMail } from './WorkflowView';
 import { Runner } from './runner';
-import { parseWorkflow, parseRun, formatRun, stamp, parseTrigger, isDue, windowDue, firesAfter, stepTitle, workflowBase, SCHEDULE_TICK_MS, DEFAULT_TRIES, missedSlot, missedBy, missedNote, MISSED_DEFAULT, MISSED_OPTIONS, type MissedPolicy, type Run, type WorkflowInfo, realSteps } from '../../shared/workflow';
+import { withoutOutcome, parseWorkflow, parseRun, formatRun, stamp, parseTrigger, isDue, windowDue, firesAfter, stepTitle, workflowBase, SCHEDULE_TICK_MS, DEFAULT_TRIES, missedSlot, missedBy, missedNote, MISSED_DEFAULT, MISSED_OPTIONS, type MissedPolicy, type Run, type WorkflowInfo, realSteps } from '../../shared/workflow';
 import { doneFileOf, type BoardInfo } from '../../shared/board';
-import { closesWaitingStep, ownTurn, replyBack, waitsFor, noResponse } from '../../shared/delivery';
+import { agentBlocks, closesWaitingStep, ownTurn, replyBack, noResponse, unanswered, needsYouIn, withoutNeedsYou } from '../../shared/delivery';
+const hasNeedsYou = (m: ChatMessage): boolean => m.blocks.some((b) => b.type === 'text' && needsYouIn(b.text));
 import { foldAgents, type ThreadUnit, threadUnits, toolImage, type WorkPart } from '../../shared/thread';
 import { applyTheme, themeOf, type Theme } from './theme';
 import { badgeText, counted, seen, countOf, unreadFrom, type Unread } from '../../shared/unread';
@@ -53,7 +59,7 @@ type Spoken = { text: string; audio: ArrayBuffer | null };
 const STOP_WORD = /\b(stop|cancel|abort|halt)\b/i;
 /** The first sentences of an answer, up to about 260 characters: what gets said when the voice model has nothing in time. */
 const opening = (plain: string): string => { const parts = plain.match(/[^.!?]+[.!?]+/g) ?? [plain]; let out = ''; for (const s of parts) { if (out && (out + s).length > 260) break; out += s; } return (out || plain).slice(0, 320).trim(); };
-const CONTEXT_TAG = /<jev-agent-context>[\s\S]*?<\/jev-agent-context>\s*|<workflow-context>[\s\S]*?<\/workflow-context>\s*|<board-context>[\s\S]*?<\/board-context>\s*|^\[voice transcript\] /g; // what the app sends along with the user's words (a Jev agent's trainer context, the dictation tag): never shown
+const CONTEXT_TAG = /<jev-agent-context>[\s\S]*?<\/jev-agent-context>\s*|<workflow-context>[\s\S]*?<\/workflow-context>\s*|<board-context>[\s\S]*?<\/board-context>\s*|\s*<app-rules-update>[\s\S]*?<\/app-rules-update>\s*|^\[voice transcript\] /g; // what the app sends along with the user's words (a Jev agent's trainer context, the dictation tag): never shown
 /** The Jauvex agent's chat, which the app keeps its own copy of, shows this many of its latest messages, and as many more at each "Load earlier" (T-272). */
 const COPY_PAGE = 150;
 const textOf = (m: ChatMessage): string => m.blocks.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' ').replace(CONTEXT_TAG, '').replace(/\s+/g, ' ').trim();
@@ -84,15 +90,18 @@ export function Mark({ busy = false }: { busy?: boolean }) {
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1).replace(/\s+\S*$/, '')}…` : s);
 export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
+  useEffect(() => wireChatTools(), []); // copy buttons, the yellow box's quote, the thread's right-click menu (chatTools.ts)
   const [autoCompact, setAutoCompact] = useState(AUTO_COMPACT_DEFAULT); // compact an agent's conversation when its context is this full (T-74); every open chat is told
   const changeAutoCompact = (pct: number) => { setAutoCompact(pct); void api.setUi({ autoCompact: pct }); window.dispatchEvent(new CustomEvent('cvc-auto-compact', { detail: pct })); };
   // Who is signed in: only a signed-in provider can be chosen for a new session, a move or the default (checked at start and after every sign-in or sign-out).
-  const [signedIn, setSignedIn] = useState<Record<Provider, boolean>>({ claude: true, codex: true, grok: true });
+  const [signedIn, setSignedIn] = useState<Record<Provider, boolean>>({ claude: true, codex: true, grok: true, open: false });
   useEffect(() => { const check = () => void Promise.all(PROVIDERS.map((p) => window.desktop.accountStatus(p).then((st) => [p, st.signedIn] as const).catch(() => [p, true] as const))).then((all) => setSignedIn(Object.fromEntries(all) as Record<Provider, boolean>)); check(); return window.desktop.onAccountEvent((e) => { if (e.type === 'done') setTimeout(check, 500); }); }, []);
+  const [sideTab, setSideTabState] = useState<SideTab>(savedSideTab); const setSideTab = (k: SideTab) => { setSideTabState(k); try { localStorage.setItem('cvc.sideTab', k); } catch { /* not kept: the tab still switches */ } }; // the left panel's tab (as in Jauvex Pro)
+  const [sideQuery, setSideQuery] = useState(''); // the left panel's filter (as in Jauvex Pro)
   const [jauvex, setJauvex] = useState<Project | null>(null); const [jauvexSession, setJauvexSession] = useState<string | null>(null); const [jauvexProvider, setJauvexProvider] = useState<Provider | null>(null); const [jauvexMove, setJauvexMove] = useState<'unified' | 'handoff'>('unified'); const [showJauvex, setShowJauvex] = useState(true); const [defaultProvider, setDefaultProvider] = useState<Provider | null>(null); // the Jauvex agent (the app's own folder as a project) and the default agent
   const [infos, setInfos] = useState<Record<string, SessionInfo[]>>({});
   const [sel, setSel] = useState<Sel | null>(null);
-  // New replies, per agent (T-226; the user, 2026-09-30: "Personal should have the badges"): a reply counts on its agent while that agent is not
+  // New replies, per agent (T-226): a reply counts on its agent while that agent is not
   // on screen, its row shows the count, and a moment on screen clears it (at start another chat is on screen for an instant before the one
   // restored). Kept on this computer: a reload or a restart keeps them.
   const [unread, setUnread] = useState<Unread>(() => { try { return unreadFrom(localStorage.getItem('cvc.unread')); } catch { return {}; } });
@@ -109,7 +118,7 @@ export default function App() {
   const [nameBox, setNameBox] = useState<{ title: string; hint?: string; placeholder?: string; then: (name: string | null) => void } | null>(null);
   const askName = (title: string, hint?: string, placeholder?: string) => new Promise<string | null>((then) => setNameBox({ title, hint, placeholder, then }));
   const [showMeta, setShowMeta] = useState(false); const [dev, setDev] = useState(false); // dev: developer mode (T-247), off by default
-  const [dashEnabled, setDashEnabled] = useState(true); // the dashboard on this computer (T-279: "An option to disable this dashboard ... maybe some people don't want it")
+  const [dashEnabled, setDashEnabled] = useState(true); // the dashboard on this computer, which can be switched off (T-279)
   const dashSet = (on: boolean) => { setDashEnabled(on); void api.setUi({ dashboard: on }); };
   const metaOn = dev && showMeta; // system events show in developer mode only, where their button is (T-259)
   const [error, setError] = useState<string | null>(null);
@@ -145,21 +154,31 @@ export default function App() {
   // Every action in the app, for an agent: a request file in data/commands (scripts/jauvex.ts) reaches this, the result goes back the same way.
   const findFolder = (ref?: string): Project | null => { if (!ref) return projects.find((p) => p.id === sel?.projectId && !p.builtin) ?? projects.find((p) => !p.builtin) ?? null; return findFolderIn(projects, ref); }; /* by name, the app's own folder last (T-254) */
   const findSession = (folder: Project | null, ref: string): { projectId: string; sessionId: string } | null => { const n = ref.trim().toLowerCase(); const pool = folder ? [folder] : projects; for (const p of pool) { const list = infos[p.id] ?? []; const hit = matchSession(list, ref); if (hit) return { projectId: p.id, sessionId: hit.sessionId }; const o = opened.find((x) => x.projectId === p.id && x.name?.toLowerCase() === n && x.sessionId); if (o?.sessionId) return { projectId: p.id, sessionId: o.sessionId }; } return null; };
-  const runAgentCommand = async (c: AgentCommand): Promise<AgentResult> => {
+  const runAgentCommand = async (c: AgentCommand & { byAgent?: boolean /* typed in an agent's shell */; agentSession?: string /* which agent, when its shell knows */ }): Promise<AgentResult> => {
+    // Who writes a kickoff or a message typed from a shell: a worker's kickoff written by its lead showed as the user's, and the new agent could
+    // take it as the user's words. An agent's is tagged as its messages are ("(from agent ..."), by its session when its shell says, else by the
+    // name it gives (--from); an agent that says neither is "another agent". Only what the user types stays theirs.
+    const authorPrefix = (o: { author?: string }): string => {
+      const tag = (name: string, sid?: string | null) => `(from agent "${name}"${sid ? ` [${idOf(sid)}]` : ''}) `;
+      if (c.agentSession) { const a = roster().find((x) => x.sessionId === c.agentSession); if (a) return tag(a.name, a.sessionId); }
+      const name = o.author?.replace(/[\u0000-\u001f()\[\]"]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) ?? '';
+      if (name) { const h = exactAgents(roster(), name); return h.length === 1 ? tag(h[0]!.name, h[0]!.sessionId) : tag(name); }
+      return c.byAgent ? tag(t('chat.anotherAgent')) : '';
+    };
     try {
       switch (c.type) {
         case 'list': return { ok: true, defaultProvider, folders: projects.filter((p) => !p.builtin).map((p) => ({ id: p.id, name: p.name, path: p.path, sessions: roster().filter((a) => a.projectId === p.id).map(({ sessionId, name, provider, busy }) => ({ id: sessionId, name, provider, busy })) })), jauvex: jauvex ? { id: jauvex.id, path: jauvex.path, session: jauvexSession } : null };
         case 'add-folder': { const p = await api.addProject(c.path); await refresh(); return { ok: true, folder: { id: p.id, name: p.name, path: p.path } }; }
         case 'pick-folder': { const dir = await pickFolder(); if (!dir) return { ok: false, error: 'the user chose no folder' }; const p = await api.addProject(dir); await refresh(); return { ok: true, folder: { id: p.id, name: p.name, path: p.path } }; }
         case 'new-agent': { const folder = findFolder(c.folder); if (!folder) return { ok: false, error: c.folder ? `no folder "${c.folder}"` : 'no folder yet: add-folder first' };
-          const provider = c.provider ?? jauvexProvider ?? defaultProvider ?? 'claude'; /* unnamed: the Jauvex agent's own provider, the creator's configuration */ const kickoff = c.kickoff?.trim() ? c.kickoff : kickoffMessage(folder.name, folder.path, c.name, c.purpose); /* always a first message: an agent exists once it has had one, and an empty chat vanished (2026-09-24) */
+          const provider = c.provider ?? jauvexProvider ?? defaultProvider ?? 'claude'; /* unnamed: the Jauvex agent's own provider, the creator's configuration */ const kickoff = c.kickoff?.trim() ? `${authorPrefix(c)}${c.kickoff}` : kickoffMessage(folder.name, folder.path, c.name, c.purpose); /* always a first message: an agent exists once it has had one, and an empty chat vanished (2026-09-24) */
           if (provider === 'jev') { await newJev(folder.id, undefined, c.name); return { ok: true, folder: folder.name, provider }; }
           // the provider asked for, as it is now: the window looks at sign-ins once, at start, and a provider slow to answer there stayed "signed out"
           // for the whole run; every agent ordered of it after that silently became one of another provider (T-229, from the other edition)
           const st = await window.desktop.accountStatus(provider).catch(() => null); if (st && !st.signedIn) return { ok: false, error: `${PROVIDER_LABEL[provider]} is not signed in on this computer: no agent was made. Sign in (${provider === 'claude' ? 'claude auth login' : provider === 'codex' ? 'codex login' : 'grok login'}), then order it again.` };
           if (st) setSignedIn((s) => (s[provider] ? s : { ...s, [provider]: true }));
           localStorage.setItem('cvc.provider', provider); const key = `${folder.id}:new:${Date.now()}`; open({ projectId: folder.id, sessionId: null, key, provider, ...(c.name ? { name: c.name } : {}), ...(c.purpose ? { purpose: c.purpose } : {}), kickoff }); return { ok: true, folder: folder.name, provider, key, started: true }; }
-        case 'import': { // a folder's existing sessions into its sidebar, as its search button does, without taking the screen (the user, 2026-09-26: an agent asked to import sessions had only `open`, and opened them over the chat he was in)
+        case 'import': { // a folder's existing sessions into its sidebar, as its search button does, without taking the screen (T-150: an agent asked to import sessions had only `open`, and opened them over the chat on screen)
           const folder = findFolder(c.folder); if (!folder || folder.builtin) return { ok: false, error: c.folder ? `no folder "${c.folder}"` : 'which folder? --folder <name|path|id>' };
           const [all, st] = await Promise.all([api.sessions(folder.id), api.state()]); const listed = st.projects.find((x) => x.id === folder.id)?.sessions ?? folder.sessions; /* the saved list, not this window's copy */ const title = (x: SessionInfo) => x.customTitle || shortTitle(x.summary) || x.sessionId.slice(0, 8);
           if (!c.sessions?.length) { const out = all.filter((x) => !listed.includes(x.sessionId)); const max = Math.max(1, Math.min(500, c.last ?? 50)); return { ok: true, folder: folder.name, importable: out.slice(0, max).map((x) => ({ id: x.sessionId, title: title(x), provider: x.provider, modified: new Date(x.lastModified).toISOString().slice(0, 16) })), ...(out.length > max ? { more: out.length - max } : {}) }; }
@@ -206,17 +225,19 @@ export default function App() {
           await attachRun(folder, wf.file); const r = runners.current.get(runKey(folder, wf.file)); if (!r) return { ok: false, error: `${wf.name} has no live run` }; await resendRun(folder, wf.file); return { ok: true, workflow: wf.name, resent: r.current }; }
         case 'open': { if (!c.session) { if (!jauvex) return { ok: false, error: 'no Jauvex agent' }; const key = `${jauvex.id}:jauvex`; open({ projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' }); return { ok: true, opened: 'Jauvex' }; }
           const hit = findSession(c.folder ? findFolder(c.folder) : null, c.session) /* no folder named: every folder */; if (!hit) return { ok: false, error: `no session "${c.session}"` };
-          // an opened session goes in its folder's list too: shown only as an open chat, it dropped out when other chats took the eight places (the user, 2026-09-26: seven sessions an agent opened, gone a few at a time)
+          // an opened session goes in its folder's list too: shown only as an open chat, it dropped out when other chats took the eight places (T-152: sessions an agent opened went a few at a time)
           const saved = (await api.state()).projects.find((x) => x.id === hit.projectId); const add = !!saved && !saved.builtin && !saved.sessions.includes(hit.sessionId);
           if (add) { const pv = infos[hit.projectId]?.find((x) => x.sessionId === hit.sessionId)?.provider; await api.setSessions(hit.projectId, [...saved.sessions, hit.sessionId], pv ? { [hit.sessionId]: pv } : {}); await refresh(); }
           open({ projectId: hit.projectId, sessionId: hit.sessionId, key: `${hit.projectId}:${hit.sessionId}` });
           return { ok: true, opened: hit.sessionId, ...(add ? { listed: `now in ${saved.name}'s sidebar; to bring sessions in without taking the user's screen, use import --folder "${saved.name}" <session id|title> ...` } : {}) }; }
-        case 'send': { const hit = findSession(c.folder ? findFolder(c.folder) : null, c.session) /* no folder named: every folder */; if (!hit) return { ok: false, error: `no session "${c.session}"` }; const ok = await deliverTo(hit.projectId, hit.sessionId, c.text); return ok ? { ok: true, sent: hit.sessionId } : { ok: false, error: 'the session could not take the message' }; }
+        case 'send': { const hit = findSession(c.folder ? findFolder(c.folder) : null, c.session) /* no folder named: every folder */; if (!hit) return { ok: false, error: `no session "${c.session}"` }; const ok = await deliverTo(hit.projectId, hit.sessionId, `${authorPrefix(c)}${c.text}` /* a shell's says who writes */); return ok ? { ok: true, sent: hit.sessionId } : { ok: false, error: 'the session could not take the message' }; }
         case 'rename': { const hit = findSession(c.folder ? findFolder(c.folder) : null, c.session) /* no folder named: every folder */; if (!hit) return { ok: false, error: `no session "${c.session}"` }; await api.rename(hit.projectId, hit.sessionId, c.title); await refresh(); return { ok: true }; }
         case 'settings': { const ui: Partial<UiState> = {};
           if (c.permissionProvider || c.permissionMode) { // one provider's permissions for every session (Settings › Safety), or back to each session's own
             if (!PROVIDERS.includes(c.permissionProvider!) || !['ask', 'auto', 'yolo', 'session'].includes(c.permissionMode!)) return { ok: false, error: '--permission-provider claude|codex|grok --permission-mode ask|auto|yolo|session' };
             const modes = { ...(await api.state()).ui?.providerPermissions };
+            // an order only lowers what agents may do; raising it is the user's, in the window (agents run these orders)
+            if (!orderMaySetProviderPermissions(modes[c.permissionProvider!], c.permissionMode === 'session' ? undefined : (c.permissionMode as Permissions))) return { ok: false, error: `Raising what ${PROVIDER_LABEL[c.permissionProvider!]} agents may do is the user's choice, in the window (Settings, Safety): an order only lowers it. Ask the user if it is needed.` };
             if (c.permissionMode === 'session') delete modes[c.permissionProvider!]; else modes[c.permissionProvider!] = c.permissionMode as Permissions;
             await api.setUi({ providerPermissions: modes }); window.dispatchEvent(new CustomEvent('provider-permissions', { detail: modes }));
             return { ok: true, providerPermissions: modes };
@@ -227,21 +248,21 @@ export default function App() {
           if (!Object.keys(ui).length) { const cur = (await api.state()).ui; return { ok: true, workflowMissed: cur?.workflowMissed ?? MISSED_DEFAULT }; }
           await api.setUi(ui); return { ok: true, ...ui }; }
         case 'wait': { // FB-09: a lead woken when the agents it waits for have finished a turn
-          const one = (n: string) => { const h = findAgents(roster(), n.trim()); return h.length === 1 && h[0]!.sessionId ? h[0]! : null; };
-          const lead = c.agent ? one(c.agent) : null; if (!lead) return { ok: false, error: 'wait --agent "<your name, as in list>" --for "<agent>, <agent>"' };
+          const one = (n: string) => { const h = exactAgents(roster(), n.trim()); return h.length === 1 && h[0]!.sessionId ? h[0]! : null; }; // FB-122: the exact name or id, never a near one
+          const lead = c.agent ? one(c.agent) : null; if (!lead) return { ok: false, error: `${c.agent ? `no agent here is named exactly "${c.agent}"` : 'whose wait is it'}: wait --agent "<your name, exactly as in list, or your [id]>" --for "<agent>, <agent>"` };
           if (c.off) { const n = waits.current.length; waits.current = waits.current.filter((w) => w.lead.sessionId !== lead.sessionId); saveWaits(); return { ok: true, stopped: n - waits.current.length }; }
           const names = (c.for ?? '').split(',').map((x) => x.trim()).filter(Boolean); if (!names.length) return { ok: false, error: '--for "<agent>, <agent>": whom you wait for' };
-          const left = new Map<string, string>(); for (const n of names) { const a = one(n); if (!a) return { ok: false, error: `no single agent named "${n}"` }; if (a.sessionId === lead.sessionId) return { ok: false, error: 'you cannot wait for yourself' }; left.set(a.sessionId!, a.name); }
+          const left = new Map<string, string>(); for (const n of names) { const a = one(n); if (!a) return { ok: false, error: `no agent here is named exactly "${n}" (its name as in list, or its [id])` }; if (a.sessionId === lead.sessionId) return { ok: false, error: 'you cannot wait for yourself' }; left.set(a.sessionId!, a.name); }
           startWait({ projectId: lead.projectId, sessionId: lead.sessionId!, name: lead.name }, left, 'the wait order');
           return { ok: true, waiting: [...left.values()], note: 'End your turn now: the app wakes you with their last answers once every one of them has finished a turn.' }; }
-        case 'feedback': { // a person's report to Reindent, gathered by the Jauvex agent (Diego, 2026-10-04); preview: what would be attached, for them to see first
+        case 'feedback': { // a person's report to Reindent, gathered by the Jauvex agent; preview: what would be attached, for them to see first
           if (c.preview) { const p = await window.desktop.feedbackPreview({ screenshot: !!c.screenshot, log: !!c.log }); return { ok: true, ...(p.screenshotFile ? { screenshot: p.screenshotFile } : {}), ...(c.log ? { log: p.log ?? '' } : {}) }; }
           const kind = (FEEDBACK_TYPES as readonly string[]).includes(c.kind ?? '') ? (c.kind as FeedbackType) : null; if (!kind) return { ok: false, error: `--type is one of ${FEEDBACK_TYPES.join(', ')}` };
           const r = await window.desktop.feedbackSend({ type: kind, title: c.title ?? '', description: c.description ?? '', contact: c.contact ?? '', screenshot: !!c.screenshot, log: !!c.log });
           return r.ok ? { ok: true, id: r.id } : { ok: false, error: r.error === 'too-many' ? 'too many sent from here in the last hour: try later' : r.error === 'offline' ? "Reindent's server could not be reached" : `not sent: ${r.error}` }; }
         case 'update': { // the app the install command made, to the latest version
           const s = await window.desktop.appUpdateStatus(); if (c.check) return { ok: true, ...s };
-          const busy = roster().filter((a) => a.busy && a.sessionId !== jauvexSession).map((a) => a.name); // the Jauvex agent's own turn ends with its order
+          const busy = roster().filter((a) => a.busy && a.sessionId !== jauvexSession && a.projectId !== jauvex?.id).map((a) => a.name); // the Jauvex agent's own turn ends with its order, whatever session its chat is on (by its session alone, a chat moved to a new one counted itself as working)
           if (busy.length && !c.now && s.installed && s.available) return { ok: false, error: `${busy.join(', ')} ${busy.length > 1 ? 'are' : 'is'} working, and the update would stop ${busy.length > 1 ? 'them' : 'it'}: update when they finish, or with --now on the user's word.`, busy };
           return await window.desktop.appUpdate(); }
         case 'theme': { // T-278: the app's colours; a palette of the user's own (the Jauvex agent's), or one of the app's themes
@@ -269,9 +290,7 @@ export default function App() {
   const paneKey = sel?.key ?? ''; const pane = panes[paneKey] ?? null;
   const setPane = (t: PaneTarget | null) => setPanes((all) => { const next = { ...all }; if (t) next[paneKey] = t; else delete next[paneKey]; return next; });
   const showPane = (title: string, node: React.ReactNode, key?: string) => setPane({ kind: 'view', title, node, key }); // a workflow's step, its runs, its versions
-  // The Jauvex agent's chat takes over the pane that was on screen when it has none of its own (the user, 2026-10-01: "Let's say you are on an
-  // agent chat and it opens the right [panel] ... If you go to Jauvex, the right panel closes for some reason. Keep interacting with the right
-  // panel through Jauvex"): you go on with what you were looking at, through the app's own agent. Every other session keeps its own pane.
+  // The Jauvex agent's chat takes over the pane that was on screen when it has none of its own (going to the Jauvex agent closed the right pane): you go on with what you were looking at, through the app's own agent. Every other session keeps its own pane.
   const shownPane = useRef<{ key: string; pane: PaneTarget | null }>({ key: '', pane: null });
   useEffect(() => { const before = shownPane.current;
     if (before.key !== paneKey && !pane && before.pane && jauvex && sel?.projectId === jauvex.id && !sel.kind) { const carried = before.pane; setPanes((all) => (all[paneKey] ? all : { ...all, [paneKey]: carried })); return; }
@@ -359,7 +378,7 @@ export default function App() {
   type Agent = { projectId: string; sessionId: string; id: string; name: string; provider: Provider; folder: string; busy: boolean };
   const roster = (): Agent[] => { const rows = projects.flatMap((p) => {
     const row = (sid: string, name?: string): Agent => { const i = infos[p.id]?.find((x) => x.sessionId === sid); const o = opened.find((x) => x.sessionId === sid); return { projectId: p.id, sessionId: sid, id: '', name: name || i?.customTitle || o?.name || shortTitle(i?.summary ?? '') || `Session ${sid.slice(0, 6)}`, provider: i?.provider ?? providerOf(p, sid), folder: p.name, busy: !!o && !!busy[o.key] }; };
-    if (p.builtin === 'jauvex') { // listed whether its chat is open or not, so any agent can reach it (the user, 2026-09-26: an agent that wanted to report a
+    if (p.builtin === 'jauvex') { // listed whether its chat is open or not, so any agent can reach it (T-151: an agent that wanted to report a
       // bug to it found three "Jauvex …" agents and not it); with no session yet, its folder's id stands in until its first turn makes one
       const o = opened.find((x) => x.projectId === p.id && !x.kind && (x.key === `${p.id}:jauvex` || (!!jauvexSession && x.sessionId === jauvexSession))); /* under whatever key (T-262) */ return [{ ...row(o?.sessionId ?? jauvexSession ?? p.id, 'Jauvex'), provider: jauvexProvider ?? defaultProvider ?? 'claude', busy: !!o && !!busy[o.key] }]; }
     const ids = new Set([...p.sessions, ...opened.filter((o) => o.projectId === p.id && o.sessionId && o.kind !== 'jev').map((o) => o.sessionId!)]);
@@ -376,13 +395,15 @@ export default function App() {
    *  was on screen again by its session). Looked for by its key alone, a message after an update opened a second, hidden chat of the same
    *  session, which took the turn: the one on screen said "active moments ago, possibly in another window" and never showed it. */
   const jauvexOpen = (): Sel | undefined => (jauvex ? openedRef.current.find((x) => x.projectId === jauvex.id && !x.kind && (x.key === `${jauvex.id}:jauvex` || (!!jauvexSession && x.sessionId === jauvexSession))) : undefined);
-  // The feedback icon (Diego, 2026-10-04): the Jauvex agent takes the report, by voice or text, and sends it with the feedback order
-  const feedbackAt = useRef(0); // a second click while one is starting or open only brings it forward (Diego, 2026-10-05)
+  // The feedback icon: the Jauvex agent takes the report, by voice or text, and sends it with the feedback order
+  const feedbackAt = useRef(0); // a second click while one is starting or open only brings it forward
   const openFeedback = (error?: string) => { if (!jauvex) return; const again = !error && Date.now() - feedbackAt.current < 10 * 60_000; if (!error) feedbackAt.current = Date.now();
     const hello = error ? feedbackOnError(error) : feedbackHello(t('feedback.opening'));
-    open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex', ...(jauvexSession || again ? {} : { kickoff: hello }) });
-    if (jauvexSession && !again) void reachJauvex(hello); }; // already asked: just its chat, brought forward
-  // FB-09 (as Jauvex Pro; a Pro user, 2026-10-05: a lead says it will wait for other agents, its turn ends, and nothing wakes it): `wait --agent
+    open({ projectId: jauvex.id, sessionId: jauvexSession, key: jauvexOpen()?.key ?? `${jauvex.id}:jauvex`, name: 'Jauvex' });
+    // the message goes the way every other one to the Jauvex agent goes (reachJauvex: its chat under whatever key it is open, a session or none):
+    // a kickoff was lost when its chat was already open without a session; already asked: just its chat, brought forward
+    if (!again) void reachJauvex(hello); };
+  // FB-09 (as Jauvex Pro: a lead says it will wait for other agents, its turn ends, and nothing wakes it): `wait --agent
   // <lead> --for "A, B"`, or a lead's reply that says it waits for working agents. Each turn the agents waited for finish is noted with its last
   // words; when all have, the lead gets one message with them. The waits are kept in this window's storage, so a reload keeps them.
   const waits = useRef<{ lead: { projectId: string; sessionId: string; name: string }; left: Map<string, string>; got: { name: string; text: string }[] }[]>([]);
@@ -411,7 +432,7 @@ export default function App() {
   useEffect(() => { if (!update?.latest || !jauvex || offering.current === update.latest) return; const u = update; offering.current = u.latest!;
     void (async () => { if (!shouldAsk(u, (await api.state()).ui?.updateAsked)) return;
       if (await reachJauvexRef.current(updateNote(u.current, u.latest!, u.notes))) await api.setUi({ updateAsked: u.latest }); else offering.current = ''; })(); }, [update, jauvex]);
-  // Opened on a new version (T-218; the user, 2026-09-30: "the app should notify what the change log is about"): the Jauvex agent says so, and
+  // Opened on a new version (T-218): the Jauvex agent says so, and
   // what it brings from the app's own changelog, then checks the app, in its chat, once per version.
   const greeted = useRef('');
   useEffect(() => { const u = update; if (!u || !jauvex || greeted.current === u.current) return; greeted.current = u.current;
@@ -419,13 +440,13 @@ export default function App() {
       if (up) { const notes = changelogSince(await api.changelog().catch(() => ''), up.from, u.current); open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex' });
         if (!(await reachJauvexRef.current(updatedNote(up.from, u.current, notes)))) { greeted.current = ''; return; } }
       if (ui?.lastVersion !== u.current) await api.setUi({ lastVersion: u.current }); })(); }, [update, jauvex]); // eslint-disable-line react-hooks/exhaustive-deps
-  // What's new (T-245; the user, 2026-09-30: "when you click what's new, it should check if there's a new version"): a click asks the site right
+  // What's new (T-245): a click asks the site right
   // then. A newer version out, on the copy that updates itself: the Jauvex agent says what it brings and asks, in its chat, as the update notice
   // does. Otherwise the notes of the newest releases, from this copy's own CHANGELOG.md, under a line that says what the check found. The notes
   // open at once, "checking" on top, so a slow or absent network never leaves the click unanswered (as Pro's c827f78 does); the notice of a
   // version already known skips them.
-  // Custom colours (T-278; the user, 2026-10-01: "when you do custom ... You're going to talk with the Jauvex agent ... it will give you three
-  // ideas ... of colors"): Settings close, the Jauvex agent's chat opens, and it is told, with the palette on now, to ask and propose.
+  // Custom colours (T-278: custom colours settled with the Jauvex agent, from a few ideas it
+  // proposes): Settings close, the Jauvex agent's chat opens, and it is told, with the palette on now, to ask and propose.
   const customTheme = async () => { setSettingsOpen(false); if (!jauvex) return; open({ projectId: jauvex.id, sessionId: jauvexSession, key: `${jauvex.id}:jauvex`, name: 'Jauvex' });
     const ui = (await api.state()).ui; await reachJauvexRef.current(customThemeNote(ui?.customTheme ?? null)); };
 const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>(null); const [checking, setChecking] = useState(false);
@@ -457,15 +478,15 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
     if (new RegExp(`\\x60\\x60\\x60(?:message-agent|to-agent)[ \\t]+"?(?:${nameOf(to).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|\\[?${to.sessionId.slice(0, 6)}[0-9a-f]*\\]?)`, 'i').test(reply)) return; // they wrote to them explicitly: that block is delivered by the router, not twice
     // Blocks addressed to other agents (and roster requests) are the router's: they reached their addressee. The reply that goes back to
     // the sender leaves them out and names who else was written to; otherwise a request meant for a third agent read as one for the sender.
-    const others = [...reply.matchAll(/```(?:message-agent|to-agent)[ \t]+"?([^\n"`]+?)"?[ \t]*\n[\s\S]*?```/g)].map((m) => m[1]!.trim());
-    const text = reply.replace(/```(?:message-agent|to-agent)[ \t]+[^\n]*\n[\s\S]*?```/g, '').replace(/```\s*list-agents\s*```/g, '').replace(/\n{3,}/g, '\n\n').trim();
+    const others = agentBlocks(reply).map((b) => b.to); // each read to its own closing fence: a code block inside one no longer cuts it (T-325)
+    const text = withoutNeedsYou(replyBack(reply).replace(/```\s*list-agents\s*```/g, '')).replace(/\n{3,}/g, '\n\n').trim(); // a needs-you block is the user's: it stays in their chat
     if (!text) { window.desktop.debugPush('note', `agent reply: "${me}" wrote only to ${others.map((o) => `"${o}"`).join(', ') || 'nobody'}: nothing goes back to "${nameOf(to)}"`); return; }
     const now = Date.now(); relays.current = relays.current.filter((t) => now - t < 600_000); if (relays.current.length >= 30) return; relays.current.push(now);
     window.desktop.debugPush('note', `agent reply: "${me}" -> "${nameOf(to)}": ${text.slice(0, 120)}${others.length ? ` (its message to ${others.join(', ')} left out)` : ''}`);
     await deliverTo(to.projectId, to.sessionId, `(from agent "${me}" [${idOf(from.sessionId)}]) ${text}${others.length ? `\n\n(It also wrote to ${others.map((o) => `"${o}"`).join(', ')}; that message went to them, not to you.)` : ''}`);
   };
   const routeAgentBlocks = async (from: Sel, reply: string) => {
-    const blocks = [...reply.matchAll(/```(?:message-agent|to-agent)[ \t]+"?([^\n"`]+?)"?[ \t]*\n([\s\S]*?)```/g)].map((m) => ({ to: m[1]!.trim(), text: m[2]!.trim() })).filter((b) => b.text);
+    const blocks = agentBlocks(reply).map((b) => ({ to: b.to, text: b.text })).filter((b) => b.text);
     const wantsList = /```\s*list-agents\s*```/.test(reply); if (!blocks.length && !wantsList) return;
     window.desktop.debugPush('note', `agent router: ${blocks.length} message block(s)${wantsList ? ' and a roster request' : ''} in a reply from "${nameOf(from)}"`);
     const answer = async (text: string) => { if (!from.sessionId) return; await deliverTo(from.projectId, from.sessionId, `(from the app) ${text}`); };
@@ -547,8 +568,7 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
   const go = (d: -1 | 1) => { const i = cursor + d; const t = history[i]; if (t) { setCursor(i); open(t, false); } };
 
   // ---- workflows: the agents a step may be given, and the runs this window drives
-  /** The agents a workflow's step may be given (the user, 2026-09-27: "the agent selection should be the project agents ... the first ones
-   *  that should appear, and it should be differentiated"): this folder's first, then the app's own agent and the other folders' agents. */
+  /** The agents a workflow's step may be given: this folder's first, then the app's own agent and the other folders' agents. */
   const stepAgents = (p: Project): StepAgents => { const all = roster(); const byId = new Map(projects.map((x) => [x.id, x]));
     const pick = (a: Agent) => ({ name: a.name, provider: a.provider, folder: a.folder });
     const own = all.filter((a) => byId.get(a.projectId)?.builtin === 'jauvex').map((a) => ({ ...pick(a), folder: '' }));
@@ -570,7 +590,7 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
       onFinish: (result) => { runners.current.delete(key); void loadWorkflows(p); if (/^done/i.test(result)) void runAfter(p, def); } });
     r.root = p.path; runners.current.set(key, r); return r;
   };
-  /** Event triggers: a run that ends done starts the workflows of the same folder whose when line names it ("after News video"). */
+  /** Event triggers: a run that ends done starts the workflows of the same folder whose when line names it ("after Recipe letter"). */
   const runAfter = async (p: Project, def: { name: string; file?: string }) => { for (const w of (await api.workflows(p.id).catch(() => null)) ?? workflowsRef.current[p.id] ?? []) { /* the folder as it is now: one written since the window loaded its list counts too */ if (w.file === def.file || !firesAfter(parseTrigger(w.when), def)) continue; window.desktop.debugPush('note', `workflow "${w.name}" starts: "${def.name}" finished done`); await startRun(p, w.file, `"${def.name}" finishing`).catch((e: Error) => window.desktop.debugPush('note', `workflow "${w.name}" did not start after "${def.name}": ${e.message}`)); } };
   const startRun = async (p: Project, file: string, by?: string /* what started it when not a person: kept in its record */) => { if (runners.current.has(runKey(p, file))) throw new Error(t('app.run.errLive')); const { md, runs, prompts } = await api.workflow(p.id, file); if (!realSteps(parseWorkflow(md, file))) throw new Error(t('app.run.errNoSteps')); /* T-251 */ const live = runs.find((r) => /^running/i.test(r.result)); if (live) throw new Error(t('app.run.errStillRunning', { n: live.n })); const { n, file: rec, version } = await api.newRun(p.id, file); const r = makeRunner(p, file, md, prompts, parseRun(`# Run ${n}\nstarted: ${stamp()}\n${by ? `by: ${by}\n` : ''}result: running\n${version ? `version: ${version}\n` : ''}`, rec)); try { await r.start(); } finally { void loadWorkflows(p); } };
   /** A live run with nobody driving it (the window reloaded, the app restarted): taken over as it stands, nothing re-sent. */
@@ -580,7 +600,7 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
   useEffect(() => { for (const p of projects) for (const w of workflows[p.id] ?? []) if (/^running/i.test(w.latest?.result ?? '') && !runners.current.has(runKey(p, w.file))) void attachRun(p, w.file); }, [workflows, projects]); // eslint-disable-line react-hooks/exhaustive-deps
   const stopRun = async (p: Project, file: string) => { const key = runKey(p, file); const r = runners.current.get(key); if (r) { await r.stop(); runners.current.delete(key); void loadWorkflows(p); return; }
     const { md, runs } = await api.workflow(p.id, file); const live = runs.find((x) => /^running/i.test(x.result)); if (!live) return; live.result = 'stopped: by you (nobody was driving it)'; live.ended = stamp(); const cur = Object.keys(live.steps).map(Number).sort((a, b) => b - a).find((k) => live.steps[k]!.took == null); if (cur) live.steps[cur]!.result = 'stopped'; await api.saveRun(p.id, live.file, formatRun(live, parseWorkflow(md, file))); void loadWorkflows(p); };
-  // Deleting a workflow (the user, 2026-09-27: "I wanna be able to delete workflows and boards (with confirmation)"): from the row's
+  // Deleting a workflow, with a confirmation: from the row's
   // secondary-click menu, asked first in words that name what goes; a workflow that runs is stopped first, never deleted under its run.
   const workflowRuns = (p: Project, w: WorkflowInfo) => runners.current.has(runKey(p, w.file)) || /^running/i.test(w.latest?.result ?? '');
   const deleteWorkflowFile = async (p: Project, w: WorkflowInfo) => {
@@ -620,8 +640,7 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
     seen[p.id] = now.getTime(); }
     try { localStorage.setItem('cvc.scheduleLooked', JSON.stringify(seen)); } catch { /* not kept: the next start cannot tell what it missed */ }
     if (missed.length) await onMissed(missed).catch((e: Error) => window.desktop.debugPush('note', `missed workflows: ${e.message}`)); };
-  // A schedule missed while the app was closed (the user, 2026-09-29: "if a workflow was missed because the app was closed, it should at least
-  // be prompted"): the setting says to run it now, to have the Jauvex agent tell the user and ask (the default: in words, with a silent banner),
+  // A schedule missed while the app was closed: the setting says to run it now, to have the Jauvex agent tell the user and ask (the default: in words, with a silent banner),
   // or nothing. Only the latest missed slot of each workflow.
   const onMissed = async (missed: { p: Project; w: WorkflowInfo; slot: Date }[]) => {
     const policy: MissedPolicy = (await api.state()).ui?.workflowMissed ?? MISSED_DEFAULT; const hm = (d: Date) => d.toTimeString().slice(0, 5);
@@ -646,7 +665,7 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
     const dir = await pickFolder(); if (!dir) return;
     try { const project = await api.addProject(dir); await refresh(); setPicker(project); } catch (e) { setError((e as Error).message); }
   };
-  // Deleting a board (asked for 2026-09-27, "with confirmation"): from its row's secondary click, after a yes; its done file goes with it,
+  // Deleting a board (with a confirmation): from its row's secondary click, after a yes; its done file goes with it,
   // and its view closes.
   const deleteBoardFile = async (p: Project, b: BoardInfo) => {
     if (!window.confirm(t('app.board.confirmDelete', { title: b.title, file: b.file, folder: p.name, done: doneFileOf(b.file) }))) return;
@@ -677,9 +696,9 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
         </div>
         <div className="tb-right">
           <button className={`icon-btn dev-btn${dev ? ' lit' : ''}`} title={dev ? t('app.titlebar.devOn') : t('app.titlebar.devOff')} onClick={() => setDev((v) => !v)}><Glasses size={17} /></button>
-          {dev && <button className={`icon-btn meta-btn${showMeta ? ' lit' : ''}`} title={showMeta ? t('app.titlebar.metaShown') : t('app.titlebar.metaShow')} onClick={() => setShowMeta((v) => !v)}><Logs size={17} /></button>}{/* a developer's (T-259; the user, 2026-10-01: "The eye should only appear when the goggles are active ... in between the bug and the goggles ... the system events icon makes no sense with an eye") */}
+          {dev && <button className={`icon-btn meta-btn${showMeta ? ' lit' : ''}`} title={showMeta ? t('app.titlebar.metaShown') : t('app.titlebar.metaShow')} onClick={() => setShowMeta((v) => !v)}><Logs size={17} /></button>}{/* a developer's (T-259): shown only with the glasses on, between them and the bug */}
           <button className={`icon-btn${debugOpen ? ' lit' : ''}`} title={t('app.titlebar.debugger')} onClick={() => setDebugOpen((v) => { localStorage.setItem('cvc.debug', v ? '0' : '1'); return !v; })}><Bug size={16} /></button>
-          <button className="icon-btn reload-btn" title={t('app.titlebar.reload')} onClick={() => void window.desktop.appReload()}><RotateCw size={16} /></button>{/* T-261; the user, 2026-10-01: "It should do a hard refresh on the app without restarting the app. So basically like doing command R" */}
+          <button className="icon-btn reload-btn" title={t('app.titlebar.reload')} onClick={() => void window.desktop.appReload()}><RotateCw size={16} /></button>{/* T-261: a hard refresh of the page, as Command-R, without restarting the app */}
         </div>
       </header>
 
@@ -690,12 +709,15 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
             <button className="nav-item" onClick={() => void addFolder()}><span className="nav-ico"><FolderPlus size={16} /></span>{t('app.sidebar.addFolder')}</button>
           </nav>
           <div className="side-scroll">
-            {jauvex && showJauvex && (() => { const key = `${jauvex.id}:jauvex`; const on = sel?.key === key; return (
+            <div className="side-top">{/* the tabs, the filter and the Jauvex agent stay put while the folders under them scroll (as in Jauvex Pro) */}
+            {projects.some((p) => !p.builtin) && <><SideTabs value={sideTab} onChange={setSideTab} /><SideSearch value={sideQuery} onChange={setSideQuery} /></>}
+            {jauvex && showJauvex && (() => { const key = `${jauvex.id}:jauvex`; const on = sel?.projectId === jauvex.id && !sel.kind; /* its chat on screen, opened under this key or its session's (the window reopens the last chat under the session's: its row stayed dark) */ return (
               <button className={`row jauvex-row${on ? ' on' : ''}${jauvexSession && busy[key] ? ' working' : ''}`} title={t('app.sidebar.jauvexRow')} onClick={() => open({ projectId: jauvex.id, sessionId: jauvexSession, key, name: 'Jauvex' })}>
                 <Mark /><span className="row-title">Jauvex</span><Unseen n={countOf(unread, jauvexSession)} /><small>{t('app.sidebar.agentTag')}</small></button>); })()}
+            </div>
             {projects.filter((p) => !p.builtin).length === 0 && <p className="side-empty">{t('app.sidebar.empty')}</p>}
             {projects.filter((p) => !p.builtin).map((p) => (
-              <ProjectGroup key={p.id} project={p} infos={infos[p.id]} sel={sel} unread={unread} onMoveHere={(id, where) => void moveFolderTo(id, p.id, where)} renaming={renameAt === 'row' && renaming?.startsWith(`${p.id}:`) ? renaming.slice(p.id.length + 1) : null} onRenaming={(sid) => { setRenameAt('row'); setRenaming(sid ? `${p.id}:${sid}` : null); }} onRename={(sid, t) => void rename(p.id, sid, t)} onHide={(sid) => void hideSession(p, sid)} onOpenJev={(aid) => openJev(p.id, aid)} onDeleteJev={(aid) => void deleteJev(p.id, aid)} working={new Set(opened.filter((o) => o.projectId === p.id && busy[o.key] && o.sessionId).map((o) => o.sessionId!))} listening={opened.find((o) => o.key === listening && o.projectId === p.id)?.sessionId ?? null} onOpen={(sid) => open({ projectId: p.id, sessionId: sid, key: `${p.id}:${sid}` })} onNew={() => open({ projectId: p.id, sessionId: null, key: `${p.id}:new:${Date.now()}` })} onAdd={() => setPicker(p)} onRemove={() => void removeProject(p)}
+              <ProjectGroup key={p.id} show={sideTab} query={sideQuery} project={p} infos={infos[p.id]} sel={sel} unread={unread} onMoveHere={(id, where) => void moveFolderTo(id, p.id, where)} renaming={renameAt === 'row' && renaming?.startsWith(`${p.id}:`) ? renaming.slice(p.id.length + 1) : null} onRenaming={(sid) => { setRenameAt('row'); setRenaming(sid ? `${p.id}:${sid}` : null); }} onRename={(sid, t) => void rename(p.id, sid, t)} onHide={(sid) => void hideSession(p, sid)} onOpenJev={(aid) => openJev(p.id, aid)} onDeleteJev={(aid) => void deleteJev(p.id, aid)} working={new Set(opened.filter((o) => o.projectId === p.id && busy[o.key] && o.sessionId).map((o) => o.sessionId!))} listening={opened.find((o) => o.key === listening && o.projectId === p.id)?.sessionId ?? null} onOpen={(sid) => open({ projectId: p.id, sessionId: sid, key: `${p.id}:${sid}` })} onNew={() => open({ projectId: p.id, sessionId: null, key: `${p.id}:new:${Date.now()}` })} onAdd={() => setPicker(p)} onRemove={() => void removeProject(p)}
                 workflows={workflows[p.id] ?? []} onOpenWorkflow={(file, name) => open({ projectId: p.id, sessionId: null, key: `${p.id}:wf:${file}`, kind: 'workflow', file, name })} onDeleteWorkflow={(w) => void deleteWorkflowFile(p, w)}
                 onNewWorkflow={() => void askName(t('app.sidebar.newWorkflow'), t('app.sidebar.newWorkflowHint', { folder: p.name }), t('app.sidebar.newWorkflowPlaceholder')).then(async (name) => { if (!name?.trim()) return; try { const file = await api.newWorkflow(p.id, name.trim(), DEFAULT_AGENT); await loadWorkflows(p); open({ projectId: p.id, sessionId: null, key: `${p.id}:wf:${file}`, kind: 'workflow', file, name: name.trim() }); } catch (e) { setError((e as Error).message); } })}
                 boards={boards[p.id] ?? []} onDeleteBoard={(b) => void deleteBoardFile(p, b)} onOpenBoard={(file, title) => open({ projectId: p.id, sessionId: null, key: `${p.id}:board:${file}`, kind: 'board', file, name: title })}
@@ -709,7 +731,7 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
               <div className="side-voice-btns"><button className={`${voiceUi.micMuted ? 'muted' : ''}${voiceUi.muteIn != null ? ' counting' : ''}`} title={voiceUi.muteIn != null ? t('app.voice.mutingIn', { s: voiceUi.muteIn }) : voiceUi.micMuted ? t('app.voice.unmuteMic') : t('app.voice.muteMic')} onClick={voiceUi.toggleMic}>{voiceUi.micMuted ? <MicOff size={15} /> : <Mic size={15} />}{voiceUi.muteIn != null && <span className="mute-count" key={voiceUi.muteIn}>{voiceUi.muteIn}</span>}</button><button className={voiceUi.speakerOff ? 'muted' : ''} title={voiceUi.speakerOff ? t('app.voice.speakerOn') : t('app.voice.speakerOff')} onClick={voiceUi.toggleSpeaker}>{voiceUi.speakerOff ? <VolumeX size={15} /> : <Volume2 size={15} />}</button><button title={t('app.voice.end')} onClick={voiceUi.end}><X size={15} /></button></div>
             </div>); })()}
           <footer className="side-foot"><button className="foot-btn" title={SIGN_IN_IN_APP ? t('app.footer.accountsInApp') : t('app.footer.accountsCli')} onClick={() => setAccountsOpen(true)}>Jauvex <em>{__APP_VERSION__}</em></button>{update?.available && (update.installed || update.reinstall) ? <button className="foot-update" disabled={checking} title={update.installed ? t('app.footer.updateOutTitle', { version: update.latest ?? '' }) : t('update.outReinstall', { version: update.latest ?? '', command: update.reinstall ?? '' })} onClick={() => void openWhatsNew()}>{t('app.footer.updateOut', { version: update.latest ?? '' })}</button>
-            : <button className="foot-news" disabled={checking} title={t('app.footer.whatsNewTitle')} onClick={() => void openWhatsNew()}>{checking ? t('app.footer.checking') : t('app.footer.whatsNew')}</button>}{/* while a newer version is out its notice takes this place, and a click asks about it (T-245) */}<button className="icon-btn sm" title={t('app.footer.feedback')} aria-label={t('app.footer.feedback')} onClick={() => openFeedback()}><MessageSquareWarning size={14} /></button>{/* Diego, 2026-10-04: send Reindent feedback or report a problem, through the Jauvex agent */}<button className="icon-btn sm" title={t('app.footer.settings')} onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
+            : <button className="foot-news" disabled={checking} title={t('app.footer.whatsNewTitle')} onClick={() => void openWhatsNew()}>{checking ? t('app.footer.checking') : t('app.footer.whatsNew')}</button>}{/* while a newer version is out its notice takes this place, and a click asks about it (T-245) */}<button className="icon-btn sm" title={t('app.footer.feedback')} aria-label={t('app.footer.feedback')} onClick={() => openFeedback()}><MessageSquareWarning size={14} /></button>{/* send Reindent feedback or report a problem, through the Jauvex agent */}<button className="icon-btn sm" title={t('app.footer.settings')} onClick={() => setSettingsOpen(true)}><Settings size={14} /></button><Mark /></footer>
           {whatsNew && <WhatsNew line={whatsNew.line} notes={whatsNew.notes} onClose={() => setWhatsNew(null)} />}
           {settingsOpen && <SettingsPanel dashOn={dashEnabled} onDashOn={dashSet} onCustomTheme={() => void customTheme()} autoCompact={autoCompact} onAutoCompact={changeAutoCompact} signedIn={signedIn} welcomeNext={welcomeNext} onWelcomeNext={(on) => { setWelcomeNext(on); void api.setUi({ welcomed: !on }); }} onOpenWelcome={() => { setSettingsOpen(false); setWelcomeOpen(true); }} defaultProvider={defaultProvider} onDefaultProvider={(p) => { setDefaultProvider(p); localStorage.setItem('cvc.provider', p); void api.setUi({ defaultProvider: p }); }} showJauvex={showJauvex} onShowJauvex={(on) => { setShowJauvex(on); void api.setUi({ showJauvex: on }); }} jauvexMove={jauvexMove} onJauvexMove={(m) => { setJauvexMove(m); void api.setUi({ jauvexMove: m }); }} onClose={() => setSettingsOpen(false)} />}
           {accountsOpen && <Accounts onClose={() => setAccountsOpen(false)} />}
@@ -719,7 +741,7 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
       )}
 
       <main className="main" onClickCapture={catchLinks}>
-        {error && <div className="toast" onClick={() => setError(null)}>{error}{jauvex && <button className="toast-report" onClick={(e) => { e.stopPropagation(); const er = error; setError(null); openFeedback(er); }}>{t('app.reportThis')}</button>}<X size={14} /></div>}{/* Report this (Diego, 2026-10-04): the error goes to Reindent through the Jauvex agent, shown to the person first */}
+        {error && <div className="toast" onClick={() => setError(null)}>{error}{jauvex && <button className="toast-report" onClick={(e) => { e.stopPropagation(); const er = error; setError(null); openFeedback(er); }}>{t('app.reportThis')}</button>}<X size={14} /></div>}{/* Report this: the error goes to Reindent through the Jauvex agent, shown to the person first */}
         {opened.map((o) => { const proj = projects.find((x) => x.id === o.projectId); if (!proj) return null; const active = o.key === sel?.key;
           if (o.kind === 'workflow' && o.file) return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}><WorkflowView project={proj} file={o.file} showPane={showPane} paneShows={(k) => pane?.kind === 'view' && pane.key === k} paneOpen={() => !!pane} openFile={(f) => setPane({ kind: 'file', path: f })} agents={agentProviders} control={runControl(proj, o.file)} active={active} showMeta={metaOn} chatProvider={(jauvexProvider ?? defaultProvider ?? 'claude') as Provider} defaultAgent={DEFAULT_AGENT} stepAgents={() => stepAgents(proj)} mail={mail} /></div>;
           if (o.kind === 'board' && o.file) return <div key={o.key} className="chat-host" data-base={proj.path} style={{ display: active ? 'contents' : 'none' }}><BoardView project={proj} file={o.file} mail={mail} onChanged={() => void loadBoards(proj)} active={active} showMeta={metaOn} chatProvider={jauvexProvider ?? defaultProvider ?? 'claude'} /></div>;
@@ -730,7 +752,7 @@ const [whatsNew, setWhatsNew] = useState<{ line: string; notes: string } | null>
               onSession={(sid, prov) => { const named = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: sid } : x); setSel((cur) => (cur ? named(cur) : cur)); setOpened((all) => all.map(named)); setHistory((h) => h.map(named)); if (proj.builtin === 'jauvex') { setJauvexSession(sid); setJauvexProvider(prov ?? null); void api.setUi({ jauvexSession: sid, ...(prov ? { jauvexProvider: prov } : {}) }); } void refresh(); }}
               hybrid={proj.builtin === 'jauvex' ? { provider: jauvexProvider ?? defaultProvider ?? 'claude', mode: jauvexMove, onProvider: (p) => { setJauvexProvider(p); setJauvexSession(null); void api.setUi({ jauvexProvider: p, jauvexSession: null }); const unbind = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: null } : x); setOpened((all) => all.map(unbind)); setSel((cur) => (cur ? unbind(cur) : cur)); setHistory((h) => h.map(unbind)); },
                 onLost: () => { setJauvexSession(null); void api.setUi({ jauvexSession: null }); const unbind = <T extends Sel>(x: T): T => (x.key === o.key ? { ...x, sessionId: null } : x); setOpened((all) => all.map(unbind)); setSel((cur) => (cur ? unbind(cur) : cur)); setHistory((h) => h.map(unbind)); } } : undefined}
-              onTurnEnd={() => void refresh()} onReply={(text, replyTo, takenBack) => { const sid = opened.find((x) => x.key === o.key)?.sessionId ?? o.sessionId; turnFinished(sid, text); /* FB-09: a lead waiting for this agent */ if (sid && !waits.current.some((w) => w.lead.sessionId === sid)) { const others = roster().filter((a) => a.busy && a.sessionId && a.sessionId !== sid); const named = waitsFor(text, others.map((a) => a.name)); if (named.length) { const me2 = roster().find((a) => a.sessionId === sid); startWait({ projectId: o.projectId, sessionId: sid, name: me2?.name ?? o.name ?? 'agent' }, new Map(others.filter((a) => named.includes(a.name)).map((a) => [a.sessionId, a.name])), 'its reply says it waits'); } } /* FB-09: a reply that says it waits for working agents waits by itself */ setUnread((u) => counted(u, sid, !!sid && selNow.current?.sessionId === sid)); /* a new reply on its agent, unless it is on screen (T-226) */ void routeAgentBlocks(o, text); if (replyTo?.kind === 'run') void onRunReply(replyTo, text); else { if (replyTo) void returnReply(o, replyTo, text); if (takenBack) void routeToWaitingRun(o, text, takenBack.queued); } }} onBridge={(b) => { if (b) bridges.current.set(o.key, b); else bridges.current.delete(o.key); }} onNew={() => open({ projectId: proj.id, sessionId: null, key: `${proj.id}:new:${Date.now()}` })} /></div>; })}
+              onTurnEnd={() => void refresh()} onReply={(text, replyTo, takenBack) => { const sid = opened.find((x) => x.key === o.key)?.sessionId ?? o.sessionId; turnFinished(sid, text); /* FB-09: a lead waiting for this agent (only the wait order sets one: a wait guessed from a reply's words woke agents that never waited, FB-122) */ setUnread((u) => counted(u, sid, !!sid && selNow.current?.sessionId === sid)); /* a new reply on its agent, unless it is on screen (T-226) */ void routeAgentBlocks(o, text); if (replyTo?.kind === 'run') void onRunReply(replyTo, text); else { if (replyTo) void returnReply(o, replyTo, text); if (takenBack) void routeToWaitingRun(o, text, takenBack.queued); } }} onBridge={(b) => { if (b) bridges.current.set(o.key, b); else bridges.current.delete(o.key); }} onNew={() => open({ projectId: proj.id, sessionId: null, key: `${proj.id}:new:${Date.now()}` })} /></div>; })}
         {sel && project ? null
           : <div className="empty"><Mark /><h2>{t('app.empty.title')}</h2><p>{t('app.empty.body')}</p></div>}
       </main>
@@ -796,7 +818,39 @@ function Unseen({ n }: { n: number }) {
 
 /** What a folder dragged in the left panel carries (T-255): its id, under a type of its own. */
 const FOLDER_DRAG = 'application/x-app-folder';
-function ProjectGroup({ onMoveHere, unread, project, infos, sel, working, listening, renaming, onRenaming, onRename, onHide, onOpenJev, onDeleteJev, onOpen, onNew, onAdd, onRemove, workflows, onOpenWorkflow, onNewWorkflow, onDeleteWorkflow, boards, onOpenBoard, onNewBoard, onDeleteBoard }: { workflows: WorkflowInfo[]; onOpenWorkflow: (file: string, name: string) => void; onNewWorkflow: () => void; onDeleteWorkflow: (w: WorkflowInfo) => void; boards: BoardInfo[]; onOpenBoard: (file: string, title: string) => void; onNewBoard: () => void; onDeleteBoard: (b: BoardInfo) => void; onMoveHere?: (id: string, where: 'before' | 'after') => void /* a folder dropped on this one goes before or after it (T-255) */; unread: Unread /* new replies per agent (T-226) */; project: Project; infos?: SessionInfo[]; sel: Sel | null; working: Set<string>; listening: string | null; renaming: string | null; onRenaming: (sid: string | null) => void; onRename: (sid: string, title: string) => void; onHide: (sid: string) => void; onOpenJev: (agentId: string) => void; onDeleteJev: (agentId: string) => void; onOpen: (sid: string) => void; onNew: () => void; onAdd: () => void; onRemove: () => void }) {
+/** The left panel's tabs (as in Jauvex Pro): All is each folder as its tree;
+ *  each other tab shows that kind alone in every folder, without the group's head. One at a time; remembered on this computer. */
+const SIDE_TABS = [['all', 'app.sidebar.tabAll'], ['agents', 'app.sidebar.tabAgents'], ['workflows', 'app.sidebar.tabWorkflows'], ['boards', 'app.sidebar.tabBoards']] as const;
+type SideTab = typeof SIDE_TABS[number][0];
+const savedSideTab = (): SideTab => { try { const v = localStorage.getItem('cvc.sideTab'); return SIDE_TABS.some(([k]) => k === v) ? v as SideTab : 'all'; } catch { return 'all'; } };
+function SideTabs({ value, onChange }: { value: SideTab; onChange: (k: SideTab) => void }) {
+  return <div className="side-tabs" role="tablist">{SIDE_TABS.map(([k, label]) => <button key={k} role="tab" aria-selected={value === k} className={`side-tab${value === k ? ' on' : ''}`} title={k === 'workflows' ? t('app.sidebar.workflows') : t(label)} onClick={() => onChange(k)}>{t(label)}</button>)}</div>;
+}
+/** The left panel's filter under its tabs (as in Jauvex Pro): narrows every folder's agents, workflows and boards as it is typed; Escape or
+ *  its cross empties it. */
+function SideSearch({ value, onChange }: { value: string; onChange: (q: string) => void }) {
+  return <div className="side-search"><Search size={13} aria-hidden="true" /><input value={value} placeholder={t('app.sidebar.search')} aria-label={t('app.sidebar.search')} spellCheck={false} onChange={(e) => onChange(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); onChange(''); } }} />
+    {value && <button type="button" className="icon-btn sm" title={t('app.sidebar.searchClear')} aria-label={t('app.sidebar.searchClear')} onClick={() => onChange('')}><X size={12} /></button>}</div>;
+}
+/** What the filter lets through in a folder: all of it when the folder's name fits, else its agents (by the names the rows show), Jev
+ *  agents, workflows and boards whose names fit. */
+const folderFilter = (query: string, name: string) => { const q = query.trim().toLowerCase(); const fits = (x: string) => !q || x.toLowerCase().includes(q); return { q, fits: (x: string) => !q || name.toLowerCase().includes(q) || fits(x) }; };
+
+/** One group inside a folder (Agents, Workflows, Boards), as in Jauvex Pro: a small head that folds, with its count and a plus, three rows then "N more…". `expand`: the folder's filter is on,
+ *  every match shown. Folded or not is kept on this computer. */
+function SubGroup({ title, count, rows, onAdd, addTitle, storeKey, expand = false, flat = false }: { title: string; count: number; rows: React.ReactNode[]; onAdd: () => void; addTitle: string; storeKey: string; expand?: boolean; flat?: boolean /* a tab of one kind: no head, every row */ }) {
+  const [stored, setOpen] = useState(() => localStorage.getItem(`cvc.sub.${storeKey}`) !== '0'); const [every, setAll] = useState(false); const open = stored || expand; const all = every || expand;
+  const list = rows.flat().filter(Boolean); const shown = all ? list : list.slice(0, 3); const more = expand ? 0 : list.length - 3;
+  if (flat) return <div className="subgroup flat"><div className="subgroup-rows">{list.length ? list : <div className="row ghost"><span className="dot" />{t('app.sidebar.noneOfKindYet', { kind: title.toLowerCase() })}</div>}</div></div>;
+  return (
+    <div className={`subgroup${open ? ' open' : ''}${count === 0 ? ' none' : ''}`}>
+      <div className="subgroup-head" onClick={() => { setOpen((v) => { localStorage.setItem(`cvc.sub.${storeKey}`, v ? '0' : '1'); return !v; }); }}><span className="subgroup-branch" /><span className="subgroup-title">{title}</span><small>{count || t('app.sidebar.noneYet')}</small><span className="subgroup-gap" /><button className="icon-btn sm subgroup-add" title={addTitle} onClick={(e) => { e.stopPropagation(); onAdd(); }}><Plus size={13} /></button></div>
+      {open && <div className="subgroup-rows">{shown}{more > 0 && <button className="row subgroup-more" onClick={() => setAll((v) => !v)}><span className="row-title">{all ? t('app.sidebar.showLess') : t('app.sidebar.nMore', { n: more })}</span></button>}</div>}
+    </div>
+  );
+}
+
+function ProjectGroup({ show = 'all', query = '', onMoveHere, unread, project, infos, sel, working, listening, renaming, onRenaming, onRename, onHide, onOpenJev, onDeleteJev, onOpen, onNew, onAdd, onRemove, workflows, onOpenWorkflow, onNewWorkflow, onDeleteWorkflow, boards, onOpenBoard, onNewBoard, onDeleteBoard }: { show?: SideTab /* the left panel's tab */; query?: string /* the left panel's filter */; workflows: WorkflowInfo[]; onOpenWorkflow: (file: string, name: string) => void; onNewWorkflow: () => void; onDeleteWorkflow: (w: WorkflowInfo) => void; boards: BoardInfo[]; onOpenBoard: (file: string, title: string) => void; onNewBoard: () => void; onDeleteBoard: (b: BoardInfo) => void; onMoveHere?: (id: string, where: 'before' | 'after') => void /* a folder dropped on this one goes before or after it (T-255) */; unread: Unread /* new replies per agent (T-226) */; project: Project; infos?: SessionInfo[]; sel: Sel | null; working: Set<string>; listening: string | null; renaming: string | null; onRenaming: (sid: string | null) => void; onRename: (sid: string, title: string) => void; onHide: (sid: string) => void; onOpenJev: (agentId: string) => void; onDeleteJev: (agentId: string) => void; onOpen: (sid: string) => void; onNew: () => void; onAdd: () => void; onRemove: () => void }) {
   const [filter, setFilter] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   // A folder folds from its name, and stays folded across reloads.
@@ -807,19 +861,23 @@ function ProjectGroup({ onMoveHere, unread, project, infos, sel, working, listen
   useEffect(() => { if (!ctx) return; const close = () => setCtx(null); const key = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
     window.addEventListener('click', close); window.addEventListener('contextmenu', close); window.addEventListener('blur', close); window.addEventListener('keydown', key);
     return () => { window.removeEventListener('click', close); window.removeEventListener('contextmenu', close); window.removeEventListener('blur', close); window.removeEventListener('keydown', key); }; }, [ctx]);
+  const ws = folderFilter(query, project.name); const searching = !!ws.q; // the left panel's filter, beside the folder's own
+  const jevs = (project.jev ?? []).filter((a) => (!filter?.trim() || a.name.toLowerCase().includes(filter.trim().toLowerCase())) && ws.fits(a.name));
+  const wfs = workflows.filter((w) => ws.fits(w.name)); const bds = boards.filter((b) => ws.fits(b.title));
   const rows = useMemo(() => {
     const byId = new Map((infos ?? []).map((s) => [s.sessionId, s]));
     const list = project.sessions.map((id) => byId.get(id) ?? { provider: providerOf(project, id), sessionId: id, summary: id.slice(0, 8), lastModified: 0 } as SessionInfo);
     list.sort((a, b) => b.lastModified - a.lastModified);
-    const q = filter?.trim().toLowerCase();
-    return q ? list.filter((s) => `${s.customTitle ?? ''} ${s.summary}`.toLowerCase().includes(q)) : list;
-  }, [infos, project.sessions, filter]);
+    const q = filter?.trim().toLowerCase(); const panel = folderFilter(query, project.name);
+    return list.filter((s) => (!q || `${s.customTitle ?? ''} ${s.summary}`.toLowerCase().includes(q)) && panel.fits(s.customTitle || s.summary));
+  }, [infos, project.sessions, filter, query, project.name]);
   // A folder is moved by its name, dragged onto another (T-255): over the upper half of a folder's name it goes above that folder, anywhere
   // lower in it, below; a line shows where.
   const [drop, setDrop] = useState<'before' | 'after' | null>(null); const [dragging, setDragging] = useState(false);
   const whereOf = (e: React.DragEvent<HTMLElement>): 'before' | 'after' => { const h = e.currentTarget.querySelector('.group-head')?.getBoundingClientRect(); return h && e.clientY < h.top + h.height / 2 ? 'before' : 'after'; };
   const dragOver = (e: React.DragEvent<HTMLElement>) => { if (!onMoveHere || !e.dataTransfer.types.includes(FOLDER_DRAG)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDrop(whereOf(e)); };
   const dropHere = (e: React.DragEvent<HTMLElement>) => { setDrop(null); const id = e.dataTransfer.getData(FOLDER_DRAG); if (!onMoveHere || !id) return; e.preventDefault(); if (id !== project.id) onMoveHere(id, whereOf(e)); };
+  if (searching && !(((show === 'all' || show === 'agents') && (rows.length || jevs.length)) || ((show === 'all' || show === 'workflows') && wfs.length) || ((show === 'all' || show === 'boards') && bds.length))) return null; // nothing here fits the panel's filter
   return (
     <section className={`group${folded ? ' folded' : ''}${drop ? ` drop-${drop}` : ''}${dragging ? ' dragging' : ''}`} onDragOver={dragOver} onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null); }} onDrop={dropHere}>
       <div className="group-head" title={onMoveHere ? t('app.sidebar.dragFolder', { path: project.path }) : project.path} draggable={!!onMoveHere} onDragStart={(e) => { if (!onMoveHere) return; e.dataTransfer.setData(FOLDER_DRAG, project.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }} onDragEnd={() => { setDragging(false); setDrop(null); }}>
@@ -830,37 +888,38 @@ function ProjectGroup({ onMoveHere, unread, project, infos, sel, working, listen
         <button className="icon-btn sm" title={t('app.sidebar.folderOptions')} onClick={() => setMenu((v) => !v)}><SlidersHorizontal size={15} /></button>
         {menu && <div className="menu" onMouseLeave={() => setMenu(false)}><div className="menu-path">{project.path}</div><button onClick={() => { setMenu(false); void window.desktop.openPath(project.path); }}><FolderOpen size={14} />{t('files.openHere')}</button>{/* the folder in Finder, Files or Explorer (as Jauvex Pro) */}<button onClick={() => { setMenu(false); onNewWorkflow(); }}><Plus size={14} />{t('app.sidebar.newWorkflow')}</button><button onClick={() => { setMenu(false); onNewBoard(); }}><Plus size={14} />{t('app.sidebar.newBoard')}</button><button onClick={() => { setMenu(false); onRemove(); }}><Trash2 size={14} />{t('app.sidebar.removeFolder')}</button></div>}
       </div>
-      {!folded && <>
+      {!folded && <div className="group-body">
       {filter !== null && <input className="group-filter" autoFocus placeholder={t('app.sidebar.filterSessions')} value={filter} onChange={(e) => setFilter(e.target.value)} />}
-      {rows.length === 0 && <button className="row ghost" onClick={onAdd}><span className="dot" />{project.sessions.length ? t('app.sidebar.noMatch') : t('app.sidebar.addSessionsEllipsis')}</button>}
-      {rows.map((s) => (
+      {/* three groups per folder, as in Jauvex Pro: its agents (the sessions), its workflows, its boards; each folds, a long list shows three and "more" */}
+      {(show === 'all' || show === 'agents') && !(searching && !rows.length && !jevs.length) && <SubGroup flat={show !== 'all'} title={t('app.sidebar.agents')} storeKey={`${project.id}:agents`} count={rows.length + jevs.length} onAdd={onNew} addTitle={t('app.sidebar.newAgent')} expand={filter !== null || searching} rows={[
+        ...(filter?.trim() && !rows.length && !jevs.length ? [<div key="none" className="row ghost"><span className="dot" />{t('app.sidebar.noMatch')}</div>] : []),
+        ...rows.map((s) => (
         <button key={s.sessionId} className={`row${sel?.projectId === project.id && sel.sessionId === s.sessionId ? ' on' : ''}`} onClick={() => onOpen(s.sessionId)} onDoubleClick={() => onRenaming(s.sessionId)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: s.sessionId, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }} title={t('app.sidebar.sessionRow', { provider: PROVIDER_LABEL[s.provider], summary: s.firstPrompt || s.summary })}>
           <ProviderIcon provider={s.provider} />{renaming === s.sessionId ? <RenameInput initial={s.customTitle || s.summary} onDone={(t) => onRename(s.sessionId, t)} onCancel={() => onRenaming(null)} /> : <span className="row-title">{s.customTitle || s.summary}</span>}<Unseen n={unread[s.sessionId] ?? 0} />{listening === s.sessionId && <span className="row-listening" title={t('app.sidebar.listening')}><AudioLines size={13} /></span>}{working.has(s.sessionId) ? <span className="row-working" title={t('app.sidebar.working')}><Mark busy /></span> : <span className="row-time">{s.lastModified ? ago(s.lastModified) : ''}</span>}
         </button>
-      ))}
-      {(project.jev ?? []).filter((a) => !filter?.trim() || a.name.toLowerCase().includes(filter.trim().toLowerCase())).map((a) => (
+      )),
+        ...jevs.map((a) => (
         <button key={a.id} className={`row${sel?.projectId === project.id && sel.sessionId === a.id ? ' on' : ''}`} onClick={() => onOpenJev(a.id)} onDoubleClick={() => onRenaming(a.id)} title={t('app.sidebar.jevRow', { runs: a.runs.length })}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: a.id, jev: true, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }}>
           <img className="provider-icon jev" src={typesafeMark} alt="" aria-label="Jev (TypeSafe)" width={12} height={12} />{renaming === a.id ? <RenameInput initial={a.name} onDone={(t) => onRename(a.id, t)} onCancel={() => onRenaming(null)} /> : <span className="row-title">{a.name}</span>}<span className="row-time">{ago(a.updatedAt)}</span>
         </button>
-      ))}
-      {workflows.length > 0 && <div className="group-sub">{t('app.sidebar.workflows')}</div>}
-      {workflows.map((w) => (
+      )),
+      ]} />}
+      {(show === 'all' || show === 'workflows') && !(searching && !wfs.length) && <SubGroup flat={show !== 'all'} expand={searching} title={t('app.sidebar.workflows')} storeKey={`${project.id}:workflows`} count={wfs.length} onAdd={onNewWorkflow} addTitle={t('app.sidebar.newWorkflow')} rows={wfs.map((w) => (
         <button key={w.file} className={`row${sel?.projectId === project.id && sel.kind === 'workflow' && sel.file === w.file ? ' on' : ''}`} onClick={() => onOpenWorkflow(w.file, w.name)} title={t('app.sidebar.workflowRow', { file: w.file, steps: w.steps, runs: w.runs })}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: '', wf: w, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }}>
           <span className={`wf-dot${w.latest && /^running/i.test(w.latest.result) ? ' live' : ''}`} /><span className="row-title">{w.name}</span>{w.latest && /^running/i.test(w.latest.result)
-            ? <span className="row-working" title={w.latest.waiting ? t('app.sidebar.runWaits', { n: w.latest.n }) : t('app.sidebar.runRunning', { n: w.latest.n })}>{w.latest.waiting && <i className="wf-waits" />}<Mark busy /></span> /* the user, 2026-09-27: a running workflow shows the app's mark turning, as a working agent does; one that waits for a person, a yellow dot beside it ("when a workflow is waiting for the human in the loop, it must be marked in the left pane") */
+            ? <span className="row-working" title={w.latest.waiting ? t('app.sidebar.runWaits', { n: w.latest.n }) : t('app.sidebar.runRunning', { n: w.latest.n })}>{w.latest.waiting && <i className="wf-waits" />}<Mark busy /></span> /* a running workflow shows the app's mark turning, as a working agent does; one that waits for a person, a yellow dot beside it */
             : <span className="row-time">{w.latest ? w.latest.started.slice(5, 10) : w.when.split('·')[0]?.trim().slice(0, 12) || ''}</span>}
         </button>
-      ))}
-      {boards.length > 0 && <div className="group-sub">{t('app.sidebar.boards')}</div>}
-      {boards.map((b) => (
+      ))} />}
+      {(show === 'all' || show === 'boards') && !(searching && !bds.length) && <SubGroup flat={show !== 'all'} expand={searching} title={t('app.sidebar.boards')} storeKey={`${project.id}:boards`} count={bds.length} onAdd={onNewBoard} addTitle={t('app.sidebar.newBoard')} rows={bds.map((b) => (
         <button key={b.file} className={`row${sel?.projectId === project.id && sel.kind === 'board' && sel.file === b.file ? ' on' : ''}`} onClick={() => onOpenBoard(b.file, b.title)} title={t('app.sidebar.boardRow', { file: b.file, done: b.done, total: b.total })}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtx({ sid: '', board: b, x: Math.min(e.clientX, window.innerWidth - 250), y: Math.min(e.clientY, window.innerHeight - 150) }); }}>
           <span className="board-dot" /><span className="row-title">{b.title}</span><span className="row-time">{b.done}/{b.total}</span>
         </button>
-      ))}
-      </>}
+      ))} />}
+      </div>}
       {ctx && <div className="menu ctx" style={{ left: ctx.x, top: ctx.y }} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
         {ctx.wf ? <button className="danger" onClick={() => { const w = ctx.wf!; setCtx(null); onDeleteWorkflow(w); }}><Trash2 size={14} />{t('app.menu.deleteWorkflow')}</button>
         : ctx.board ? <button className="danger" onClick={() => { const b = ctx.board!; setCtx(null); onDeleteBoard(b); }}><Trash2 size={14} />{t('app.menu.deleteBoard')}</button> : <>
@@ -886,7 +945,7 @@ function SessionPicker({ project, all, onClose, onSave }: { project: Project; al
       <div className="modal" role="dialog" aria-label={t('app.sidebar.addSessions')}>
         <div className="modal-head"><div><h3>{t('app.picker.title', { folder: project.name })}</h3><p>{project.path}</p></div><button className="icon-btn" title={t('common.close')} onClick={onClose}><X size={16} /></button></div>
         <div className="modal-search"><Search size={15} /><input autoFocus placeholder={t('app.picker.search')} value={q} onChange={(e) => setQ(e.target.value)} />
-          <span className="who">{([['all', t('app.picker.all'), (all ?? []).length] as const, ...PROVIDERS.filter((p) => p !== 'grok' || counts.grok > 0).map((p) => [p, PROVIDER_LABEL[p], counts[p]] as const)]).map(([k, label, n]) => <button key={k} className={who === k ? 'on' : ''} title={k === 'all' ? t('app.picker.allTitle') : t('app.picker.onlyTitle', { provider: label })} onClick={() => setWho(k)}>{k !== 'all' && <ProviderIcon provider={k} size={11} />}{label}{all ? <em>{n}</em> : null}</button>)}</span></div>
+          <span className="who">{([['all', t('app.picker.all'), (all ?? []).length] as const, ...PROVIDERS.filter((p) => (p !== 'grok' && p !== 'open') || counts[p] > 0).map((p) => [p, PROVIDER_LABEL[p], counts[p]] as const)]).map(([k, label, n]) => <button key={k} className={who === k ? 'on' : ''} title={k === 'all' ? t('app.picker.allTitle') : t('app.picker.onlyTitle', { provider: label })} onClick={() => setWho(k)}>{k !== 'all' && <ProviderIcon provider={k} size={11} />}{label}{all ? <em>{n}</em> : null}</button>)}</span></div>
         <div className="modal-list">
           {!all && <p className="modal-empty">{t('app.loading')}</p>}
           {all && list.length === 0 && <p className="modal-empty">{q.trim() ? t('app.picker.noMatch') : who === 'all' ? t('app.picker.noneAll') : t('app.picker.noneProvider', { provider: PROVIDER_LABEL[who] })}</p>}
@@ -906,14 +965,21 @@ function SessionPicker({ project, all, onClose, onSave }: { project: Project; al
 
 /** embed: the chat lives inside something else (a Jev agent's trainer panel): fixed provider, context sent along with every message, replies handed back. */
 export type ChatEmbed = { provider: Provider; context: () => string; onReply: (text: string) => void; bridge: { send?: (text: string) => void }; hint?: string /* the empty chat's greeting */ };
+/** A person's message with what it quotes ("> " lines) drawn as a quote above its words, as in the other edition; a click on the quote goes to
+ *  the message it quotes (quoteJump, wired with the chat's tools). */
+function QuotedText({ text }: { text: string }) {
+  const parts = quoteParts(text); if (!parts.some((p) => p.quote)) return <>{text}</>;
+  return <>{parts.map((p, i) => (p.quote ? <blockquote key={i} className="bubble-quote" title={t('chat.quoteJump')}>{p.text}</blockquote> : <Fragment key={i}>{p.text}</Fragment>))}</>;
+}
+
 export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvider, nameOnStart, onNamed, onListening, onVoiceUi, mic, onReply, onBridge, adopt, folders, onCommand, project, sessionId, active, info, showMeta, onBusy, onSession, onTurnEnd, onNew, hybrid, signedIn, storeKey }: { top?: React.ReactNode /* the Jauvex agent's dashboard, above the conversation (T-276) */; onAsks?: (n: number) => void /* how many permissions it asks for now */; storeKey?: string; signedIn?: Record<Provider, boolean>; hybrid?: { provider: Provider; mode: 'unified' | 'handoff'; onProvider: (p: Provider) => void ; onLost?: () => void }; /* the Jauvex agent: the app keeps its transcript, the session moves between providers with it */ embed?: ChatEmbed; jev?: () => void; startVoice?: boolean; kickoff?: string; startProvider?: Provider /* a new agent's, named by an order (T-229) */; nameOnStart?: string; onNamed?: () => void; onListening?: (on: boolean) => void; onVoiceUi?: (st: SideVoice | null) => void; mic?: 'none' | 'here' | 'elsewhere'; onReply?: (text: string, replyTo?: Sel, takenBack?: { queued: string[] } /* the turn was one a reloaded window took back: whom it answered is not known here; queued: the runs whose step's message still waits in this chat's queue (T-253) */) => void; onBridge?: (b: ChatBridge | null) => void; adopt?: string; folders?: { id: string; name: string; path?: string }[]; onCommand?: (cmd: AppCommand, fallback: Provider) => void; project: Project; sessionId: string | null; active: boolean; info: SessionInfo | null; showMeta: boolean; onBusy: (running: boolean) => void; onSession: (sid: string, provider?: Provider) => void; onTurnEnd: () => void; onNew: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // The last of the conversation, for the voice to acknowledge like someone who has been following: the last two things the user
   // said and the last answer, trimmed. Read from a ref so the speculative acknowledgment (made during a pause) sees it too.
   const recentRef = useRef(''); recentRef.current = (() => { const plain = (m: ChatMessage) => m.blocks.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join(' ').replace(CONTEXT_TAG, '').replace(/\s+/g, ' ').trim(); const tail = messages.filter((m) => !m.meta && !m.voice).slice(-6); const users = tail.filter((m) => m.role === 'user').slice(-2).map((m) => `User said: ${plain(m).slice(0, 240)}`); const last = [...tail].reverse().find((m) => m.role === 'assistant'); return [...users, ...(last ? [`Assistant answered: ${plain(last).slice(0, 320)}`] : [])].join(' | '); })();
   const [start, setStart] = useState(0);
-  // The Jauvex agent's chat, which the app keeps its own copy of (T-272, from the other edition's fix; the user, 2026-10-01: "There's not even a
-  // load earlier messages"): its latest messages shown, the rest of the copy a page at a time, and past the copy's start the agent's own session
+  // The Jauvex agent's chat, which the app keeps its own copy of (T-272, from the other edition's fix: no way to
+  // load earlier messages): its latest messages shown, the rest of the copy a page at a time, and past the copy's start the agent's own session
   // (a copy cut short by saves that overlapped, T-269, comes back from there).
   const copyRest = useRef<ChatMessage[]>([]); const fromSession = useRef<{ messages: ChatMessage[]; left: number } | null>(null); const copyHead = useRef<string[]>([]); const [copyMore, setCopyMore] = useState(0);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>(sessionId || hybrid ? 'loading' : 'ready');
@@ -927,7 +993,9 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
     if (hybrid) { for (const m of ms) record('user', plain(m)); return; } if (!sid.current) return;
     const after = [...msgsRef.current].reverse().find((m) => !m.uuid.startsWith('local-') && !m.uuid.startsWith('note-'))?.uuid ?? '';
     await api.noteAppend(sid.current, ms.map((m) => ({ after, message: { ...m, uuid: `note-${m.uuid}` } }))).catch(() => {}); };
-  const record = (role: 'user' | 'assistant', text: string, extra: Partial<ChatMessage> = {}) => { if (!hybrid || !text.trim()) return; void api.jauvexAppend({ message: { uuid: `jx-${crypto.randomUUID()}`, role, blocks: [{ type: 'text', text }], meta: false, ...extra }, provider, at: Date.now() }).catch(() => {}); };
+  // the pictures with the words: a picture sent showed, then only "[1 image attached]" once the chat loaded again
+  const record = (role: 'user' | 'assistant', text: string, extra: Partial<ChatMessage> = {}, images?: Attachment[]) => { if (!hybrid || (!text.trim() && !images?.length)) return; const pics = (images ?? []).map((i): Block => ({ type: 'image', src: `data:${i.mediaType};base64,${i.data}`, name: i.name }));
+    void api.jauvexAppend({ message: { uuid: `jx-${crypto.randomUUID()}`, role, blocks: [...(text.trim() ? [{ type: 'text', text } as Block] : []), ...pics], meta: false, ...extra }, provider, at: Date.now() }).catch(() => {}); };
   // Every message of the provider's turn goes to the transcript as it is (tool calls and results too, results trimmed), so the thread shows the work after a reload.
   const recordMessage = (m: ChatMessage) => { if (!hybrid) return; if (provider !== 'claude' && m.blocks.some((b) => b.type === 'tool_use') && !m.blocks.some((b) => b.type === 'tool_result')) return; /* a Codex or Grok call that only started: its completed twin comes with the result */ const blocks = m.blocks.map((b) => (b.type === 'tool_result' && b.text.length > 4000 ? { ...b, text: `${b.text.slice(0, 4000)}\n… (trimmed)` } : b)); if (!blocks.length) return; void api.jauvexAppend({ message: { ...m, blocks }, provider, at: Date.now() }).catch(() => {}); };
   const handover = useRef<{ to: Provider; note: string } | null>(null); const pendingMove = useRef<Provider | null>(null);
@@ -1042,6 +1110,9 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   useEffect(() => { void api.state().then((st) => { setAutoPct(autoCompactPct(st.ui)); const kept = sid.current ? st.projects.find((x) => x.id === project.id)?.context?.[sid.current] : undefined; if (kept && !ctxRef.current) { ctxRef.current = kept; setCtx(kept); } }).catch(() => {});
     const h = (e: Event) => { const n = (e as CustomEvent<number>).detail; if (typeof n === 'number') setAutoPct(n); }; window.addEventListener('cvc-auto-compact', h); return () => window.removeEventListener('cvc-auto-compact', h); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const scroller = useRef<HTMLDivElement>(null);
+  const replies = useMemo(() => personReplies(messages), [messages]); // what you answered each of the agent's questions with (shared/needs.ts)
+  useLayoutEffect(() => restoreHeld(scroller.current)); // after every render: a question box drawn anew gets back what was picked or typed in it
+  useEffect(() => { if (!active) return; const key = (e: KeyboardEvent) => { needsKey(e, scroller.current); }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, [active]); // Alt and a digit: an answer of the newest question
   const pinned = useRef(true);
   const toBottom = () => requestAnimationFrame(() => { const el = scroller.current; if (el && pinned.current) el.scrollTop = el.scrollHeight; });
   // Pinned to the bottom means it stays there whatever grows: streamed text, a voice line being typed out, a rendered table,
@@ -1133,7 +1204,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   // The big model's answer is on screen in full and is never read aloud. The small model says what happened;
   // a short plain answer ("Four.") is simply spoken as it is.
   const sayWhatHappened = () => { void (async () => {
-    const c = v.current.cfg; const gen = v.current.gen; const answer = v.current.answer.trim(); v.current.mainStarted = true; // the acknowledgment is pointless from here on
+    const c = v.current.cfg; const gen = v.current.gen; const answer = withoutOutcome(v.current.answer).trim(); /* the runner's OUTCOME line is never said */ v.current.mainStarted = true; // the acknowledgment is pointless from here on
     if (!answer || v.current.speakerOff) { settle(); return; }
     const bridge = await steerStageTwo(); if (gen !== v.current.gen) return; if (bridge) enqueue(Promise.resolve(bridge), gen, undefined, 'response', undefined, 'bridge');
     v.current.wording = true; setPhase('wording'); // the answer is on screen; the voice is now wording and rendering what it will say
@@ -1166,7 +1237,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   // Steering: the running turn gets this now, at its next step, and keeps working. If the turn cannot take it (it just ended, or it has not started), it waits in the queue like everything else.
   const steer = async (text: string, images?: Attachment[], dictated = false) => {
     const said = dictated ? `${DICTATED_TAG}${text}` : text; /* the model is told, every time, which words were dictated (T-76) */
-    const ok = v.current.running && !compactTurn.current && !compactingNow.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${said}` : said, images).catch(() => false); /* a compaction takes nothing in: it waits in the queue */ if (ok) record('user', text + (images?.length ? ` [${images.length} image${images.length > 1 ? 's' : ''} attached]` : ''), { steered: true }); /* in the Jauvex agent's own copy too: this record sat inside the comment before it, and a message handed to a running turn was missing from that chat after a reload */
+    const ok = v.current.running && !compactTurn.current && !compactingNow.current && await window.desktop.chatSteer(chatId.current, embed ? `${embed.context()}${said}` : said, images).catch(() => false); /* a compaction takes nothing in: it waits in the queue */ if (ok) record('user', text, { steered: true }, images); /* in the Jauvex agent's own copy too: this record sat inside the comment before it, and a message handed to a running turn was missing from that chat after a reload */
     if (!ok) { enqueueForMain(text, undefined, dictated); if (v.current.running && !(await window.desktop.chatRunning(chatId.current).catch(() => true))) staleTurnEnded(); return false; }
     setDraft(null);
     turnSteers.current.push({ text, images: images ?? [], ...(dictated ? { spoken: true } : {}), shown: true });
@@ -1209,7 +1280,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
     if (why === 'too-long' && ev.ok && !stopped && ls) { pendingReplyTo.current = ls.replyTo; window.desktop.debugPush('note', 'compacted after a message that did not fit: sending it again'); setTimeout(() => void sendRef.current(ls.text, false, undefined, true, ls.images, true, !!ls.dictated), 150); return; }
     if (!flushQueue('compaction ended')) settle();
   };
-  // Compacted while nobody waits on it (Diego, 2026-10-07, as Jauvex Pro: a compaction at 90 %, in the middle of a conversation, took the messages
+  // Compacted while nobody waits on it (as Jauvex Pro: a compaction at 90 %, in the middle of a conversation, took the messages
   // sent meanwhile out of sight): once a chat has been idle IDLE_COMPACT_MS with its context past ten points under the setting, it compacts then.
   const idleFrom = useRef(Date.now()); useEffect(() => { if (!running) idleFrom.current = Date.now(); }, [running]);
   useEffect(() => { const id = setInterval(() => { const pct = autoPctRef.current;
@@ -1223,8 +1294,13 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
     window.desktop.debugPush('queue', `${why}: sending the next queued message${queue.current.length ? ` (${queue.current.length} more wait for the next turn)` : ''}: ${qLabel(next)}`); void sendRef.current(next.text, false, undefined, true, next.images.length ? next.images : undefined, !!next.shown, !!next.spoken); return true; };
   const enqueueForMain = (text: string, images?: Attachment[], spoken = false, replyTo?: Sel) => { setDraft(null); const item: QueueItem = { text, images: images ?? [], ...(spoken ? { spoken: true } : {}), ...(replyTo ? { replyTo } : {}) }; if (!item.text && !item.images.length) return; window.desktop.debugPush('queue', `queued for the main thread: ${qLabel(item)}`); queue.current.push(item); setQueued([...queue.current]); persistQueue(); toBottom(); if (!v.current.running) flushQueue('queued while no turn was running'); };
 
+  // One listener per chat, and off means off (from Pro: the user's words arrived twice in one message, and voice once would not turn off): the
+  // switch reads a ref, not the render's voiceOn (two quick starts both saw it off and each made a listener, the first never stopped), and a
+  // start that the user turned off while it was still starting stops its listener instead of keeping it.
+  const voiceWanted = useRef(false); const voiceGen = useRef(0);
   const toggleVoice = async () => {
-    if (voiceOn) { if (thought.current.text) { window.desktop.debugPush('thought', 'voice switched off with words held: sending them now'); await flushHeldRef.current(); } hush(); v.current.engine?.stop(); v.current.engine = null; setVoiceOn(false); setPhase('off'); setDraft(null); setMicMuted(false); void window.desktop.voiceOn(false, ears.current); return; }
+    if (voiceWanted.current || voiceOn) { voiceWanted.current = false; voiceGen.current++; if (thought.current.text) { window.desktop.debugPush('thought', 'voice switched off with words held: sending them now'); await flushHeldRef.current(); } hush(); v.current.engine?.stop(); v.current.engine = null; setVoiceOn(false); setPhase('off'); setDraft(null); setMicMuted(false); void window.desktop.voiceOn(false, ears.current); return; }
+    voiceWanted.current = true; const gen = ++voiceGen.current;
     setVoiceOn(true); setPhase('listening'); setDraft(null);
     try {
       await window.desktop.decisions(cfg.decisions === 'jev');
@@ -1307,7 +1383,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
             // The main thread is mid-turn. Said out loud, this reaches it now, as added information: it keeps going and keeps everything it has.
             // It only waits when they ask for that ("queue this"), and only a clear "stop" or "not that, this" interrupts the work. (Typed text queues, with a Send now button.)
             const triage = spec && spec.busy && spec.triage ? spec.triage : window.desktop.triage(t.text, speaker.current.provider, speaker.current.model, main.current, v.current.asked).catch(() => null);
-            const r = await triage; const read = v.current.running ? r?.action ?? 'steer' : 'queue'; const action = confirmStop(read, t.text); /* a stop with no stop word in it is added information (2026-10-07: "Off.") */ if (action !== read) window.desktop.debugPush('stop', `not stopped: "${t.text}" holds no stop word, so it goes to the turn (${read} was the model's reading)`);
+            const r = await triage; const read = v.current.running ? r?.action ?? 'steer' : 'queue'; const action = confirmStop(read, t.text); /* a stop with no stop word in it is added information (a bare "Off.", say) */ if (action !== read) window.desktop.debugPush('stop', `not stopped: "${t.text}" holds no stop word, so it goes to the turn (${read} was the model's reading)`);
             if (action === 'steer') { if (await steer(t.text, undefined, true)) v.current.asked = `${v.current.asked}\n(added while I worked) ${t.text}`; } // the summary at the end covers this too
             else if (action === 'replace') { setDraft(null); queue.current.unshift({ text: t.text, images: [], spoken: true }); setQueued([...queue.current]); persistQueue(); window.desktop.debugPush('queue', `first in the queue, it replaces the work: ${t.text}`); } else if (action !== 'stop') enqueueForMain(t.text, undefined, true);                  // stop alone carries nothing to hand over
             if (action === 'stop') { setDraft(null); showStop(t.text); }
@@ -1318,9 +1394,12 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
             v.current.chain = v.current.chain.then(settle); settle();
           } catch (e) { setNote(tr('app.voice.error', { error: (e as Error).message })); settle(); }
       };
-      const ptt = !!cfg.pushToTalk; if (ptt) setMicMuted(true); engine.pauseMs = cfg.pauseMs; engine.muted = ptt || micMuted; /* push to talk: closed until its button is held */ engine.wake = !ptt && cfg.wakeOn !== false && !!(cfg.wakePhrase ?? '').trim(); engine.output = cfg.output ?? ''; await engine.start(); v.current.engine = engine;
+      const ptt = !!cfg.pushToTalk; if (ptt) setMicMuted(true); engine.pauseMs = cfg.pauseMs; engine.muted = ptt || micMuted; /* push to talk: closed until its button is held */ engine.wake = !ptt && cfg.wakeOn !== false && !!(cfg.wakePhrase ?? '').trim(); engine.output = cfg.output ?? ''; await engine.start();
+      if (gen !== voiceGen.current) { engine.stop(); window.desktop.debugPush('note', 'voice: turned off while it was starting: its listener stopped'); return; } // off (or started again) meanwhile
+      if (v.current.engine && v.current.engine !== engine) { v.current.engine.stop(); window.desktop.debugPush('note', 'voice: a second listener in this chat stopped: one listener per chat'); }
+      v.current.engine = engine;
       const poll = setInterval(() => { void window.desktop.voiceStatus().then((st) => { setVstatus(st); if (st.whisper !== 'starting' || !v.current.engine) clearInterval(poll); }); }, 700);
-    } catch (e) { setVoiceOn(false); setPhase('off'); setNote(t('app.voice.couldNotStart', { error: (e as Error).message })); void window.desktop.voiceOn(false, ears.current); }
+    } catch (e) { if (gen === voiceGen.current) voiceWanted.current = false; setVoiceOn(false); setPhase('off'); setNote(t('app.voice.couldNotStart', { error: (e as Error).message })); void window.desktop.voiceOn(false, ears.current); }
   };
   useEffect(() => () => { v.current.engine?.stop(); v.current.engine = null; void window.desktop.voiceOn(false, ears.current); window.desktop.voiceState({ on: false, phase: 'off', level: 0, micMuted: false, speakerOff: false, muteIn: null }); }, []);
   // Auto-mute (a setting): after each spoken message, a countdown on the microphone, then muted; talking again cancels it. With the
@@ -1328,8 +1407,12 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
   const [muteIn, setMuteIn] = useState<number | null>(null); const muteTimer = useRef<ReturnType<typeof setInterval> | null>(null); const wakeBusy = useRef(false);
   const muteCut = useRef(false); // a sound stopped the countdown: if it turns out to be no words, the countdown starts again (T-127: a breath once stopped it for good)
   const cancelAutoMute = () => { if (muteTimer.current) clearInterval(muteTimer.current); muteTimer.current = null; setMuteIn(null); };
-  const startAutoMute = () => { muteCut.current = false; const c = v.current.cfg; if (!c.autoMute || !v.current.engine || v.current.engine.muted) return; cancelAutoMute(); let left = Math.max(1, Math.round(c.autoMuteSec || 5)); setMuteIn(left);
-    muteTimer.current = setInterval(() => { left -= 1; if (left > 0) { setMuteIn(left); return; } cancelAutoMute(); if (v.current.engine && !v.current.engine.muted) { window.desktop.debugPush('note', `auto-mute: muted ${c.autoMuteSec || 5} s after the last message${(c.wakePhrase ?? '').trim() ? `; "${c.wakePhrase}" unmutes` : ''}`); toggleMicRef.current(); } }, 1000); };
+  // Never while the user is talking: held words went out as the next ones began, the countdown started when that send ended, with them already
+  // talking, and muted them mid-sentence. Their next message starts it; a sound that turns out to be no words starts it again (muteCut).
+  const startAutoMute = () => { muteCut.current = false; const c = v.current.cfg; if (!c.autoMute || !v.current.engine || v.current.engine.muted) return; cancelAutoMute();
+    if (v.current.hearing) { muteCut.current = true; window.desktop.debugPush('note', 'auto-mute: not started, the user is talking: their next message starts it'); return; }
+    let left = Math.max(1, Math.round(c.autoMuteSec || 5)); setMuteIn(left);
+    muteTimer.current = setInterval(() => { left -= 1; if (left > 0) { setMuteIn(left); return; } cancelAutoMute(); if (v.current.hearing) { muteCut.current = true; window.desktop.debugPush('note', 'auto-mute: not muted, the user is talking'); return; } if (v.current.engine && !v.current.engine.muted) { window.desktop.debugPush('note', `auto-mute: muted ${c.autoMuteSec || 5} s after the last message${(c.wakePhrase ?? '').trim() ? `; "${c.wakePhrase}" unmutes` : ''}`); toggleMicRef.current(); } }, 1000); };
   const resumeAutoMute = () => { if (!muteCut.current || v.current.hearing) return; muteCut.current = false; window.desktop.debugPush('note', 'auto-mute: that sound had no words in it: the countdown starts again'); startAutoMute(); };
   // Push to talk (a voice setting; asked for 2026-09-26): the microphone hears only while its button, or the Option key, is held. A pause
   // while holding does not end anything; letting go ends what was said at once, a finished thought.
@@ -1413,7 +1496,7 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
     pinned.current = true; setRunning(true); setNote(''); setLiveText(''); setDraft(null);
     const imageBlocks = (images ?? []).map((i): Block => ({ type: 'image', src: `data:${i.mediaType};base64,${i.data}`, name: i.name }));
     if (!resend) { setMessages((m) => [...m, { uuid: `local-${Date.now()}`, role: 'user', blocks: [...(typed ? [{ type: 'text', text: typed } as Block] : []), ...imageBlocks], meta: false }]); toBottom();
-    record('user', typed + (images?.length ? ` [${images.length} image${images.length > 1 ? 's' : ''} attached]` : '')); }
+    record('user', typed, {}, images); }
     lastSent.current = { text: typed, images, at: Date.now(), resent: resend, dictated }; /* for a turn the provider swallows (see the turn's end) */
     const prelude = migrate.current ? replayPrelude(prevProvider.current ?? provider) : ''; migrate.current = false; /* the first message after a move carries the whole conversation */
     await window.desktop.chatStart({ chatId: chatId.current, projectId: project.id, sessionId: sid.current, provider, permissions, ...(embed ? { hidden: true } : {}), ...(project.builtin === 'jauvex' ? { steward: true } : {}), text: embed ? `${embed.context()}${dictated ? DICTATED_TAG : ''}${typed}` : `${prelude}${dictated ? DICTATED_TAG : ''}${typed}`, /* a dictated message says so, every time (T-76) */ ...(images?.length ? { images } : {}), ...(model ? { model } : {}), ...(effort && efforts.includes(effort) ? { effort } : {}), ...(voiced ? { voice: true, vocabulary: stt(v.current.cfg).vocabulary } : {}) });
@@ -1448,29 +1531,36 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
 
   return (
     <>
+      {/* Everything above the message box shares one area that gives way first (from the other edition, reported three times there): the
+          dashboard and the messages shrink to their floors, then the area scrolls; the message box and its settings row stay whole under it
+          at every window height (.chat-above) */}
+      <div className="chat-above">
       {top}
       {state === 'loading' ? <div className="empty"><Mark busy /><p>{t('app.chat.loading')}</p></div>
         : state === 'error' ? <div className="empty"><h2>{t('app.chat.loadError')}</h2><p>{err}</p></div>
         : <div className={voiceOn ? 'scroll under-orb' : 'scroll'} ref={scroller} onScroll={(e) => { const el = e.currentTarget; const gap = el.scrollHeight - el.scrollTop - el.clientHeight; const up = el.scrollTop < lastTop.current - 2; lastTop.current = el.scrollTop; if (gap < 80) pinned.current = true; else if (up) pinned.current = false; /* content growing under a pinned view is not the user leaving the bottom */ }}>
-            <div className="thread">
+            <div className="thread" onClick={(e) => { needsClick(e.target as HTMLElement, { send: (x) => void send(x), own: quote }); }} onInput={(e) => needsInput(e.target as HTMLElement)}>{/* an agent's answer buttons: a tap sends your answer, the pen quotes the question to answer in the message box */}
               {(start > 0 || copyMore > 0) && <button className="earlier" onClick={() => void earlier()}>{t('app.chat.loadEarlier', { n: copyMore > 0 ? copyMore : start })}</button>}
               {messages.length === 0 && !running && (embed ? <p className="jev-hint">{embed.hint ?? t('app.chat.jevHint', { provider: PROVIDER_LABEL[provider] })}</p>
                 : <div className="empty inline"><Mark /><h2>{t('app.chat.newSessionIn', { provider: PROVIDER_LABEL[provider], folder: project.name })}</h2><p>{project.path}</p></div>)}
-              {dev ? messages.map((m) => (m.voice && !cfg.showVoiceLines ? null : <Message key={m.uuid} m={m} showMeta={showMeta} results={results} base={project.path} />))
+              {dev ? messages.map((m) => (m.voice && !cfg.showVoiceLines ? null : <Message key={m.uuid} m={m} showMeta={showMeta} results={results} base={project.path} reply={replies.get(m.uuid)} />))
                 : (() => { const shownMsgs = messages.filter((m) => !(m.voice && !cfg.showVoiceLines));
                   // FB-14 (as Jauvex Pro): whose a message is, when it is agent-to-agent traffic: an agent's message to this one, or this one's answer
                   // to it (an answer to an agent's message goes back to that agent by itself), until the person writes again
                   const toAgent = new Map<string, string>(); let from: string | null = null;
                   for (const m of shownMsgs) { if (m.role === 'user') { const txt = textOf(m).replace(CONTEXT_TAG, '').trim(); from = /^\(from agent "([^"]+)"/.exec(txt)?.[1] ?? null; if (from) toAgent.set(m.uuid, from); } else if (m.role === 'assistant' && from) toAgent.set(m.uuid, from); }
-                  const agentUnit = (u: ThreadUnit): string | null => (u.kind === 'msg' ? toAgent.get(u.m.uuid) ?? toAgent.get(u.m.uuid.split(':')[0]!) ?? null : null);
+                  const agentUnit = (u: ThreadUnit): string | null => (u.kind === 'msg' && !hasNeedsYou(u.m) /* a question for the user, even in a turn for an agent, stays in sight */ ? toAgent.get(u.m.uuid) ?? toAgent.get(u.m.uuid.split(':')[0]!) ?? null : null);
                   const units = foldAgents(threadUnits(shownMsgs, showMeta), agentUnit); /* not a developer: each run of tool calls as one Working row (T-247); agent-to-agent traffic as one line (FB-14) */
                   const one = (u: ThreadUnit, k: number, all: ThreadUnit[]): React.ReactNode => (u.kind === 'agents' ? <details key={u.key} className="agent-fold"><summary>{t('chat.agentTraffic', { count: u.units.filter((x) => x.kind === 'msg').length, names: u.names.join(', ') })}</summary>{u.units.map((x, j) => one(x, j, u.units))}</details>
-                    : u.kind === 'msg' ? <Message key={u.key} m={u.m} showMeta={showMeta} results={results} base={project.path} />
+                    : u.kind === 'msg' ? <Message key={u.key} m={u.m} showMeta={showMeta} results={results} base={project.path} reply={replies.get(u.m.uuid)} />
                     : u.kind === 'media' ? <div key={u.key} className="assistant"><a className="tool-media" href={u.src} title={t('app.chat.openBeside')}><img src={localSrc(u.src)} alt="" loading="lazy" /></a></div>
                     : <WorkRow key={u.key} parts={u.parts} results={results} showMeta={showMeta} live={running && all === units && k === units.length - 1} />);
                   return units.map((u, k) => one(u, k, units)); })()}
+              {(() => { const id = unanswered(messages, running); const m = id ? messages.find((x) => x.uuid === id) : undefined; if (!m) return null; /* FB-50: a message nothing visible came back to says so, under it */
+                const text = textOf(m).replace(CONTEXT_TAG, '').trim(); const images = m.blocks.filter((b) => b.type === 'image') as unknown as Attachment[];
+                return <p className="silent-reply">{t('chat.noReply', { name: info?.customTitle || nameOnStart || PROVIDER_LABEL[provider] })} · <button type="button" onClick={() => { window.desktop.debugPush('note', `sent again from the "didn't reply" line: ${text.slice(0, 80)}`); void sendRef.current(text, false, undefined, false, images.length ? images : undefined, true); }}>{t('chat.sendAgain')}</button></p>; })()}
               {statusLine && <p className="chat-status" role="status">{statusLine}</p>}
-              {liveText && <div className="assistant"><div className="prose" dangerouslySetInnerHTML={{ __html: md(liveText, project.path) }} /></div>}
+              {liveText && <div className="assistant"><div className="prose" dangerouslySetInnerHTML={{ __html: md(withoutOutcome(liveText), project.path) }} /></div>}
               {asks.map((a) => (
                 <div key={a.requestId} className="ask">
                   <div className="ask-head"><ShieldQuestion size={16} /><b>{a.toolName}</b><span>{toolHint(a.input)}</span></div>
@@ -1478,17 +1568,18 @@ export function Chat({ top, onAsks, embed, jev, startVoice, kickoff, startProvid
                   <div className="ask-row"><button className="btn ghost" onClick={() => answer(a.requestId, 'deny')}>{t('app.ask.deny')}</button><button className="btn ghost" onClick={() => answer(a.requestId, 'always')}>{t('app.ask.always', { tool: a.toolName })}</button><button className="btn" onClick={() => answer(a.requestId, 'allow')}>{t('app.ask.once')}</button></div>
                 </div>
               ))}
-              {queued.some((q) => !q.shown) && <div className="user">{queued.map((q, i) => q.shown ? null : <div key={i} className="bubble queued" title={t('app.chat.queuedTitle')}><small>{t(compacting ? 'chat.queuedCompacting' : 'app.chat.queued')}</small>{q.text}{q.images.length > 0 && <div className="queued-imgs">{q.images.map((a, j) => <img key={j} src={`data:${a.mediaType};base64,${a.data}`} alt={a.name} title={a.name} />)}</div>}<button className="steer-now" title={t('app.chat.sendNowTitle')} onClick={() => { queue.current.splice(i, 1); setQueued([...queue.current]); persistQueue(); void steer(q.text, q.images.length ? q.images : undefined); }}>{t('app.chat.sendNow')}</button></div>)}</div>}
+              {queued.some((q) => !q.shown) && <div className="user">{queued.map((q, i) => q.shown ? null : <div key={i} className="bubble queued" title={t('app.chat.queuedTitle')}><small>{t(compacting ? 'chat.queuedCompacting' : 'app.chat.queued')}</small>{q.text}{q.images.length > 0 && <div className="queued-imgs">{q.images.map((a, j) => <img key={j} src={`data:${a.mediaType};base64,${a.data}`} alt={a.name} title={a.name} />)}</div>}{!compacting /* a compaction takes nothing in: Send now only put it back at the end of the queue */ && <button className="steer-now" title={t('app.chat.sendNowTitle')} onClick={() => { queue.current.splice(i, 1); setQueued([...queue.current]); persistQueue(); void steer(q.text, q.images.length ? q.images : undefined); }}>{t('app.chat.sendNow')}</button>}</div>)}</div>}
               {draft !== null && <div className="user"><div className="bubble draft" title={t('app.chat.draftTitle')}><small>{t('app.chat.hearing')}</small>{draft ? <DraftText text={draft} /> : <span className="draft-dots"><i /><i /><i /></span>}</div></div>}
               <div className="thread-end"><Mark busy={running} />{note && <span>{note}</span>}</div>
             </div>
           </div>}
+      </div>
       <Composer context={sid.current || ctx ? { usage: ctx, compacting, autoPct, hasSession: !!sid.current, last: lastCompact, onCompact: () => { if (!startCompactRef.current('manual')) setNote(v.current.running ? t('app.compact.afterTurn') : t('app.compact.nothingYet')); } } : undefined} draftKey={storeKey} signedIn={signedIn} usageTick={turns} usageModel={model || mainModel.current || ''} jev={jev} running={running} disabled={state !== 'ready'} provider={provider} onProvider={hybrid ? (running ? undefined : switchProvider) : !embed && !sessionId && !sid.current && messages.length === 0 && !running ? pickProvider : undefined}
         models={provider === 'claude' ? CLAUDE_MODELS : listedModels} model={model} onModel={(m) => { setModel(m); localStorage.setItem(modelKey(provider), m); keep({ model: m }); }}
         permissions={perm} permissionsLocked={!!providerModes[provider]} onPermissions={(p) => { setPermissions(p); localStorage.setItem('cvc.permissions', p); keep({ permissions: p }); }}
         efforts={efforts} effort={effort} onEffort={(e) => { setEffort(e); localStorage.setItem(effortKey(provider), e); keep({ effort: e }); }} onSend={(t, images) => void send(t, false, undefined, false, images)} onStop={() => { hush(); v.current.stopped = true; void window.desktop.chatStop(chatId.current); }}
         voice={{ ptt: cfg.pushToTalk ? { press: pttPress, release: pttRelease } : null, muteIn, on: voiceOn, phase, status: vstatus, cfg, level, micMuted, speakerOff, toggle: () => void toggleVoice(), toggleMic, toggleSpeaker, hush, save: saveCfg, test: () => { if (v.current.engine) enqueue(say(t('app.voice.testLine')), v.current.gen); } }}
-        warning={busyElsewhere ? t('app.chat.busyElsewhere') : ''} />
+        warning={busyElsewhere ? t('app.chat.busyElsewhere') : ''} takesQuotes={active && !embed} />
     </>
   );
 }
@@ -1503,7 +1594,7 @@ function VoiceLine({ text, ms, cut }: { text: string; ms: number; cut: boolean }
   return <div className="voice-line"><span className="voice-tag"><AudioLines size={12} />{t('app.debug.voice')}</span><p>{text.slice(0, n)}{typing ? <i className="caret" /> : n < text.length ? '…' : ''}</p></div>;
 }
 
-function Message({ m, showMeta, results, base }: { m: ChatMessage; showMeta: boolean; results: Map<string, Extract<Block, { type: 'tool_result' }>>; base: string }) {
+function Message({ m, showMeta, results, base, reply }: { m: ChatMessage; showMeta: boolean; results: Map<string, Extract<Block, { type: 'tool_result' }>>; base: string; reply?: string /* what you answered it with: its questions show as answered */ }) {
   if (m.error) return <div className="chat-error" role="alert"><strong>{m.role === 'system' ? t('app.chat.turnFailedTitle') : t('app.chat.providerFailed')}</strong><span>{m.blocks.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n')}</span></div>;
   if (m.voice) return <VoiceLine text={m.blocks.map((b) => (b.type === 'text' ? b.text : '')).join(' ')} ms={m.voice.ms} cut={Boolean(m.voice.cut)} />;
   if (m.meta) {
@@ -1512,11 +1603,11 @@ function Message({ m, showMeta, results, base }: { m: ChatMessage; showMeta: boo
     return <Fold label={m.role === 'system' ? t('app.chat.system') : t('app.chat.systemEvent')} icon={<Eye size={13} />} body={text} />;
   }
   if (m.role === 'user' && m.blocks.some((x) => x.type === 'text' && x.text.replace(CONTEXT_TAG, '').trim().startsWith('(from the app)'))) { const note = m.blocks[0]?.type === 'text' ? m.blocks[0].text.replace(CONTEXT_TAG, '').trim().replace('(from the app) ', '') : ''; return <p className="app-note">{!note ? t('app.chat.trainerNote') : note.length <= 240 ? note : `${note.slice(0, 240)}…`}</p>; }
-  if (m.role === 'user') return <div className="user">{m.blocks.map((b, i) => { if (b.type !== 'text') return b.type === 'image' ? (b.src ? <img key={i} className="bubble-img" src={b.src} alt={b.name ?? t('app.chat.image')} title={b.name} /> : <div key={i} className="bubble muted">[{t('app.chat.image')}]</div>) : null; const raw = b.text.replace(CONTEXT_TAG, '').trim(); if (!raw) return null; const from = /^\(from agent "([^"]+)"(?: \[[0-9a-f]*\])?\)\s*/.exec(raw); const text = from ? raw.slice(from[0].length) : raw; return <div key={i} className={from ? 'bubble agent-msg' : m.steered || m.stopped ? 'bubble steered' : 'bubble'} title={from ? (m.steered ? t('app.chat.sentByAgentSteered', { name: from[1]! }) : t('app.chat.sentByAgent', { name: from[1]! })) : m.steered ? t('app.chat.steeredTitle') : undefined}>{from ? <small>{t('app.chat.fromAgent', { name: from[1]! })}</small> : m.stopped ? <small>{t('app.chat.stoppedTurn')}</small> : m.steered && <small>{t('app.chat.sentMidTurn')}</small>}{text}</div>; })}</div>;
+  if (m.role === 'user') return <div className="user">{m.blocks.map((b, i) => { if (b.type !== 'text') return b.type === 'image' ? (b.src ? <img key={i} className="bubble-img" src={b.src} alt={b.name ?? t('app.chat.image')} title={b.name} /> : <div key={i} className="bubble muted">[{t('app.chat.image')}]</div>) : null; const raw = b.text.replace(CONTEXT_TAG, '').trim(); if (!raw) return null; const from = /^\(from agent "([^"]+)"(?: \[[0-9a-f]*\])?\)\s*/.exec(raw); const text = from ? raw.slice(from[0].length) : raw; return <div key={i} className={from ? 'bubble agent-msg' : m.steered || m.stopped ? 'bubble steered' : 'bubble'} title={from ? (m.steered ? t('app.chat.sentByAgentSteered', { name: from[1]! }) : t('app.chat.sentByAgent', { name: from[1]! })) : m.steered ? t('app.chat.steeredTitle') : undefined}>{from ? <small>{t('app.chat.fromAgent', { name: from[1]! })}</small> : m.stopped ? <small>{t('app.chat.stoppedTurn')}</small> : m.steered && <small>{t('app.chat.sentMidTurn')}</small>}<QuotedText text={text} /></div>; })}</div>; /* what it quotes drawn as a quote, a click on it going to the quoted message */
   return (
     <div className="assistant">
       {m.blocks.map((b, i) => {
-        if (b.type === 'text') return <div key={i} className="prose" dangerouslySetInnerHTML={{ __html: md(b.text, base) }} />;
+        if (b.type === 'text') return <div key={i} className="prose" dangerouslySetInnerHTML={{ __html: md(withoutOutcome(b.text, t('chat.outcomeOnly')), base, '', reply) }} />; /* a trailing OUTCOME line is the runner's, not the person's */
         if (b.type === 'thinking') return <WorkFold key={i} b={b} results={results} />;
         if (b.type === 'tool_use') { const image = toolImage(b); // a picture the tool made (Grok's imagine): shown under its row, a click opens it beside the chat
           const fold = <WorkFold key={i} b={b} results={results} />;
@@ -1557,8 +1648,8 @@ function ThemeSetting({ onCustom }: { onCustom: () => void }) {
   </section>;
 }
 
-/** Developer mode (T-247; the user, 2026-09-30: "When it's disabled, then the users will not see bash and all these tool calls ... They would
- *  just see ... working. They don't care ... unless they click it ... it's for non-technical users"): off by default, the glasses at the top right. */
+/** Developer mode (T-247: tool calls kept out of sight of people who do not need them, shown
+ *  as work under way until clicked): off by default, the glasses at the top right. */
 const DevMode = createContext(false);
 /** One run of the agent's work, for someone who is not a developer: "Working…" while it goes on, "Worked · 7 steps" after; a click shows it all. */
 function WorkRow({ parts, results, showMeta, live }: { parts: WorkPart[]; results: Map<string, Extract<Block, { type: 'tool_result' }>>; showMeta: boolean; live: boolean }) {
@@ -1658,18 +1749,32 @@ export function VoicePill({ level, phase, micMuted, speakerOff, onMic, onOrb, on
   );
 }
 
-function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, permissions, permissionsLocked, onPermissions, running, disabled, provider, onProvider, models, model, onModel, efforts, effort, onEffort, onSend, onStop, warning, voice }: { context?: { usage: ContextUsage | null; compacting: boolean; autoPct: number; hasSession: boolean; last: LastCompact | null; onCompact: () => void }; draftKey?: string; signedIn?: Record<Provider, boolean>; usageTick: number; usageModel: string; jev?: () => void; permissions: Permissions; permissionsLocked?: boolean; onPermissions: (p: Permissions) => void; running: boolean; disabled: boolean; provider: Provider; onProvider?: (p: Provider) => void; models: ModelOption[]; model: string; onModel: (v: string) => void; efforts: string[]; effort: string; onEffort: (v: string) => void; onSend: (text: string, images?: Attachment[]) => void; onStop: () => void; warning: string; voice: VoiceUi }) {
+function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, permissions, permissionsLocked, onPermissions, running, disabled, provider, onProvider, models, model, onModel, efforts, effort, onEffort, onSend, onStop, warning, voice, takesQuotes }: { takesQuotes?: boolean /* the chat on screen: a quote (chatTools.ts) lands in its box */; context?: { usage: ContextUsage | null; compacting: boolean; autoPct: number; hasSession: boolean; last: LastCompact | null; onCompact: () => void }; draftKey?: string; signedIn?: Record<Provider, boolean>; usageTick: number; usageModel: string; jev?: () => void; permissions: Permissions; permissionsLocked?: boolean; onPermissions: (p: Permissions) => void; running: boolean; disabled: boolean; provider: Provider; onProvider?: (p: Provider) => void; models: ModelOption[]; model: string; onModel: (v: string) => void; efforts: string[]; effort: string; onEffort: (v: string) => void; onSend: (text: string, images?: Attachment[]) => void; onStop: () => void; warning: string; voice: VoiceUi }) {
   const dKey = draftKey ? `cvc.draft.${draftKey}` : ''; const [text, setTextState] = useState(() => (dKey ? localStorage.getItem(dKey) ?? '' : ''));
   const setText = (t: string) => { setTextState(t); if (dKey) { try { if (t) localStorage.setItem(dKey, t); else localStorage.removeItem(dKey); } catch { /* nothing */ } } }; // typed but not sent: kept across a reload
   const [settings, setSettings] = useState(false);
   const ta = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(220, el.scrollHeight)}px`; el.style.overflowY = el.scrollHeight > 220 ? 'auto' : 'hidden'; } }, [text]); // a scrollbar only past the cap: below it the box fits its text, and a pixel of rounding showed the scrollbar's thumb in an empty box (T-130)
+  // The box fits its text, a scrollbar only past the cap (a pixel of rounding showed the scrollbar's thumb in an empty box, T-130). The cap
+  // follows the window (from the other edition: at about 880 px a picture attached and a long draft pushed the box's text and buttons under
+  // the window's edge): up to 220 px, never more than 22% of the window's height, so the whole box stays in view; a shorter window, a shorter
+  // cap. Measured only while it shows: a chat kept in the background is hidden and measures 0 px; it is measured again when it shows.
+  const fitBox = useRef(() => {}); fitBox.current = () => { const el = ta.current; if (!el) return; if (!el.clientWidth) { el.style.height = ''; return; }
+    const cap = Math.max(48, Math.min(220, Math.round(window.innerHeight * 0.22)));
+    el.style.height = 'auto'; el.style.height = `${Math.min(cap, el.scrollHeight)}px`; el.style.overflowY = el.scrollHeight > cap ? 'auto' : 'hidden'; };
+  useEffect(() => { fitBox.current(); }, [text]);
+  useEffect(() => { const on = () => fitBox.current(); window.addEventListener('resize', on); return () => window.removeEventListener('resize', on); }, []);
+  useEffect(() => { const el = ta.current; if (!el || typeof ResizeObserver === 'undefined') return; let w = el.clientWidth;
+    const ro = new ResizeObserver(() => { if (el.clientWidth !== w) { w = el.clientWidth; fitBox.current(); } }); ro.observe(el); return () => ro.disconnect(); }, []);
   useEffect(() => { ta.current?.focus(); }, []);
   // Images: pasted (a screenshot from the clipboard), dropped on the composer, or picked with the clip. Shown as thumbnails until sent.
   const [files, setFiles] = useState<(Attachment & { src: string })[]>([]); const [over, setOver] = useState(false);
   const addFiles = (list: File[]) => { const imgs = list.filter((f) => /^image\/(png|jpe?g|gif|webp)$/.test(f.type)); if (!imgs.length) return;
     void Promise.all(imgs.map((f) => new Promise<Attachment & { src: string }>((res, rej) => { const r = new FileReader(); r.onload = () => { const src = String(r.result); res({ name: f.name || 'pasted image', mediaType: f.type, data: src.slice(src.indexOf(',') + 1), src }); }; r.onerror = () => rej(r.error); r.readAsDataURL(f); }))).then((got) => setFiles((x) => [...x, ...got])); };
-  const submit = () => { if ((!text.trim() && !files.length) || disabled) return; onSend(text, files.length ? files.map(({ src: _src, ...a }) => a) : undefined); setText(''); setFiles([]); }; // while a turn runs, this queues the message
+  // Reply to part of the chat (1.8.0): one quote at a time, a card above the box with an ×, sent as a markdown quote before the words typed
+  const [quoted, setQuoted] = useState<string | null>(null);
+  useEffect(() => { if (!takesQuotes) return; const on = (e: Event) => { setQuoted((e as CustomEvent<string>).detail); ta.current?.focus(); }; window.addEventListener(QUOTE_EVENT, on); return () => window.removeEventListener(QUOTE_EVENT, on); }, [takesQuotes]);
+  const submit = () => { if ((!text.trim() && !files.length && !quoted) || disabled) return; const said = quoted ? `${quoted.split('\n').map((l) => `> ${l}`).join('\n')}\n\n${text}`.trim() : text;
+    onSend(said, files.length ? files.map(({ src: _src, ...a }) => a) : undefined); setText(''); setFiles([]); setQuoted(null); }; // while a turn runs, this queues the message
   const st = voice.status; const c = voice.cfg; const set = (patch: Partial<VoiceSettings>) => voice.save({ ...c, ...patch });
   return (
     <div className="composer-wrap">
@@ -1693,6 +1798,7 @@ function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, per
         </div>
       )}
       <div className={`composer${disabled ? ' off' : ''}${over ? ' drop' : ''}`} onDragOver={(e) => { if ([...e.dataTransfer.items].some((i) => i.kind === 'file')) { e.preventDefault(); setOver(true); } }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); addFiles([...e.dataTransfer.files]); }}>
+        {quoted && <div className="quote-card"><div className="quote-text">{quoted}</div><button type="button" title={t('chat.quoteRemove')} aria-label={t('chat.quoteRemove')} onClick={() => setQuoted(null)}><X size={12} /></button></div>}
         {files.length > 0 && <div className="attach-row">{files.map((f, i) => <div key={i} className="attach" title={f.name}><img src={f.src} alt={f.name} /><button title={t('app.composer.remove')} onClick={() => setFiles((x) => x.filter((_, j) => j !== i))}><X size={11} /></button></div>)}</div>}
         <textarea ref={ta} rows={1} value={text} disabled={disabled} onPaste={(e) => { const fs = [...e.clipboardData.items].filter((i) => i.kind === 'file').map((i) => i.getAsFile()).filter((f): f is File => !!f); if (fs.length) { e.preventDefault(); addFiles(fs); } }} placeholder={voice.on ? t('app.composer.talkOrType') : running ? t('app.composer.working', { provider: PROVIDER_LABEL[provider] }) : t('app.composer.typeMessage')} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }} />
@@ -1705,7 +1811,7 @@ function Composer({ context, draftKey, signedIn, usageTick, usageModel, jev, per
         <span className="grow" />
         {context && <ContextMeter {...context} provider={provider} running={running} />}
         <UsageBattery provider={provider} model={usageModel} tick={usageTick} others={PROVIDERS.filter((p) => p !== provider && signedIn?.[p] !== false)} />
-        {onProvider ? <select className="model" value={provider} onChange={(e) => (e.target.value === 'jev' ? jev?.() : onProvider(e.target.value as Provider))} title={t('app.composer.providerTitle')}>{PROVIDERS.map((p) => <option key={p} value={p} disabled={p !== provider && signedIn?.[p] === false}>{p !== provider && signedIn?.[p] === false ? t('app.composer.notSignedIn', { provider: PROVIDER_LABEL[p] }) : PROVIDER_LABEL[p]}</option>)}{jev && <option value="jev">{t('app.composer.jevAgent')}</option>}</select>
+        {onProvider ? <select className="model" value={provider} onChange={(e) => (e.target.value === 'jev' ? jev?.() : onProvider(e.target.value as Provider))} title={t('app.composer.providerTitle')}>{PROVIDERS.map((p) => <option key={p} value={p} disabled={p !== provider && signedIn?.[p] === false}>{p !== provider && signedIn?.[p] === false ? (p === 'open' ? `${PROVIDER_LABEL[p]}: ${t('open.notSet')}` : t('app.composer.notSignedIn', { provider: PROVIDER_LABEL[p] })) : PROVIDER_LABEL[p]}</option>)}{jev && <option value="jev">{t('app.composer.jevAgent')}</option>}</select>
           : <span title={t('app.composer.providerFixed')}>{PROVIDER_LABEL[provider]}</span>}
         <select className="model" value={models.some((m) => m.id === model) ? model : ''} onChange={(e) => onModel(e.target.value)} title={t('app.composer.modelTitle')}><option value="">{t('app.composer.defaultModel')}</option>{models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select>
         {efforts.length > 0 && <select className="model" value={efforts.includes(effort) ? effort : ''} onChange={(e) => onEffort(e.target.value)} title={t('app.composer.effortTitle')}><option value="">{t('app.composer.defaultEffort')}</option>{efforts.map((e) => <option key={e} value={e}>{t('app.composer.effortOption', { level: EFFORT_LABEL()[e] ?? e })}</option>)}</select>}
@@ -1765,21 +1871,21 @@ function ProviderPermissionSettings() {
 
 type SettingsTab = 'general' | 'voice' | 'context' | 'safety' | 'reset';
 const SETTINGS_TABS = (): [SettingsTab, string][] => [['general', t('app.settings.tab.general')], ['voice', t('app.settings.tab.voice')], ['context', t('app.settings.tab.context')], ['safety', t('app.settings.tab.safety')], ['reset', t('app.settings.tab.reset')]];
-/** The tries a new workflow is written with (the user, 2026-09-28: "the global one of the application will set the default value for the
- *  creation of new workflows, and then each workflow can have its own"): past them, a loop between agents alone stops the run; a decision
+/** The tries a new workflow is written with (the app's setting is the default for new workflows, each of which can
+ *  have its own): past them, a loop between agents alone stops the run; a decision
  *  of the user's starts the count again. Each workflow keeps its own number in its file, and a step can say its own. */
 function WorkflowTriesSetting() {
   const [n, setN] = useState<number>(DEFAULT_TRIES); const [missed, setMissed] = useState<MissedPolicy>(MISSED_DEFAULT);
   useEffect(() => { void api.state().then((st) => { setN(st.ui?.workflowTries ?? DEFAULT_TRIES); setMissed(st.ui?.workflowMissed ?? MISSED_DEFAULT); }).catch(() => {}); }, []);
   return <section className="settings-group"><strong>{t('app.sidebar.workflows')}</strong>
-    {/* the user, 2026-09-29: a schedule missed while the app was closed is at least asked about; run it, or nothing, if you say so */}
+    {/* a schedule missed while the app was closed is at least asked about; run it, or nothing, if you say so */}
     <label className="check stack">{t('app.settings.wf.missed')}<select className="model" aria-label={t('app.settings.wf.missedAria')} value={missed} onChange={(e) => { const v = e.target.value as MissedPolicy; setMissed(v); void api.setUi({ workflowMissed: v }); }}>{MISSED_OPTIONS.map(([k]) => { const label = t(`app.settings.wf.missedOpt.${k}`); return <option key={k} value={k}>{k === MISSED_DEFAULT ? t('app.settings.withDefault', { label }) : label}</option>; })}</select></label>
     <p className="muted">{t('app.settings.wf.missedNote')}</p>
     <label><span className="lhead">{t('app.settings.wf.tries')}<em>{n}</em></span><input type="range" min={1} max={20} step={1} value={n} onChange={(e) => { const v = Number(e.target.value); setN(v); void api.setUi({ workflowTries: v }); }} /></label>
     <p className="muted">{t('app.settings.wf.triesNote1')}<code>tries:</code>{t('app.settings.wf.triesNote2')}</p></section>;
 }
 function SettingsPanel({ dashOn, onDashOn, onCustomTheme, signedIn, welcomeNext, onWelcomeNext, onOpenWelcome, defaultProvider, onDefaultProvider, showJauvex, onShowJauvex, jauvexMove, onJauvexMove, autoCompact, onAutoCompact, onClose }: { dashOn: boolean; onDashOn: (on: boolean) => void; onCustomTheme: () => void; autoCompact: number; onAutoCompact: (pct: number) => void; signedIn: Record<Provider, boolean>; welcomeNext: boolean; onWelcomeNext: (on: boolean) => void; onOpenWelcome: () => void; defaultProvider: Provider | null; onDefaultProvider: (p: Provider) => void; showJauvex: boolean; onShowJauvex: (on: boolean) => void; jauvexMove: 'unified' | 'handoff'; onJauvexMove: (m: 'unified' | 'handoff') => void; onClose: () => void }) {
-  // One tab per kind of setting, a bar across the top (the user, 2026-09-24: the settings were "a freaking mess because there are no tabs").
+  // One tab per kind of setting, a bar across the top (the settings had none).
   // The window keeps its size from tab to tab; a long tab scrolls under the bar.
   const [tab, setTab] = useState<SettingsTab>('general');
   return (
@@ -1817,6 +1923,7 @@ function SettingsPanel({ dashOn, onDashOn, onCustomTheme, signedIn, welcomeNext,
           <section className="settings-group">
             <strong>{t('app.settings.tab.context')}</strong>
             <label className="check stack">{t('app.settings.autoCompact')}<select className="model" value={autoCompact} onChange={(e) => onAutoCompact(Number(e.target.value))}>{AUTO_COMPACT_CHOICES.map((p) => <option key={p} value={p}>{p === AUTO_COMPACT_DEFAULT ? t('app.settings.withDefault', { label: `${p} %` }) : `${p} %`}</option>)}{![0, ...AUTO_COMPACT_CHOICES].includes(autoCompact) && <option value={autoCompact}>{autoCompact} %</option>}<option value={0}>{t('app.settings.autoCompactProvider')}</option></select></label>
+            {autoCompact > 0 && <p className="muted">{t('app.settings.autoCompactIdle', { idle: idleCompactPct(autoCompact), min: IDLE_COMPACT_MS / 60_000 })}</p>}{/* why a chat compacts before the set percentage */}
             <p className="muted">{t('app.settings.contextNote')}</p>
           </section>
         </>}

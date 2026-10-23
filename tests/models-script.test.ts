@@ -1,7 +1,7 @@
 import http from 'node:http'; import path from 'node:path'; import { execFile } from 'node:child_process'; import { createHash } from 'node:crypto';
 import { closeSync, createReadStream, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
 // scripts/models.sh, start.sh's Whisper models: a model cut short counts as missing and is downloaded again, a dropped connection is tried
-// again, and a download that stays incomplete or does not match its SHA-256 never takes the model's name. On 2026-09-24 an interrupted
+// again, and a download that stays incomplete or does not match its SHA-256 never takes the model's name. Once an interrupted
 // download stayed behind as the small model on a new Mac, every later install took it for done ("is here"), and Whisper could not load it.
 // The same for scripts/models.ts, Windows' (start.ps1, T-283), which reads its list from models.sh.
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };

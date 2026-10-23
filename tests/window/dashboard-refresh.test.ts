@@ -1,7 +1,6 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/dashboard-refresh/claude MOCK_DELAY_MS=5
-// The dashboard kept current by the Jauvex agent (T-279; the user, 2026-10-01: "on initialization ... the dashboard for the first time ... it
-// should rebuild this dashboard ... Or by Jauvex in the case of the personal version", "keeps it up to date, somehow regularly, but not too
-// abuse of the workspace agent", "An option to disable this dashboard, because maybe some people don't want it"): the first look at it with no
+// The dashboard kept current by the Jauvex agent (T-279: built on the first look, kept up to date without
+// overusing the agent, and a switch to turn it off): the first look at it with no
 // DASHBOARD.md asks the Jauvex agent to build it, once (not again at the next reads); you can turn the dashboard off, and on again.
 import { connect, sleep, check, done, V } from './lib.ts';
 import { readFileSync } from 'node:fs';

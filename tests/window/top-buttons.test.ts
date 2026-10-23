@@ -1,8 +1,7 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/top-buttons/claude MOCK_DELAY_MS=5
-// The buttons at the top right (the user, 2026-10-01). System events (T-259): "The eye should only appear when the goggles are active ... in
-// between the bug and the goggles ... the system events icon makes no sense with an eye": shown in developer mode only, after the glasses and
-// before the bug, a lines icon. Reload (T-261): "It should do a hard refresh on the app without restarting the app. So basically like doing
-// command R": the window reloads, and a draft is still there.
+// The buttons at the top right. System events (T-259): shown in developer mode only, after the glasses and
+// before the bug, a lines icon. Reload (T-261), a hard refresh of the page without restarting the app, as
+// Command-R: the window reloads, and a draft is still there.
 import { connect, sleep, check, done, V } from './lib.ts';
 const { js, close } = await connect(); await sleep(2500);
 const until = async (expr: string, ms = 10000) => { for (let t = 0; t < ms; t += 250) { const v = await js(expr); if (v) return v; await sleep(250); } return null; };

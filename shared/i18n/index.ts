@@ -1,4 +1,4 @@
-// The app's languages (i18n; the user, 2026-10-03: Spanish first, a third language should be one file). Every text the app shows is a key of
+// The app's languages (i18n: Spanish first; a third language is one more file). Every text the app shows is a key of
 // en.ts, English, the source and the fallback; each other language is one file of the same keys (es.ts), typed against it so TypeScript
 // refuses a missing key, and tests/i18n-keys.test.ts also refuses an empty one, an unknown key and a placeholder that does not match.
 // Not translated: what models read (prompts, briefings), logs, file formats. Shared with Jauvex Personal: change both (GLOSSARY.md).

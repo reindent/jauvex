@@ -4,6 +4,9 @@
 # Each step shows a spinner while it runs (the first start installs and fetches Electron, which takes a while);
 # a step's output is kept in tmp/start.log and shown only if the step fails.
 unset ELECTRON_RUN_AS_NODE
+# sharp (in Kokoro's packages) takes a libvips the system has and builds itself from source against it, which fails: Omarchy has one
+# (2026-10-11). Its own prebuilt copy always works.
+export SHARP_IGNORE_GLOBAL_LIBVIPS=1
 cd "$(dirname "$0")"
 OS=$(uname)
 mkdir -p tmp; LOG="$PWD/tmp/start.log"; : > "$LOG"
@@ -25,7 +28,9 @@ step() { # step "label" command...
 printf 'Jauvex\n'
 # Again whenever the lockfile changed since the last install: an update or a pull brings a new one.
 if [ -d node_modules ] && cmp -s package-lock.json node_modules/.jauvex-lock; then step "Dependencies are installed" true
-else step "Installing dependencies (npm install)" npm install --no-audit --no-fund; cp package-lock.json node_modules/.jauvex-lock; fi
+# npm ci, not npm install: it installs exactly the lockfile and never rewrites it (npm 12 did, and a clone with a changed lockfile refused
+# its next git pull: Omarchy, 2026-10-11)
+else step "Installing dependencies (npm ci)" npm ci --no-audit --no-fund; cp package-lock.json node_modules/.jauvex-lock; fi
 # The electron package does not fetch its binary by itself (no postinstall of its own since Electron 40-something): install-electron does.
 { [ -d node_modules/electron/dist/Electron.app ] || [ -x node_modules/electron/dist/electron ]; } && step "Electron is here" true || step "Fetching Electron (about 120 MB, once)" npx install-electron
 # Linux: Electron's sandbox helper must belong to root with the setuid bit (Ubuntu 24.04 and later refuse the other way, user namespaces, to an
@@ -33,12 +38,14 @@ else step "Installing dependencies (npm install)" npm install --no-audit --no-fu
 sandbox=node_modules/electron/dist/chrome-sandbox
 if [ "$OS" != Darwin ] && [ -f "$sandbox" ]; then
   if [ "$(stat -c %u:%a "$sandbox" 2>/dev/null)" = 0:4755 ]; then step "Electron's sandbox is set up" true
+  elif unshare -Ur true 2>/dev/null; then step "Electron's sandbox uses user namespaces" true # Arch and Omarchy allow them: no sudo
   else printf '  Electron needs its sandbox helper to belong to root (sudo may ask for your password):\n'
     sudo chown root:root "$sandbox" && sudo chmod 4755 "$sandbox" && printf '  \033[32m✓\033[0m Electron'"'"'s sandbox is set up\n' || { printf '  \033[31m✗\033[0m Run, then start again:\n    sudo chown root:root %s && sudo chmod 4755 %s\n' "$PWD/$sandbox" "$PWD/$sandbox"; exit 1; }
   fi
 fi
 # The ears: whisper-server (Homebrew) and the models the app prefers (small for the transcript, base for the live words).
 if command -v whisper-server >/dev/null 2>&1 || [ -x "$HOME/.local/bin/whisper-server" ]; then step "whisper-server is here" true
+elif [ "$OS" != Darwin ] && command -v pacman >/dev/null 2>&1; then printf '  \033[33m!\033[0m whisper-server is not installed: sh scripts/install-arch.sh builds it. Without it you can type but not talk.\n'
 elif [ "$OS" != Darwin ]; then printf '  \033[33m!\033[0m whisper-server is not installed. Build whisper.cpp (github.com/ggml-org/whisper.cpp: cmake -B build && cmake --build build -j) and put build/bin/whisper-server on your PATH (~/.local/bin will do). Without it you can type but not talk.\n'
 elif command -v brew >/dev/null 2>&1; then step "Installing whisper-cpp (brew, once)" brew install whisper-cpp
 else printf '  \033[33m!\033[0m whisper-server is not installed and Homebrew is missing: install Homebrew (brew.sh), then run this again. Without it you can type but not talk.\n'; fi
@@ -63,6 +70,9 @@ step "Building the app" sh scripts/ts.sh scripts/bundle-electron.ts
 if [ "$OS" != Darwin ]; then
   # Linux: no LaunchServices and no protected folders. Started in a session of its own, so closing the terminal does not stop it.
   [ -n "$DISPLAY$WAYLAND_DISPLAY" ] || { printf '  \033[31m✗\033[0m No screen: DISPLAY and WAYLAND_DISPLAY are both empty. Start it from your desktop session.\n'; exit 1; }
+  # A Wayland session (Omarchy's Hyprland, GNOME, KDE): Electron is told so. Left to choose, it took X11 through XWayland and drew no window
+  # on Omarchy, or stopped with "Missing X server" where there is no XWayland (2026-10-11).
+  [ -n "${WAYLAND_DISPLAY:-}" ] && set -- --ozone-platform=wayland "$@"
   nohup setsid "$PWD/node_modules/electron/dist/electron" "$PWD" "$@" > "$PWD/tmp/app.log" 2>&1 < /dev/null & pid=$!
   sleep 2; if kill -0 "$pid" 2>/dev/null; then printf '  \033[32m✓\033[0m Launched (log in tmp/app.log)\n'; else printf '  \033[31m✗\033[0m The app stopped right away:\n'; tail -20 "$PWD/tmp/app.log"; exit 1; fi
   exit 0

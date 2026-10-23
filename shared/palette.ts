@@ -1,7 +1,5 @@
-// The app's own colours, made with the Jauvex agent (T-278; the user, 2026-10-01: "We have right now Auto, Dark, Light, and then one more
-// that says Custom. And when you do custom ... You're going to talk with the Jauvex agent, and the Jauvex agent is going to tell you, OK, what
-// would you feel like? And it will give you three ideas ... of colors. And then once you select one, You will be able to ... modify ... to the
-// colors that you want. Let's start first with colors"). A palette is a base (the light or the dark theme, whose other colours it keeps) and
+// The app's own colours, made with the Jauvex agent (T-278: beside Auto, Dark and Light, a Custom theme; the Jauvex agent offers three
+// palette ideas, and the one picked can be changed further, colours first). A palette is a base (the light or the dark theme, whose other colours it keeps) and
 // the colours it changes; the agent puts it on with the `theme` command, and the app refuses one whose text would be hard to read. Pure:
 // tests/palette.test.ts.
 

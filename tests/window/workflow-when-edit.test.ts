@@ -1,7 +1,7 @@
 import { connect, sleep, check, done, V, useWork } from './lib.ts'; import { execFileSync } from 'node:child_process'; import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'; import path from 'node:path';
 const { js, close } = await connect(); await sleep(3000);
 await useWork(js); // a folder of this edition's own for workflows and boards (tmp/work)
-// A when line changed in the file reaches the schedule with no refresh (T-204; the user, 2026-09-29: a workflow set to "every weekday 6:32"
+// A when line changed in the file reaches the schedule with no refresh (T-204: a workflow set to "every weekday 6:32"
 // did not run at 6:32, and its row still said manual). The scheduler read the list the window had loaded, and the window loaded it again only
 // on a refresh: the edit waited for one. Now every check of the schedule reads the folder's workflows again. A run the schedule starts says
 // so in its record (by: its schedule (...)), and the view shows when each run started, to the minute.

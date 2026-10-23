@@ -8,6 +8,7 @@ import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk';
 import { normalize, projectOr404, saveContext, saveState } from './backend.js';
 import { autoCompactPct, claudeCompactEnv, claudeUsed, tooLong, type ContextUsage } from '../shared/context.js';
 import * as codex from './codex.js';
+import { withoutRulesTag } from '../shared/rules-update.js';
 import * as grok from './grok.js';
 import { claudeExe } from './account.js';
 import { folderFiles } from './workfiles.js';
@@ -45,9 +46,9 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
   const { state, project } = await projectOr404(req.projectId);
   // The session's provider decides who continues it; only a new session takes the one the UI asked for.
   const provider = req.sessionId ? providerOf(project, req.sessionId) : req.provider ?? 'claude';
-  req = { ...req, permissions: effectivePermissions(provider, req.permissions, state.ui?.providerPermissions) }; // the app's setting for this provider, when there is one, wins
+  req = { ...req, text: withoutRulesTag(req.text) /* only the app adds that tag (shared/rules-update.ts) */, permissions: effectivePermissions(provider, req.permissions, state.ui?.providerPermissions) }; // the app's setting for this provider, when there is one, wins
   send = logged(req, provider, project.name, send);
-  if (provider === 'codex') return codex.startChat(req, send);
+  if (provider === 'codex' || provider === 'open') return codex.startChat({ ...req, provider }, send); // open models run on Codex's engine
   if (provider === 'grok') return grok.startChat(req, send);
   const abort = new AbortController();
   // How full the context is (T-74): the last known numbers, then every request's. Claude Code compacts on its own when the setting's share
@@ -66,6 +67,9 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
 
   const canUseTool: CanUseTool = (toolName, input, opts) => new Promise<PermissionResult>((resolve) => {
     if (entry.always.has(toolName) || toolName.startsWith('mcp__jauvex__')) return resolve({ behavior: 'allow', updatedInput: input }); /* the app's own tools (message_agent, list_agents) never ask: they only reach the app's router */
+    // A session that runs without asking (YOLO) is still asked by Claude Code now and then (a command reaching outside its folder): the user chose
+    // no prompts, so it is answered here, said in the flight recorder. Its card used to wait in a chat nobody had open, the agent "working" for hours
+    if (req.permissions === 'yolo') { debug.log('note', `Claude Code asked permission for ${toolName} (session ${req.sessionId ?? 'new'}), which runs without asking: allowed`, { by: 'app' }); return resolve({ behavior: 'allow', updatedInput: input }); }
     const requestId = randomUUID();
     const finish = (d: PermissionDecision) => {
       entry.pending.delete(requestId);
@@ -83,12 +87,14 @@ export async function startChat(req: ChatStart, send: (e: ChatEvent) => void): P
     options: {
       ...claudeExe(),
       cwd: project.path,
-      ...(Object.keys(compactEnv).length ? { env: { ...process.env, ...compactEnv } } : {}), // the SDK's env replaces the whole environment
+      env: { ...process.env, ...compactEnv, JAUVEX_AGENT: '1', ...(req.sessionId ? { JAUVEX_SESSION: req.sessionId } : {}) }, // the SDK's env replaces the whole environment; JAUVEX_AGENT, JAUVEX_SESSION: an order typed in this agent's shell says it is an agent's, and which (its kickoffs and sends show as its own)
       ...(req.sessionId ? { resume: req.sessionId } : {}),
       ...(req.model ? { model: req.model } : {}),
       ...(req.effort ? { effort: req.effort as EffortLevel } : {}),
       // voice turns get the same prompt (the big model answers for the screen) plus one note: this text was dictated
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: clientBriefing(!!req.voice, req.vocabulary, !!req.steward, APP_ROOT, await folderFiles(project.path)) }, /* the folder's boards are part of the briefing */ // every session is told where it is running (see clientBriefing)
+      // snapshot: false: Claude Code otherwise records the briefing a conversation starts with and sends that record on every resume, so an
+      // update's new rules never reached the agents made before it
+      systemPrompt: { type: 'preset', preset: 'claude_code', snapshot: false, append: clientBriefing(!!req.voice, req.vocabulary, !!req.steward, APP_ROOT, await folderFiles(project.path)) }, /* the folder's boards are part of the briefing */ // every session is told where it is running (see clientBriefing)
       includePartialMessages: true,
       ...claudePermissionOptions(req.permissions),
       canUseTool,
@@ -184,6 +190,7 @@ function jauvexTools(chatId: string) {
   ] });
 }
 export async function steerChat(chatId: string, text: string, images?: Attachment[]): Promise<boolean> {
+  text = withoutRulesTag(text); // only the app adds that tag
   const who = whoOf.get(chatId); if (who) { const l = steered(text, images?.length); debug.log('model', l.text, { by: 'agent', who, detail: l.detail }); }
   const entry = live.get(chatId); if (!entry) return other(chatId).steerChat(chatId, text, images);
   entry.push(text, images); return true;

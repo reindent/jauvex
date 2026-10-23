@@ -14,8 +14,7 @@ export type DashWorker = { name: string; provider: string; open?: () => void };
 export type DashboardProps = { onHide?: () => void /* T-279: turn the dashboard off (Settings, General, brings it back) */; file: DashboardFile | null; auto: DashNeed[]; today: DashEvent[]; working: DashWorker[] };
 
 const STORE = 'cvc.dash';
-// How much of the view it takes, as icons in the app's own line style, the folders' (the user, 2026-10-01: "I rather have them as SVGs ... like
-// with the format that we have for the folders"): the top third of a panel, its top half, the panel folding up to one line.
+// How much of the view it takes, as icons in the app's own line style, the folders': the top third of a panel, its top half, the panel folding up to one line.
 const SIZES = [{ s: 'third', title: () => t('dashboard.size.third'), Icon: PanelTop }, { s: 'half', title: () => t('dashboard.size.half'), Icon: Rows2 }, { s: 'folded', title: () => t('dashboard.size.folded'), Icon: PanelTopClose }] as const;
 const ME = 'You'; // the person's section of the file ("## You")
 const CARD_NAME = (c: DashCard): string => ({ needs: t('dashboard.card.needs'), today: t('dashboard.card.today'), working: t('dashboard.card.working'), pinned: t('dashboard.card.pinned') })[c];

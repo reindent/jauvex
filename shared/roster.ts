@@ -15,17 +15,26 @@ export function shortIds(ids: string[], min = 6): Map<string, string> {
   return out;
 }
 
+/** The agents a name or a short id names exactly (FB-122): an id, or the whole name (case, spaces and punctuation aside), never a name that only
+ *  contains it or sits inside it. For what binds an agent to a list (the wait order): a near match there woke an agent that never waited. */
+export function exactAgents<T extends { sessionId: string; name: string }>(all: T[], to: string): T[] {
+  const squash = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ''); const want = squash(to.replace(/^\[|\]$/g, '')); if (!want) return [];
+  const idm = /^(?:session)?([0-9a-f]{4,})$/.exec(want)?.[1]; const byId = idm ? all.filter((a) => squash(a.sessionId).startsWith(idm)) : [];
+  return byId.length ? byId : all.filter((a) => squash(a.name) === want);
+}
 /** The agents a name or a short id points at, the sender excluded: an id wins, then the exact name, then a name containing it.
- * Names are matched without case, spaces or punctuation ("CodexAgent" finds "Codex agent"). One match is a delivery; any other count is an answer with the roster. */
+ * Names are matched without case, spaces or punctuation ("CodexAgent" finds "Codex agent"); ids without their hyphens too, since a short id
+ * long enough to stay unique runs past the first one ([01a11d25-7b]; FB-38, from Pro: every answer to a Codex agent bounced). One match is a
+ * delivery; any other count is an answer with the roster. */
 export function findAgents<T extends { sessionId: string; name: string }>(all: T[], to: string, fromId?: string): T[] {
   const squash = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ''); const want = squash(to); if (!want) return [];
   const others = all.filter((a) => a.sessionId !== fromId);
-  const idm = /^(?:session)?([0-9a-f]{4,})$/.exec(want)?.[1]; const byId = idm ? others.filter((a) => a.sessionId.toLowerCase().startsWith(idm)) : [];
+  const idm = /^(?:session)?([0-9a-f]{4,})$/.exec(want)?.[1]; const byId = idm ? others.filter((a) => squash(a.sessionId).startsWith(idm)) : [];
   if (byId.length) return byId;
   const exact = others.filter((a) => squash(a.name) === want); if (exact.length) return exact;
   const inside = others.filter((a) => squash(a.name).includes(want)); if (inside.length) return inside;
-  // the other way round: the name asked for holds an agent's whole name, with a word more ("Acme Creative Agent" for "Creative Agent");
-  // the longest such name wins, so "Video Agent" does not take a message meant for "Acme Video Agent"
+  // the other way round: the name asked for holds an agent's whole name, with a word more ("Acme Photo Agent" for "Photo Agent");
+  // the longest such name wins, so "Editor Agent" does not take a message meant for "Acme Editor Agent"
   const holds = others.filter((a) => squash(a.name).length >= 6 && want.includes(squash(a.name))); if (!holds.length) return [];
   const longest = Math.max(...holds.map((a) => squash(a.name).length)); return holds.filter((a) => squash(a.name).length === longest);
 }
@@ -36,8 +45,8 @@ export function matchSession<T extends { sessionId: string; summary: string; cus
   return list.find((i) => i.sessionId === ref) ?? list.find((i) => i.sessionId.startsWith(ref)) ?? list.find((i) => (i.customTitle ?? '').toLowerCase() === n) ?? list.find((i) => i.summary.toLowerCase() === n);
 }
 
-/** The folder an order names (`--folder`): by id, by path, then by name; by name, any other folder before the app's own (its agent's) (T-254;
- *  a server's agents, 2026-10-01: a folder named "Jauvex" lost to the app's own folder, named Jauvex too, and two agents and a board were made
+/** The folder an order names (`--folder`): by id, by path, then by name; by name, any other folder before the app's own (its agent's) (T-254:
+ *  on a server, a folder named "Jauvex" lost to the app's own folder, named Jauvex too, and two agents and a board were made
  *  there). The app's own folder is still reached by its path or id. `here`: folders to prefer by name (none in this edition). */
 export function findFolderIn<P extends { id: string; path: string; name: string; builtin?: unknown }>(projects: P[], ref: string, here: string[] = []): P | null {
   const n = ref.trim().toLowerCase();

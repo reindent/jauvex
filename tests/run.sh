@@ -8,6 +8,8 @@
 #                                  // env: KEY=VALUE (__ROOT__ = this repository)   // fresh (empty data folder)
 #                                  // llm (calls a real model: skipped unless CVC_TEST_LLM=1)
 cd "$(dirname "$0")/.." || exit 1; ROOT="$PWD"; mkdir -p tmp/scratch tmp/work tmp/testrun
+# The checks are typed by a person, never by an agent: run from an agent's shell, its marks would make every order an agent's (scripts/jauvex.ts)
+unset JAUVEX_AGENT JAUVEX_SESSION
 QUICK=""; [ "$1" = --quick ] && { QUICK=1; shift; }
 # A node that runs no .ts file (Ubuntu's, built without type stripping): the checks and what they start call `node x.ts`, so a `node` that
 # is Electron's own goes first on their PATH.

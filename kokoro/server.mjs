@@ -11,8 +11,9 @@
 // The model is read from <models folder>/kokoro (scripts/models.sh fetches it, checked), never from the network; the voices come with
 // the kokoro-js package.
 import { KokoroTTS } from 'kokoro-js';
-import { env } from '@huggingface/transformers';
+import { env, StyleTextToSpeech2Model, AutoTokenizer } from '@huggingface/transformers';
 import { createInterface } from 'node:readline';
+import { speakable } from './speakable.mjs';
 
 const out = (o) => process.stdout.write(`${JSON.stringify(o)}\n`);
 // Only the protocol on stdout: the libraries' own messages go to stderr.
@@ -21,9 +22,16 @@ console.log = console.info = console.warn = (...a) => process.stderr.write(`${a.
 const DEFAULT_VOICE = 'af_heart';
 env.localModelPath = process.argv[2] || 'models';
 env.allowRemoteModels = false;
+// onnxruntime keeps a memory arena that never shrinks and grows by doubling its next block, and here malloc is Chromium's (Electron's Node,
+// ELECTRON_RUN_AS_NODE), which stops the process on purpose (SIGTRAP) when asked for 2 GiB or more at once, where Node's would hand it over:
+// after minutes of sentences the arena could ask for its next block, exactly 2 GiB, and the voice process would die with a crash report
+// in the app's name. Without the arena, and without the memory pattern's one block per render, each tensor is
+// allocated as a render needs it and freed after. KokoroTTS.from_pretrained passes no session options: the same two loads, with them.
+const SESSION = { enableCpuMemArena: false, enableMemPattern: false };
 let tts;
 try {
-  tts = await KokoroTTS.from_pretrained('kokoro', { dtype: 'fp32', device: 'cpu' });
+  const [model, tokenizer] = await Promise.all([StyleTextToSpeech2Model.from_pretrained('kokoro', { dtype: 'fp32', device: 'cpu', session_options: SESSION }), AutoTokenizer.from_pretrained('kokoro')]);
+  tts = new KokoroTTS(model, tokenizer);
   await tts.generate('Hi.', { voice: DEFAULT_VOICE }); // the first render is slow: done before the app counts on it
 } catch (e) { out({ error: `Kokoro could not load its model from ${env.localModelPath}/kokoro: ${e?.message ?? e}` }); process.exit(1); }
 const voices = Object.entries(tts.voices).map(([id, v]) => `${id}|${v.language === 'en-gb' ? 'en_GB' : 'en_US'}`);
@@ -37,7 +45,7 @@ async function next() {
   try {
     const voice = job.voice && tts.voices[job.voice] ? job.voice : DEFAULT_VOICE;
     const speed = Math.min(2, Math.max(0.5, Number(job.speed) || 1));
-    const audio = await tts.generate(String(job.text ?? ''), { voice, speed });
+    const audio = await tts.generate(speakable(job.text ?? ''), { voice, speed }); // "Mmm" said as a sound, not spelled (speakable.mjs)
     out({ id: job.id, wav: Buffer.from(audio.toWav()).toString('base64') });
   } catch (e) { out({ id: job.id, error: String(e?.message ?? e) }); }
   busy = false; void next();

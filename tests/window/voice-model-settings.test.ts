@@ -3,7 +3,8 @@
 import { connect, sleep, check, done, V } from './lib.ts';
 const { cdp, js, close } = await connect(); await sleep(2500);
 // The voice settings list the provider's models live, offer "Automatic (the smallest)" first, and say which model is in use.
-await js("[...document.querySelectorAll('.row:not(.ghost)')].find((r) => r.querySelector('.provider-icon.claude')).click()"); await sleep(1500);
+// a new Claude chat (no turn): the fixture's sessions are on disk only where it was made, and the live list is the real Claude's, so no stand-in
+await js("localStorage.setItem('cvc.provider', 'claude'); document.querySelector('.subgroup-add[title=\"New agent\"]').click()"); await sleep(1500);
 await js(`${V}.querySelector('.voice-start').click()`); await sleep(3000);
 await js(`${V}.querySelector('.voice-controls button[title="Voice settings"]').click()`); await sleep(2500);
 const label = `[...${V}.querySelectorAll('.vsettings label')].find((l) => l.textContent.startsWith('Voice model for Claude'))`;

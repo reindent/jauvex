@@ -1,7 +1,6 @@
 // env: CVC_CODEX_BIN=__ROOT__/tests/mock/codex
-// A session moved to another folder, where its provider files it (T-217; the user, 2026-09-29, of a workflow moved from one folder to
-// another on a server: "The workflows were actually moved But the sessions of the agents were not ... the chat sessions on Claude, Codex,
-// Grok, or whatever provider ... also need to be moved so that when the chat is loaded, they appear ... on the new moved workflow").
+// A session moved to another folder, where its provider files it (T-217: a workflow moved from one folder to another
+// on a server left its agents' sessions behind; each provider's session moves too, so the moved workflow's chats load in the new folder).
 // Claude Code's files, read back by its own SDK; Grok's, named as Grok 1.0.44 named a folder in a probe; a Codex thread through the
 // stand-in, which records a resume's folder as Codex 0.155.1 did in a probe (a thread_settings_applied line, read back in the new folder).
 import path from 'node:path'; import fs from 'node:fs'; import { randomUUID } from 'node:crypto';

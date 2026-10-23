@@ -10,6 +10,8 @@ import { reinstallCommand } from '../shared/update.js';
 import { pageKindOf } from '../shared/page-kind.js';
 import { cleanLog, formProblem, SHOT_FILE, type FeedbackForm } from '../shared/feedback.js';
 import { execFileSync } from 'node:child_process';
+import { webGet } from './webget.js';
+import { pipeError } from './pipes.js';
 import { watch as fsWatch, existsSync, unlinkSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { Attachment, ChatEvent, ChatStart, DebugEvent, PermissionDecision, Provider } from '../shared/types.js';
 
@@ -32,6 +34,12 @@ app.setPath('userData', path.join(DATA_DIR, 'profile'));
 // pointed at a throwaway CVC_DATA_DIR still runs beside the real app. A second launch exits here, before it opens a
 // window, starts Whisper or touches a session, and the copy that is already running comes to the front instead.
 if (!app.requestSingleInstanceLock()) { console.error(`Jauvex is already running on ${DATA_DIR}; this second copy exits.`); app.exit(0); process.exit(0); }
+/** Stops what the app started (its turns, Whisper, Kokoro, Codex, Grok): set once those are loaded, and run on every way out.
+ *  `app.exit` skips before-quit: a restart left a copy's Whisper servers running, and the copy started next could not take its port. */
+let stopAll = (): void => {};
+/** Leaves at once, as `app.exit` does, after stopping what the app started. */
+const exitApp = (code = 0): void => { stopAll(); app.exit(code); };
+const restartApp = (): void => { app.releaseSingleInstanceLock(); app.relaunch(); setTimeout(() => exitApp(0), 300); };
 app.on('second-instance', () => { if (!win || HIDDEN) return; if (win.isMinimized()) win.restore(); win.show(); win.focus(); });
 
 let win: BrowserWindow | null = null;
@@ -87,6 +95,32 @@ function adoptShellPath(): void {
 
 let quitting = false;
 let note: (text: string) => void = () => {}; // the flight recorder, once it is loaded (below): what the window's handlers say goes through it
+// The last net under every stream (from the other edition's fix: a write to a process or a connection that had hung up, "write EPIPE", and
+// Electron's fatal dialog over the whole app): a connection or a pipe that closed under a write ends that stream only, and goes to the flight
+// recorder; any other uncaught error still shows as Electron shows it by itself.
+process.on('uncaughtException', (e) => {
+  if (pipeError(e)) { console.error(`a closed connection or pipe, the app carried on: ${e.stack ?? e.message}`); note(`a closed connection or pipe (${(e as NodeJS.ErrnoException).code}) was caught, and the app carried on: ${e.message}`); return; }
+  // a hidden check copy: nobody can press OK, and the dialog would hold the main process
+  if (HIDDEN) { console.error(`an uncaught error, the app carried on: ${e.stack ?? e.message}`); note(`an uncaught error was caught, and the app carried on: ${e.message}`); return; }
+  dialog.showErrorBox('A JavaScript error occurred in the main process', `Uncaught Exception:\n${e.stack ?? e.message}`);
+});
+// The window loaded again by itself when something empties it (createWindow): a longer wait each time, the waits starting over once a page
+// has run for two minutes. The page beats every 5 s (app:alive, web/src/main.tsx) with whether anything is drawn in it.
+let reloadTries = 0; let healthy: NodeJS.Timeout | undefined; let lastBeat = 0; let blankBeats = 0; let lastTick = 0;
+const WAITS = [1000, 3000, 10_000, 30_000, 60_000];
+function reloadWindow(why: string): void {
+  if (quitting || !win || win.isDestroyed()) return; const wait = WAITS[Math.min(reloadTries, WAITS.length - 1)]!; reloadTries++;
+  note(`${why}: the window loads again in ${wait / 1000} s${reloadTries > 1 ? ` (${reloadTries} times in a row)` : ''}`);
+  lastBeat = Date.now() + wait; blankBeats = 0; setTimeout(() => { if (win && !win.isDestroyed() && !quitting) win.webContents.reload(); }, wait);
+}
+/** Every 10 s: a page shown that has not beaten for 45 s hangs (Electron's own "unresponsive" only says so), and loads again. The computer
+ *  asleep stops both sides' clocks: a tick that comes late starts the count over rather than reloading on waking. */
+function watchWindow(): void {
+  const now = Date.now(); const slept = lastTick && now - lastTick > 20_000; lastTick = now;
+  if (!win || win.isDestroyed() || quitting || !lastBeat || win.webContents.isLoading()) return;
+  if (slept) { lastBeat = now; return; }
+  if (now - lastBeat > 45_000) reloadWindow("the window's page stopped beating for 45 s (it hangs)");
+}
 /** How much memory the app's processes hold now, by kind: written to the flight recorder when a process dies. */
 const memoryLine = (): string => { const mb: Record<string, number> = {}; for (const m of app.getAppMetrics()) { const k = m.type === 'Tab' ? 'window' : m.type === 'GPU' ? 'graphics' : m.type === 'Browser' ? 'app' : m.type === 'Utility' && /audio/i.test(m.serviceName ?? m.name ?? '') ? 'audio' : 'other'; mb[k] = (mb[k] ?? 0) + m.memory.workingSetSize / 1024; }
   const all = Object.values(mb).reduce((a, b) => a + b, 0); return `${Object.entries(mb).map(([k, v]) => `${k} ${Math.round(v)} MB`).join(', ')}; all ${Math.round(all)} MB`; };
@@ -95,7 +129,9 @@ async function createWindow(): Promise<void> {
   // read. Made at once: waiting for the settings before the window was made aborted its page's load now and then (ERR_FAILED, a check's window
   // that never came up, 2026-10-01).
   win = new BrowserWindow({
-    width: 1360, height: 880, minWidth: 900, minHeight: 600, show: false,
+    // A tiling desktop (Omarchy's Hyprland, at 2x on a 1080p screen) gives a half-screen window 461x490: the compositor ignores the
+    // minimum, and a 900-wide page was drawn into it, cut off (2026-10-11). Off the Mac the minimum lets the page reflow instead.
+    width: 1360, height: 880, minWidth: process.platform === 'linux' ? 360 : 900, minHeight: process.platform === 'linux' ? 320 : 600, show: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#141413' : '#ffffff',
     // macOS: the traffic lights inset in the app's own title bar. Elsewhere the system's frame, with no menu bar (the app has no menu, and
     // Alt is push-to-talk: Electron's default menu bar would take it), and the window's icon (macOS takes it from the Dock, below).
@@ -111,15 +147,19 @@ async function createWindow(): Promise<void> {
   // Every framed page starts muted and stays so, and opens no windows of its own.
   win.webContents.on('did-attach-webview', (_e, wc) => { wc.setAudioMuted(true); wc.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' }; }); });
   if (!HIDDEN) win.once('ready-to-show', () => win?.show());
+  // Wayland paints no hidden window, so 'ready-to-show' never came and the app ran with no window on Omarchy's Hyprland (2026-10-11): off
+  // the Mac, the window shows after a moment all the same.
+  if (!HIDDEN && !MAC) setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) win.show(); }, 1500);
   // The window's page dying left the window its background colour with nothing in it, and no word anywhere (T-271, from the other edition's
-  // fix: a window there "completely went black screen"). Why goes to the flight recorder, with the memory then; a page that crashed or ran
-  // out of memory loads again by itself (its chats take their turns back, as after a reload), at most three times in ten minutes.
-  let reloads: number[] = [];
-  win.webContents.on('render-process-gone', (_e, d) => {
-    note(`the window's page ended: ${d.reason} (exit code ${d.exitCode}); memory then: ${memoryLine()}`);
-    if (d.reason === 'clean-exit' || quitting) return; const now = Date.now(); reloads = reloads.filter((t) => now - t < 600_000);
-    if (reloads.length >= 3) { note("the window's page ended three times in ten minutes: it is not loaded again"); return; }
-    reloads.push(now); setTimeout(() => { if (win && !win.isDestroyed()) win.webContents.reload(); }, 1000); });
+  // fix: a window there "completely went black screen"). Never a bare window (again from the other edition, a window left white three times
+  // in a day): whatever empties it, it loads again by itself and says why, with the memory then (its chats take their turns back, as after a
+  // reload): a page that crashed or ran out of memory (without end, a longer wait each time: a cap of three in ten minutes left it bare for
+  // good), a load that failed, a page alive with nothing drawn in it (its own error boundary, web/src/Fallback.tsx, says what threw), or a page
+  // whose beat stopped for 45 s. A page that ran for two minutes is healthy again: the waits start over.
+  win.webContents.on('render-process-gone', (_e, d) => { note(`the window's page ended: ${d.reason} (exit code ${d.exitCode}); memory then: ${memoryLine()}`); if (d.reason !== 'clean-exit') reloadWindow("the window's page ended"); });
+  win.webContents.on('did-fail-load', (_e, code, why, url, mainFrame) => { if (!mainFrame || code === -3) return; reloadWindow(`the window's page did not load (${why}, ${code}, ${url.split('/').pop()})`); }); // -3: aborted by a newer load
+  win.webContents.on('did-start-loading', () => { lastBeat = Date.now(); blankBeats = 0; });
+  win.webContents.on('did-finish-load', () => { lastBeat = Date.now(); blankBeats = 0; clearTimeout(healthy); healthy = setTimeout(() => { reloadTries = 0; }, 120_000); });
   win.on('unresponsive', () => note(`the window stopped answering; memory: ${memoryLine()}`)); win.on('responsive', () => note('the window answers again'));
   win.on('blur', () => { if (!mini?.isFocused()) showMini(); });
   win.on('focus', () => mini?.hide());
@@ -138,10 +178,10 @@ app.whenReady().then(async () => {
   // work to launchd and the app quits. A hidden copy (the checks) never asks the site: it may stand in for its answer and for the
   // installed app; nothing else can.
   const updates = updater({ dataDir: DATA_DIR, version: app.getVersion(), pid: process.pid, appBundle: appBundleOf(process.execPath),
-    quit: () => { app.releaseSingleInstanceLock(); app.exit(0); }, installed: HIDDEN && process.env.CVC_UPDATE_INSTALLED === '1' ? true : undefined,
+    quit: () => { app.releaseSingleInstanceLock(); exitApp(0); }, installed: HIDDEN && process.env.CVC_UPDATE_INSTALLED === '1' ? true : undefined,
     reinstall: reinstallCommand(process.platform, ROOT, DATA_DIR, process.env.LOCALAPPDATA),
     ...(HIDDEN ? { site: process.env.CVC_UPDATE_SITE || 'http://127.0.0.1:9' } : {}) }); // a check never reaches the real site
-  // Feedback from inside the app (Diego, 2026-10-04, as Jauvex Pro): what the person agreed to attach, shown to them first, then sent to
+  // Feedback from inside the app (as Jauvex Pro): what the person agreed to attach, shown to them first, then sent to
   // Reindent at jauvex.ai/api/feedback as the Personal edition, with an anonymous id kept in the data folder (no key: the site
   // limits Personal per address and per installation)
   const feedbackLog = async () => { let text = ''; try { text = readFileSync(path.join(DATA_DIR, 'voice-debug.log'), 'utf8'); } catch { /* no log yet */ } return cleanLog(text, os.homedir()); };
@@ -156,7 +196,7 @@ app.whenReady().then(async () => {
     const body = { type: form.type, edition: 'personal', title: form.title.trim(), description: form.description.trim(), version: app.getVersion(), os: `${MAC ? 'macOS' : process.platform === 'win32' ? 'Windows' : 'Linux'} ${os.release()} ${process.arch}`,
       installation: feedbackId(), ...(form.contact.trim() ? { contact: form.contact.trim() } : {}),
       ...(form.screenshot ? { screenshot: await (async () => { try { return readFileSync(path.join(DATA_DIR, SHOT_FILE)).toString('base64'); } catch { return feedbackShot(); } })() } : {}), ...(form.log ? { log: await feedbackLog() } : {}) };
-    try { const r = await fetch(`${process.env.CVC_FEEDBACK_SITE || SITE}/api/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+    try { const r = await webGet(`${process.env.CVC_FEEDBACK_SITE || SITE}/api/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
       const j = await r.json().catch(() => ({})) as { id?: string; error?: string }; if (r.ok) try { unlinkSync(path.join(DATA_DIR, SHOT_FILE)); } catch { /* none */ } return r.ok ? { ok: true, id: j.id } : { ok: false, error: r.status === 429 ? 'too-many' : j.error ?? `HTTP ${r.status}` };
     } catch { return { ok: false, error: 'offline' }; } });
   const offerUpdate = () => void updates.status().then((s) => { if (s.available) win?.webContents.send('app:update', s); });
@@ -212,9 +252,9 @@ app.whenReady().then(async () => {
     const { rmSync } = await import('node:fs'); (await import('./backend.js')).forgetState(); /* the copy in memory must not be written back */
     for (const f of ['state.json', 'jauvex-transcript.json', 'jauvex-handover.md', 'mini-position.json', 'voice-debug.log', 'uploads', 'commands']) { try { rmSync(path.join(DATA_DIR, f), { recursive: true, force: true }); } catch { /* gone */ } }
     if (!auto) await dialog.showMessageBox(win!, { type: 'info', buttons: ['OK'], message: "The app's data has been deleted.", detail: 'The app will now exit. Start it again to begin from the welcome screen.' });
-    setTimeout(() => app.exit(0), auto ? 1500 : 200); return true;
+    setTimeout(() => exitApp(0), auto ? 1500 : 200); return true;
   });
-  ipcMain.handle('app:restart', () => { app.releaseSingleInstanceLock(); app.relaunch(); setTimeout(() => app.exit(0), 300); return true; });
+  ipcMain.handle('app:restart', () => { restartApp(); return true; });
   ipcMain.handle('open:external', (_e, url: string) => (/^(https?:\/\/|x-apple\.systempreferences:)/.test(url) ? shell.openExternal(url).then(() => true) : false)); // web pages, and System Settings panes (the welcome opens Spoken Content)
   ipcMain.handle('chat:start', (_e, req: ChatStart) => { void chat.startChat(req, (ev: ChatEvent) => win?.webContents.send('chat:event', ev)).catch((err: Error) => win?.webContents.send('chat:event', { chatId: req.chatId, type: 'done', ok: false, error: err.message } satisfies ChatEvent)); return true; });
   ipcMain.handle('usage:get', (_e, provider: Provider, force?: boolean) => usage.get(provider, force));
@@ -226,7 +266,7 @@ app.whenReady().then(async () => {
   // else, an error or a page too slow to answer goes to the webview as before (shared/page-kind.ts)
   ipcMain.handle('url:peek', async (_e, url: string): Promise<{ kind: 'markdown' | 'text'; text: string; url: string } | { kind: 'web' }> => {
     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return { kind: 'web' };
-    try { const r = await fetch(url, { signal: AbortSignal.timeout(8000) }); const kind = r.ok ? pageKindOf(r.headers.get('content-type'), r.url || url) : 'web';
+    try { const r = await webGet(url, { signal: AbortSignal.timeout(8000) }); const kind = r.ok ? pageKindOf(r.headers.get('content-type'), r.url || url) : 'web';
       if (kind === 'web' || Number(r.headers.get('content-length') ?? 0) > 2_000_000) { await r.body?.cancel(); return { kind: 'web' }; }
       const text = await r.text(); return text.length > 2_000_000 ? { kind: 'web' } : { kind, text, url: r.url || url };
     } catch { return { kind: 'web' }; } });
@@ -242,9 +282,12 @@ app.whenReady().then(async () => {
     } catch (e) { const err = e as NodeJS.ErrnoException; return { ok: false, error: err.code === 'ENOENT' ? `No such file: ${file}` : err.code === 'EACCES' ? `No permission to read ${file}` : err.message, path: file }; } });
   ipcMain.handle('file:open', (_e, p: string) => shell.openPath(p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p).then((err) => !err));
   ipcMain.handle('app:reload', () => { win?.webContents.reloadIgnoringCache(); return true; });
+  // the page's beat: alive, and whether anything is drawn in it; three beats in a row with nothing drawn (15 s) is a blank window
+  ipcMain.on('app:alive', (e, drawn: boolean) => { if (!win || win.isDestroyed() || e.sender !== win.webContents) return; lastBeat = Date.now(); blankBeats = drawn ? 0 : blankBeats + 1; if (blankBeats === 3) reloadWindow("the window's page shows nothing (its root has been empty for 15 s)"); });
+  setInterval(watchWindow, 10_000).unref();
   // An agent working on the app cannot call IPC: it asks by touching a file in the data folder. `reload-ui` reloads the
   // window (a UI build), `restart-app` relaunches the app (a main-process build). The file is removed once acted on.
-  const signals: Record<string, () => void> = { 'reload-ui': () => { win?.webContents.reloadIgnoringCache(); }, 'restart-app': () => { app.releaseSingleInstanceLock(); app.relaunch(); setTimeout(() => app.exit(0), 300); } };
+  const signals: Record<string, () => void> = { 'reload-ui': () => { win?.webContents.reloadIgnoringCache(); }, 'restart-app': () => restartApp() };
   try { fsWatch(DATA_DIR, (_event, name) => { const key = String(name ?? ''); const act = signals[key]; if (!act) return; const file = path.join(DATA_DIR, key); if (!existsSync(file)) return; try { unlinkSync(file); } catch { /* gone */ } setTimeout(act, 200); }); } catch { /* no watcher, no signals */ }
   // Agents drive the app through files too: a request `<id>.json` in data/commands (written by scripts/jauvex.ts) goes to the
   // window, which does the thing and answers; the answer lands in `<id>.result.json` and the request is removed.
@@ -295,8 +338,10 @@ app.whenReady().then(async () => {
   ipcMain.on('voice:cmd', (_e, cmd: string) => { if ((cmd === 'focus' || cmd === 'new') && !HIDDEN) { win?.show(); win?.focus(); } /* an automated check never comes to the front */ win?.webContents.send('voice:cmd', cmd); });
   const codex = await import('./codex.js'); const grok = await import('./grok.js');
   // Any other process of the app that dies (the graphics, the audio, the network): said, with why and the memory then (T-271, above).
-  app.on('child-process-gone', (_e, d) => debug.log('note', `a process of the app ended (${d.type}${d.name ? `, ${d.name}` : ''}): ${d.reason} (exit code ${d.exitCode}); memory then: ${memoryLine()}`, { by: 'app' }));
-  app.on('before-quit', () => { quitting = true; chat.stopAll(); voice.shutdown(); account.shutdown(); codex.shutdown(); grok.shutdown(); });
+  app.on('child-process-gone', (_e, d) => { debug.log('note', `a process of the app ended (${d.type}${d.name ? `, ${d.name}` : ''}): ${d.reason} (exit code ${d.exitCode}); memory then: ${memoryLine()}`, { by: 'app' });
+    if (d.type === 'GPU' && d.reason !== 'clean-exit') setTimeout(() => { if (win && !win.isDestroyed()) { win.webContents.invalidate(); debug.log('note', 'the graphics process ended: the window is painted again', { by: 'app' }); } }, 1500); }); // Chromium starts a new one; the window could stay as it was, blank, until something painted it
+  let stopped = false; stopAll = () => { if (stopped) return; stopped = true; quitting = true; chat.stopAll(); voice.shutdown(); account.shutdown(); codex.shutdown(); grok.shutdown(); };
+  app.on('before-quit', () => stopAll());
   await createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) void createWindow(); });
 });

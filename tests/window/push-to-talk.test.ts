@@ -1,12 +1,13 @@
 // needs: mic
 // wav: tests/fixtures/silence.wav
+// env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/push-to-talk/claude CODEX_HOME=__ROOT__/tmp/testrun/push-to-talk/codex MOCK_DELAY_MS=5
 // Push to talk (T-157, a voice setting; asked for 2026-09-26): the microphone hears only while its button, or the Option key, is held.
-import { connect, sleep, check, done, V } from './lib.ts';
+import { connect, sleep, check, done, V, ownAgents, rowOf } from './lib.ts';
 const { js, close } = await connect(); await sleep(3000);
 const cfg = await js("window.desktop.api('state').then((s) => s.ui?.voice ?? {})");
 await js(`window.desktop.api('setUi', { voice: ${JSON.stringify({ ...cfg, pushToTalk: true })} })`);
-const rows = "[...document.querySelectorAll('.row:not(.ghost)')].filter((r) => r.querySelector('.provider-icon'))";
-await js(`${rows}[0].click()`); await sleep(2000);
+await ownAgents(js, ['Talker']);
+await js(`${rowOf('Talker')}.click()`); await sleep(2000);
 await js(`${V}.querySelector('.voice-start').click()`); await sleep(3000);
 const btn = `${V}.querySelector('.pill button.ptt')`;
 check('voice on, the microphone is a hold-to-talk button, closed', (await js(`!!${btn}`)) && (await js(`${btn}.classList.contains('muted')`)));

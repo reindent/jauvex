@@ -6,8 +6,8 @@ import { t } from '../../shared/i18n';
 
 // How much of the provider's plan is left, as a small battery next to the composer. It shows the tightest window (the one
 // with the least left) that counts for the model in use. A click opens the whole picture (T-98): one tab per provider signed in,
-// this chat's provider selected, each tab with what is left of it at a glance (the user, 2026-09-24: with a third provider the
-// list "looks so bad"; tabs, "and obviously, the selected tab is the selected provider"); in a tab, every window, how much is left
+// this chat's provider selected, each tab with what is left of it at a glance (a list got
+// hard to read with a third provider); in a tab, every window, how much is left
 // of each and when it resets, the plan, extra usage or credits; a
 // model's own window (Claude's Fable week, a Codex model's extra limit) counts only while that model is in use. Refreshed every
 // minute while the window is visible, when a turn ends (`tick`), and with the panel's Refresh.

@@ -1,5 +1,5 @@
-// A window whose page dies comes back by itself, and says why (T-271, from the other edition's fix; the user, 2026-10-01, of a window there
-// that "completely went black screen (no contents)": the page had gone, the window kept its background colour, and nothing anywhere said
+// A window whose page dies comes back by itself, and says why (T-271, from the other edition's fix: a window there
+// went black, with no contents: the page had gone, the window kept its background colour, and nothing anywhere said
 // so). The page is crashed on purpose: the flight recorder says it ended, with the memory then, and the window loads again with its sidebar.
 import { connect, sleep, check, done } from './lib.ts';
 import { readFileSync } from 'node:fs';

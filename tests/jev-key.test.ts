@@ -1,5 +1,5 @@
 // Where the TypeSafe key is looked for (electron/jev.ts: keyFiles): the environment first, then ~/.typesafe/token, the way Hugging Face
-// keeps its token (the user, 2026-09-24: "~/.typesafe/jev" is not a standard name), then the older ~/.typesafe/jev, so a key already there works.
+// keeps its token ("~/.typesafe/jev" is not a standard name), then the older ~/.typesafe/jev, so a key already there works.
 import path from 'node:path';
 const { keyFiles } = await import('../electron/jev.ts');
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };

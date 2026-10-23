@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { t } from '../../shared/i18n';
+import { OpenModelsSetup } from './OpenModels';
 import { PROVIDER_LABEL, PROVIDERS, SIGN_IN_CLI, SIGN_IN_IN_APP, type AccountEvent, type AccountStatus, type Provider } from '../../shared/types';
 
 // Who each provider is signed in as, with sign out / sign in / switch, from inside the app. Sign-in is the provider's own
@@ -25,7 +26,7 @@ export function Accounts({ onClose }: { onClose: () => void }) {
       <div className="modal accounts" role="dialog" aria-label={t('accounts.title')} onClick={(e) => e.stopPropagation()}>
         <h2>{t('accounts.title')}</h2>
         <p className="muted">{t('accounts.intro.lead')} {SIGN_IN_IN_APP ? '' : `${t('accounts.intro.cli')} `}{t('accounts.intro.rest')}</p>
-        {PROVIDERS.map((p) => { const s = status[p]; const f = flows[p]; const b = busy[p]; return (
+        {PROVIDERS.filter((p) => p !== 'open').map((p) => { const s = status[p]; const f = flows[p]; const b = busy[p]; return (
           <section key={p} className="account">
             <div className="account-head"><strong>{PROVIDER_LABEL[p]}</strong>
               {b ? <span className="muted">{b}</span> : !s ? <span className="muted">{t('accounts.status.checking')}</span> : s.error ? <span className="warn">{s.error}</span> : s.signedIn ? <span>{s.who || t('accounts.status.signedIn')}{s.plan ? <em className="muted"> · {s.plan}</em> : null}{s.method && !s.plan ? <em className="muted"> · {s.method}</em> : null}</span> : <span className="muted">{t('accounts.status.notSignedIn')}</span>}
@@ -46,6 +47,7 @@ export function Accounts({ onClose }: { onClose: () => void }) {
               </div>
             )}
           </section>); })}
+        <OpenModelsSetup onSaved={() => void load('open')} />
         <div className="modal-foot"><button onClick={onClose}>{t('accounts.close')}</button></div>
       </div>
     </div>

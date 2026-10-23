@@ -26,6 +26,6 @@ Brand and product names stay as they are: Jauvex, Jev, Claude, Codex, Grok, Whis
 | sign in | iniciar sesión |
 | update | actualizar |
 
-Latin American usage, never Spain's (the user, 2026-10-03: "you say CORREDORA"): configuración (not ajustes), presiona or haz clic (not pulsa),
+Latin American usage, never Spain's: configuración (not ajustes), presiona or haz clic (not pulsa),
 computadora (not ordenador), celular (not móvil), archivo (not fichero), carro or auto (not coche), corredora de seguros (not correduría),
 ustedes (never vosotros), tomar or agarrar (not coger), está bien or listo (not vale).

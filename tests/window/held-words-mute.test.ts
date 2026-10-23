@@ -3,8 +3,8 @@
 // wav: tests/fixtures/long-dictation.wav
 import { connect, sleep, check, done, V } from './lib.ts'; import { readFileSync } from 'node:fs'; import path from 'node:path';
 const { js, close } = await connect(); await sleep(1500);
-// Words held for their next part are never lost: the microphone is muted in the middle of the dictation (as the user did once,
-// when a breath had begun a segment that then never ended), and everything said so far goes out as a message.
+// Words held for their next part are never lost: the microphone is muted in the middle of the dictation (as one does when a breath
+// has begun a segment that then never ends), and everything said so far goes out as a message.
 const rows = "[...document.querySelectorAll('.row:not(.ghost)')].filter((r) => r.querySelector('.provider-icon'))";
 await js(`${rows}[0].click()`); await sleep(1500);
 const mine = (t) => /video agent collaboration/i.test(t); const bubbles = () => js(`[...${V}.querySelectorAll('.user .bubble:not(.queued):not(.draft)')].map((b) => b.textContent)`);

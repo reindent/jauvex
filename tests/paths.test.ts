@@ -1,5 +1,5 @@
-// Where every copy of the app keeps its data (electron/paths.ts): ~/.jauvex/personal, run from source or compiled (the user's rule,
-// 2026-09-23: the compiled app opened empty, its data in another folder than the copy run from source). Each case loads the module in
+// Where every copy of the app keeps its data (electron/paths.ts): ~/.jauvex/personal, run from source or compiled (once,
+// the compiled app opened empty, its data in another folder than the copy run from source). Each case loads the module in
 // a child with only the variables it names, since the checks themselves run with CVC_DATA_DIR and CVC_JAUVEX_HOME set.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
@@ -14,7 +14,7 @@ const plain = load({});
 check('with nothing set, the home is ~/.jauvex and the data ~/.jauvex/personal', plain.JAUVEX_HOME === path.join(home, '.jauvex') && plain.DATA_DIR === path.join(home, '.jauvex', 'personal'), JSON.stringify(plain));
 check('CVC_DATA_DIR moves the data alone (the checks, a server\'s launcher)', load({ CVC_DATA_DIR: path.join(home, 'elsewhere') }).DATA_DIR === path.join(home, 'elsewhere'));
 check('a home moved with CVC_JAUVEX_HOME takes its data along', load({ CVC_JAUVEX_HOME: path.join(home, 'h') }).DATA_DIR === path.join(home, 'h', 'personal'));
-// The app's folder (APP_ROOT), not the working folder (2026-10-04): Windows' Start menu or a desktop entry may start the app anywhere, and
+// The app's folder (APP_ROOT), not the working folder: Windows' Start menu or a desktop entry may start the app anywhere, and
 // voice.ts and codex.ts read process.cwd() before main.ts set CVC_ROOT: Speech and Whisper were not found.
 const rootFrom = (cwd: string, env: Record<string, string> = {}) => execFileSync(process.execPath, ['--import', import.meta.resolve('tsx'), '--input-type=module', '-e', // tsx by its path: the child starts elsewhere
   `const m = await import(${JSON.stringify(path.resolve('electron/paths.ts'))}); console.log(m.APP_ROOT)`], { cwd, env: { PATH: process.env.PATH ?? '', HOME: home, ...env }, encoding: 'utf8' }).trim();

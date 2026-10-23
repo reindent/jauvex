@@ -1,5 +1,5 @@
-// The app's look (T-248; the user, 2026-09-30: "we need a light theme for Jauvex"): the Mac's own by default, light, dark or auto as the Mac is
-// set (the user: "make it system aware, depends on the system settings (light/dark/auto) or overriden in Jauvex settings"), or dark or light
+// The app's look (T-248): the Mac's own by default, light, dark or auto as the Mac is
+// set, or dark or light
 // for this app alone. Set on
 // the page's root (data-theme), where the stylesheet's light colours hang; kept in the app's settings (ui.theme) and, for the first paint of
 // a window (the floating bar's too), in this window's storage.

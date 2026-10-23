@@ -1,7 +1,7 @@
 import { connect, sleep, check, done, V } from './lib.ts';
 const { js, close } = await connect(); await sleep(2500);
 // The message box is sized to its text in pixels; when the text then measured a pixel taller (the font loading, a zoom), the app's
-// styled scrollbar showed its thumb at the right of an empty box (the user, 2026-09-24: "a button or something, a border"). A
+// styled scrollbar showed its thumb at the right of an empty box. A
 // scrollbar only past the 220 px cap, where the box stops growing.
 const rows = "[...document.querySelectorAll('.row:not(.ghost)')].filter((r) => r.querySelector('.provider-icon'))";
 await js(`${rows}[0].click()`); await sleep(1500);

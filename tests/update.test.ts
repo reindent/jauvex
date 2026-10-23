@@ -12,7 +12,12 @@ let failed = 0; const ok = (c: boolean, what: string, detail = '') => { console.
 const root = path.join(process.env.CVC_DATA_DIR ?? path.join(process.cwd(), 'tmp', 'testdata-update'), 'update-check'); rmSync(root, { recursive: true, force: true }); mkdirSync(root, { recursive: true });
 
 ok(newer('1.1.1', '1.1.0') && newer('1.10.0', '1.9.9') && newer('2.0.0', '1.99.99') && !newer('1.1.0', '1.1.0') && !newer('1.0.0', '1.1.0'), 'a newer version is newer, by number, not by text');
-ok(!newer('latest', '1.1.0') && !newer(undefined, '1.1.0') && !newer('1.2.0', '') && !newer('1.2.0-beta', '1.1.0'), 'anything that is not x.y.z is never newer');
+ok(!newer('latest', '1.1.0') && !newer(undefined, '1.1.0') && !newer('1.2.0', '') && !newer('1.2.0-beta', '1.1.0'), 'anything that is not x.y.z (or x.y.z-dev) is never newer');
+// a version in the making (from Pro): x.y.z-dev is newer than what came before x.y.z and older than x.y.z itself
+ok(newer('1.8.0-dev', '1.7.2') && !newer('1.7.2', '1.8.0-dev') && newer('1.8.0', '1.8.0-dev') && !newer('1.8.0-dev', '1.8.0') && !newer('1.8.0-dev', '1.8.0-dev') && newer('1.8.1', '1.8.0-dev'), 'x.y.z-dev: after the versions before it, before x.y.z itself');
+{ const dev = { current: '1.8.0-dev', available: false, installed: true };
+  ok(JSON.stringify(justUpdated(dev, { lastVersion: '1.7.2' })) === '{"from":"1.7.2"}' && justUpdated(dev, { lastVersion: '1.8.0-dev' }) === null, 'a copy of a version in the making says it was updated, from the version it ran before');
+  ok(shouldAsk({ current: '1.8.0-dev', latest: '1.8.0', available: newer('1.8.0', '1.8.0-dev'), installed: true }, undefined) && !newer('1.7.2', '1.8.0-dev'), '...and is offered the release of its version, never an older one'); }
 const s = { current: '1.1.0', latest: '1.2.0', available: true, installed: true };
 ok(shouldAsk(s, undefined) && shouldAsk(s, '1.1.5') && !shouldAsk(s, '1.2.0'), 'the app\'s agent is told once per version');
 ok(!shouldAsk({ ...s, installed: false }, undefined) && !shouldAsk({ ...s, available: false }, undefined) && !shouldAsk(null, undefined), 'never on a copy that cannot update itself, nor with nothing newer');
@@ -62,6 +67,7 @@ for (const [what, f] of [['an answer that is not a version', answer({ latest_ver
 ok(reinstallCommand('linux', '/home/u/.jauvex/personal/app', '/home/u/.jauvex/personal') === INSTALL_UNIX && reinstallCommand('linux', '/home/u/src/jauvex', '/home/u/.jauvex/personal') === undefined, 'Linux: the installer\'s copy (the data folder\'s app/) gets the install command; a clone does not');
 ok(reinstallCommand('win32', 'C:\\Users\\u\\AppData\\Local\\Jauvex\\app\\jauvex', 'C:\\Users\\u\\.jauvex\\personal', 'C:\\Users\\u\\AppData\\Local') === INSTALL_WINDOWS && reinstallCommand('win32', 'C:\\src\\jauvex', 'C:\\x', 'C:\\Users\\u\\AppData\\Local') === undefined, 'Windows: the installer\'s copy (%LOCALAPPDATA%\\Jauvex\\app\\jauvex) gets its command; a clone does not');
 ok(reinstallCommand('darwin', '/Users/u/.jauvex/personal/app', '/Users/u/.jauvex/personal') === undefined, 'a Mac: Jauvex.app updates itself');
+ok(reinstallCommand('darwin', '/Applications/Jauvex.app/Contents/Resources/app', '/Users/u/.jauvex/personal') === INSTALL_UNIX, 'a Jauvex.app from a disk image updates by the install command');
 { const line = checkLine({ current: '1.7.0', latest: '1.7.1', available: true, installed: false, reinstall: INSTALL_UNIX, reached: true }, '1.7.0');
   ok(line.includes(INSTALL_UNIX) && !/git/.test(line), 'a newer version on that copy: run the install command again, not git', line); }
 { const r = await updater({ dataDir: root, version: '1.1.0', pid: 1, appBundle: null, quit: () => {}, installed: false, reinstall: INSTALL_WINDOWS, fetcher: (async () => new Response('')) as unknown as typeof fetch });

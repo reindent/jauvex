@@ -1,22 +1,22 @@
 import { readFileSync, readdirSync } from 'node:fs'; import path from 'node:path';
 // The workflow definition and its run records are markdown; the parser turns them into the flow, the live state and the averages.
-const { parseWorkflow, parseRun, stateFor, mins, fmt, took, outcomes, matchOutcome, resolveTarget, formatRun, stepMessage, parseTrigger, lastSlot, nextSlot, isDue, firesAfter, windowDue, describeTrigger, SCHEDULE_TICK_MS, missedSlot, missedBy, missedNote, MISSED_OPTIONS, MISSED_DEFAULT, stepFileOk, askOf, stepBefore, stepTitle } = await import('../shared/workflow.ts');
+const { withoutOutcome, parseWorkflow, parseRun, stateFor, mins, fmt, took, outcomes, matchOutcome, resolveTarget, formatRun, stepMessage, parseTrigger, lastSlot, nextSlot, isDue, firesAfter, windowDue, describeTrigger, SCHEDULE_TICK_MS, missedSlot, missedBy, missedNote, MISSED_OPTIONS, MISSED_DEFAULT, stepFileOk, askOf, stepBefore, stepTitle } = await import('../shared/workflow.ts');
 let failed = 0; const check = (name: string, ok: boolean, got = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${got ? `: ${got}` : ''}`); if (!ok) failed++; };
-const dir = path.resolve('tests/fixtures/workflows'); const def = parseWorkflow(readFileSync(path.join(dir, 'news-video.md'), 'utf8'));
-check('the title, the trigger and the end are read', def.name === 'News video' && /Monday 09:00/.test(def.when) && /by voice/.test(def.done), `${def.name} · ${def.when}`);
-check('seven steps, each with its agent', def.steps.length === 7 && def.steps[0]!.agent === 'Social Media Agent' && def.steps[2]!.agent === 'Video Agent', def.steps.map((s) => `${s.name}→${s.agent}`).join(' | '));
+const dir = path.resolve('tests/fixtures/workflows'); const def = parseWorkflow(readFileSync(path.join(dir, 'recipe-letter.md'), 'utf8'));
+check('the title, the trigger and the end are read', def.name === 'Recipe letter' && /Monday 09:00/.test(def.when) && /by voice/.test(def.done), `${def.name} · ${def.when}`);
+check('seven steps, each with its agent', def.steps.length === 7 && def.steps[0]!.agent === 'Research Agent' && def.steps[2]!.agent === 'Writer Agent', def.steps.map((s) => `${s.name}→${s.agent}`).join(' | '));
 check('a step addressed to you is a gate', def.steps[5]!.gate && def.steps[5]!.name === 'Your approval' && !def.steps[0]!.gate);
-check('the instructions, in and out are kept', /verbatim quote/.test(def.steps[0]!.note) && def.steps[0]!.out.startsWith('research/brief.md') && def.steps[1]!.in === 'the ranked stories');
-check('branches come from the then line, the happy path left out', def.steps[0]!.branches.join('|') === 'nothing usable this week: stop, tell the user' && def.steps[5]!.branches[0] === 'changes requested: back to step 3 with your notes' && def.steps[1]!.branches.length === 0, def.steps[0]!.branches.join('|'));
+check('the instructions, in and out are kept', /verbatim quote/.test(def.steps[0]!.note) && def.steps[0]!.out.startsWith('research/shortlist.md') && def.steps[1]!.in === 'the ranked recipes');
+check('branches come from the then line, the happy path left out', def.steps[0]!.branches.join('|') === 'nothing seasonal this week: stop, tell the user' && def.steps[5]!.branches[0] === 'changes requested: back to step 3 with your notes' && def.steps[1]!.branches.length === 0, def.steps[0]!.branches.join('|'));
 check('durations parse both ways', mins('1 h 48') === 108 && mins('14 m') === 14 && mins('2 h') === 120 && mins('9 min') === 9 && mins('') === null && fmt(108) === '1 h 48' && fmt(14) === '14 m');
-const runsDir = path.join(dir, 'news-video', 'runs'); const runs = readdirSync(runsDir).filter((f) => f.endsWith('.md')).map((f) => parseRun(readFileSync(path.join(runsDir, f), 'utf8'), f));
-check('run records are read: number, result, time, steps', runs.length === 4 && runs.find((r) => r.n === 11)!.took === 108 && runs.find((r) => r.n === 12)!.steps[3]!.started === '14:37' && /Disk|MiMo/.test(runs.find((r) => r.n === 12)!.steps[3]!.said));
+const runsDir = path.join(dir, 'recipe-letter', 'runs'); const runs = readdirSync(runsDir).filter((f) => f.endsWith('.md')).map((f) => parseRun(readFileSync(path.join(runsDir, f), 'utf8'), f));
+check('run records are read: number, result, time, steps', runs.length === 4 && runs.find((r) => r.n === 11)!.took === 108 && runs.find((r) => r.n === 12)!.steps[3]!.started === '14:37' && /rye loaf/.test(runs.find((r) => r.n === 12)!.steps[3]!.said));
 const st = stateFor(def, runs);
 check('the latest run is live: done, done, running, next', st.live && st.st[1]![0] === 'ok' && st.st[2]![0] === 'ok' && st.st[3]![0] === 'run' && st.st[4]![1] === 'next' && st.sel === 3, JSON.stringify(st.st));
 check('the run line says where it is', st.text === 'Run #12 · step 3 of 7 · started 14:02', st.text);
 check('the workflow average over finished runs, and per step', st.avg === 113 && st.finished === 3 && st.stepAvg[0] === 13 && st.stepAvg[2] === 31, `${st.avg} · ${st.stepAvg.join(',')}`);
 const idle = stateFor(def, runs.filter((r) => r.n !== 12));
-check('the step a workflow is at: the live run\'s, else the last one the latest run reached, else the first (the user, 2026-09-27)', st.sel === 3
+check('the step a workflow is at: the live run\'s, else the last one the latest run reached, else the first', st.sel === 3
   && idle.sel === Math.max(...Object.keys(runs.find((r) => r.n === 11)!.steps).map(Number)) && stateFor(def, []).sel === 1, `${st.sel} · ${idle.sel}`);
 check('with no live run the rows show the step averages and the line says idle', !idle.live && idle.st[1]![1] === 'avg 13 m' && /^Idle · last run #11: published · 1 h 48/.test(idle.text), idle.text);
 // ---- running: outcomes, the outcome a reply names, where it leads, the record written back
@@ -24,7 +24,7 @@ const stepN = def.steps.findIndex((s) => outcomes(s).length > 1) + 1; const step
 check('the then line gives the outcomes and their targets', outs.length >= 2 && outs[0]!.name === 'done' && outs.some((o) => /stop/i.test(o.to)), JSON.stringify(outs));
 check('a reply names its outcome on the OUTCOME line, the last one wins, case and punctuation aside', matchOutcome(step, 'Some text.\nOUTCOME: failed\nmore\n**OUTCOME:** Done.')?.name === 'done' && matchOutcome(step, 'nothing here') === null);
 check('a step with one outcome takes a reply without the line', matchOutcome({ ...step, then: '' }, 'all good')?.name === 'done');
-// a step is an agent and its instructions (the user, 2026-09-27): with no then line, the usual outcomes
+// a step is an agent and its instructions: with no then line, the usual outcomes
 const plain = { ...step, then: '', gate: false }, approval = { ...def.steps[5]!, then: '' };
 check('with no then line an agent\'s step is done (on) or failed (the run stops), and a step of yours continue (on) or changes (back one step)',
   JSON.stringify(outcomes(plain).map((o) => [o.name, resolveTarget(def, 2, o.to).kind])) === '[["done","step"],["failed","stop"]]' && matchOutcome(plain, 'OUTCOME: failed')?.name === 'failed'
@@ -33,20 +33,20 @@ check('with no then line an agent\'s step is done (on) or failed (the run stops)
 check('targets: next, a step by number or name, done, stop', JSON.stringify([resolveTarget(def, 3, 'Next'), resolveTarget(def, 7, 'next'), resolveTarget(def, 5, 'back to step 3 with the notes'), resolveTarget(def, 5, def.steps[1]!.name), resolveTarget(def, 6, 'Done'), resolveTarget(def, 2, 'stop, tell the user')]) === JSON.stringify([{ kind: 'step', n: 4 }, { kind: 'done' }, { kind: 'step', n: 3 }, { kind: 'step', n: 2 }, { kind: 'done' }, { kind: 'stop', note: 'stop, tell the user' }]), JSON.stringify([resolveTarget(def, 5, 'back to step 3 with the notes'), resolveTarget(def, 5, def.steps[1]!.name)]));
 const live = runs.find((r) => r.n === 12)!; const back = parseRun(formatRun(live, def), live.file);
 check('a record written back reads the same', JSON.stringify(back.steps) === JSON.stringify(live.steps) && back.started === live.started && back.result === live.result, formatRun(live, def).slice(0, 200));
-const msg = stepMessage(def, stepN, live, 'workflows/news-video/runs/012/');
+const msg = stepMessage(def, stepN, live, 'workflows/recipe-letter/runs/012/');
 check('the step message names the workflow, the step, what came before and how to end', new RegExp(`run 12, step ${stepN} of 7`).test(msg) && /ended with:/.test(msg) && /OUTCOME: one of "/.test(msg), msg);
 check('seconds in took: written, read and shown', mins('40 s') === 40 / 60 && fmt(40 / 60) === '40 s' && took(0, 45_000) === '45 s' && took(0, 61 * 60_000) === '1 h 01' && took(0, 14 * 60_000) === '14 m');
 // ---- one file per step (T-168): the workflow file lists the steps and who does each, each step's instructions are a file its heading links
-const split = `# News video\n\nwhen: manual\n\n## 1. [Script](news-video/script.md) → Video Agent\n\n## 2. [Your approval](news-video/your-approval.md) → you\n\n## 3. Publish → Social Agent\nPost it.\n\ndone: the video, out\n`;
-const sd = parseWorkflow(split, 'workflows/news-video.md', { 'news-video/script.md': 'Write a 60-second script from today\'s top story.\n\nNever invent a quote.\n' });
-check('a heading links its step\'s file: the name is the link\'s text, the instructions the file, lines kept', sd.steps.length === 3 && sd.steps[0]!.name === 'Script' && sd.steps[0]!.file === 'news-video/script.md' && sd.steps[0]!.agent === 'Video Agent'
-  && sd.steps[0]!.prompt === 'Write a 60-second script from today\'s top story.\n\nNever invent a quote.' && sd.steps[0]!.note === 'Write a 60-second script from today\'s top story. Never invent a quote.', JSON.stringify(sd.steps[0]));
-check('a linked file not read yet: no instructions; a step of an older file keeps the ones under its heading', sd.steps[1]!.name === 'Your approval' && sd.steps[1]!.gate && sd.steps[1]!.prompt === '' && sd.steps[2]!.file === '' && sd.steps[2]!.prompt === 'Post it.', JSON.stringify(sd.steps.slice(1)));
-const sm = stepMessage(sd, 1, parseRun('# Run 1\nstarted: 2026-09-27 12:00\nresult: running\n', 'workflows/news-video/runs/001.md'), 'workflows/news-video/runs/001/');
-check('the step\'s message carries its instructions as written, lines and all, and the usual outcomes', sm.includes('today\'s top story.\n\nNever invent a quote.') && /OUTCOME: one of "done", "failed"/.test(sm), sm);
-check('a step\'s file is a markdown file in the workflow\'s own folder, nothing else', stepFileOk('workflows/news-video.md', 'news-video/script.md') && !stepFileOk('workflows/news-video.md', '../secrets.md') && !stepFileOk('workflows/news-video.md', 'other/script.md')
-  && !stepFileOk('workflows/news-video.md', 'news-video/runs/001.md') && !stepFileOk('workflows/news-video.md', 'news-video/README.md') && !stepFileOk('workflows/news-video.md', 'news-video/.env.md') && !stepFileOk('workflows/news-video.md', '/etc/x.md') && !stepFileOk('workflows/news-video.md', 'news-video/script.txt'));
-// ---- the step before one of yours tells you what to do (T-169; the user, 2026-09-27: "there's no instruction or anything ... make it generic")
+const split = `# Recipe letter\n\nwhen: manual\n\n## 1. [Draft](recipe-letter/draft.md) → Writer Agent\n\n## 2. [Your approval](recipe-letter/your-approval.md) → you\n\n## 3. Send → Mail Agent\nSend it.\n\ndone: the letter, sent\n`;
+const sd = parseWorkflow(split, 'workflows/recipe-letter.md', { 'recipe-letter/draft.md': 'Write a 400-word letter from this week\'s recipe.\n\nNever change a quantity.\n' });
+check('a heading links its step\'s file: the name is the link\'s text, the instructions the file, lines kept', sd.steps.length === 3 && sd.steps[0]!.name === 'Draft' && sd.steps[0]!.file === 'recipe-letter/draft.md' && sd.steps[0]!.agent === 'Writer Agent'
+  && sd.steps[0]!.prompt === 'Write a 400-word letter from this week\'s recipe.\n\nNever change a quantity.' && sd.steps[0]!.note === 'Write a 400-word letter from this week\'s recipe. Never change a quantity.', JSON.stringify(sd.steps[0]));
+check('a linked file not read yet: no instructions; a step of an older file keeps the ones under its heading', sd.steps[1]!.name === 'Your approval' && sd.steps[1]!.gate && sd.steps[1]!.prompt === '' && sd.steps[2]!.file === '' && sd.steps[2]!.prompt === 'Send it.', JSON.stringify(sd.steps.slice(1)));
+const sm = stepMessage(sd, 1, parseRun('# Run 1\nstarted: 2026-09-27 12:00\nresult: running\n', 'workflows/recipe-letter/runs/001.md'), 'workflows/recipe-letter/runs/001/');
+check('the step\'s message carries its instructions as written, lines and all, and the usual outcomes', sm.includes('this week\'s recipe.\n\nNever change a quantity.') && /OUTCOME: one of "done", "failed"/.test(sm), sm);
+check('a step\'s file is a markdown file in the workflow\'s own folder, nothing else', stepFileOk('workflows/recipe-letter.md', 'recipe-letter/draft.md') && !stepFileOk('workflows/recipe-letter.md', '../secrets.md') && !stepFileOk('workflows/recipe-letter.md', 'other/draft.md')
+  && !stepFileOk('workflows/recipe-letter.md', 'recipe-letter/runs/001.md') && !stepFileOk('workflows/recipe-letter.md', 'recipe-letter/README.md') && !stepFileOk('workflows/recipe-letter.md', 'recipe-letter/.env.md') && !stepFileOk('workflows/recipe-letter.md', '/etc/x.md') && !stepFileOk('workflows/recipe-letter.md', 'recipe-letter/draft.txt'));
+// ---- the step before one of yours tells you what to do (T-169)
 const gd = parseWorkflow('# G\n\nwhen: manual\n\n## 1. [Draw](g/draw.md) → Notes agent\n\n## 2. [Your guess](g/your-guess.md) → you\n\n## 3. [Check](g/check.md) → Notes agent\n', 'workflows/g.md', { 'g/draw.md': 'Draw a number.', 'g/your-guess.md': 'Guess the number.' });
 const r1 = parseRun('# Run 1\nstarted: 2026-09-27 12:00\nresult: running\n', 'workflows/g/runs/001.md');
 const m1 = stepMessage(gd, 1, r1, 'workflows/g/runs/001/'), m3 = stepMessage(gd, 3, r1, 'workflows/g/runs/001/');
@@ -56,7 +56,7 @@ const rr = parseRun(formatRun({ ...r1, steps: { 1: { started: '12:00', took: 1, 
 const rv = parseRun(formatRun({ ...r1, version: 3 }, gd), r1.file);
 check('a run record keeps the version it ran, after its result, and reads it back', rv.version === 3 && /^result: running\nversion: 3$/m.test(formatRun({ ...r1, version: 3 }, gd)) && parseRun('# Run 1\nstarted: x\nresult: running\n').version === undefined);
 check('the record keeps it, and a step of yours finds the step before it', rr.steps[1]!.asks === 'Guess: 1 or 2?' && stepBefore(rr, 2) === 1 && stepBefore(rr, 1) === 0, formatRun(rr, gd));
-// a step's title is optional: without one it is called by its instructions, cut short (the user, 2026-09-27)
+// a step's title is optional: without one it is called by its instructions, cut short
 check('a step is called by its title, else by its instructions cut short, else it is a new step', stepTitle({ name: 'Script', note: 'Write it.' }) === 'Script' && stepTitle({ name: '', note: 'Guess the number.' }) === 'Guess the number.'
   && stepTitle({ name: '', note: 'Record the voiceover for the script, in a calm voice, one take, no music under it.' }) === 'Record the voiceover for the script, in a calm…' && stepTitle({ name: ' ', note: '' }) === 'New step');
 const untitled = parseWorkflow('# U\n\n## 1. [](u/step.md) → Notes agent\n\n## 2. [Your guess](u/your-guess.md) → you\n', 'workflows/u.md', { 'u/step.md': 'Draw a number, 1 or 2, and keep it secret.' });
@@ -64,16 +64,15 @@ check('an untitled step reads, and its messages and records call it by its instr
   && /step 1 of 2: "Draw a number, 1 or 2, and keep it secret\." is yours/.test(stepMessage(untitled, 1, r1, 'workflows/u/runs/001/')) && /^## 1\. Draw a number, 1 or 2, and keep it secret\.$/m.test(formatRun({ ...r1, steps: { 1: { started: '12:00', took: null, result: '', said: '' } } }, untitled)));
 // ---- triggers
 const T = (w: string) => JSON.stringify(parseTrigger(w));
-check('when: manual, schedules and events parse', T('manual') === '{"kind":"manual"}' && T('') === '{"kind":"manual"}' && T('every Monday 09:00') === '{"kind":"at","days":[1],"h":9,"m":0}' && T('every weekday at 8:30') === '{"kind":"at","days":[1,2,3,4,5],"h":8,"m":30}' && T('every day at 7pm') === '{"kind":"at","days":[],"h":19,"m":0}' && T('every 2 hours') === '{"kind":"every","minutes":120}' && T('every 30 minutes') === '{"kind":"every","minutes":30}' && T('every Monday and Thursday 10:15') === '{"kind":"at","days":[1,4],"h":10,"m":15}' && T('after News video finishes') === '{"kind":"after","workflow":"news video"}',
-  [T('every Monday 09:00'), T('every weekday at 8:30'), T('every day at 7pm'), T('every 2 hours'), T('every Monday and Thursday 10:15'), T('after News video finishes')].join(' '));
+check('when: manual, schedules and events parse', T('manual') === '{"kind":"manual"}' && T('') === '{"kind":"manual"}' && T('every Monday 09:00') === '{"kind":"at","days":[1],"h":9,"m":0}' && T('every weekday at 8:30') === '{"kind":"at","days":[1,2,3,4,5],"h":8,"m":30}' && T('every day at 7pm') === '{"kind":"at","days":[],"h":19,"m":0}' && T('every 2 hours') === '{"kind":"every","minutes":120}' && T('every 30 minutes') === '{"kind":"every","minutes":30}' && T('every Monday and Thursday 10:15') === '{"kind":"at","days":[1,4],"h":10,"m":15}' && T('after Recipe letter finishes') === '{"kind":"after","workflow":"recipe letter"}',
+  [T('every Monday 09:00'), T('every weekday at 8:30'), T('every day at 7pm'), T('every 2 hours'), T('every Monday and Thursday 10:15'), T('after Recipe letter finishes')].join(' '));
 const mon = new Date(2026, 8, 21, 9, 4); // Monday 21 Sep 2026, 09:04
 const wk = parseTrigger('every Monday 09:00');
 check('the last and next slot of a weekly schedule', lastSlot(wk, mon)!.getTime() === new Date(2026, 8, 21, 9, 0).getTime() && nextSlot(wk, mon)!.getTime() === new Date(2026, 8, 28, 9, 0).getTime());
 check('due within ten minutes of its slot, once', !!isDue(wk, '2026-09-14 09:00', mon) && !isDue(wk, '2026-09-21 09:00', mon) && !isDue(wk, null, new Date(2026, 8, 21, 9, 20)) && !isDue(wk, null, new Date(2026, 8, 22, 9, 4)));
 check('every N minutes: slots on the clock', lastSlot(parseTrigger('every 15 minutes'), new Date(2026, 8, 21, 9, 44, 30))!.getTime() === new Date(2026, 8, 21, 9, 30).getTime());
-check('an event fires after the workflow it names, by title or file', firesAfter(parseTrigger('after News video'), { name: 'News video', file: 'workflows/news-video.md' }) && firesAfter(parseTrigger('after news-video'), { name: 'Other', file: 'workflows/news-video.md' }) && !firesAfter(parseTrigger('after Weekly report'), { name: 'News video' }));
-// A window (T-204; the user, 2026-09-29: "anytime between 9 and 12 a.m. ... randomize it with equal probabilities on each draw ... If ... it's
-// not run already by the end, it must run at the end ... if ... the check ... change[s] ... that probability [must] change as well")
+check('an event fires after the workflow it names, by title or file', firesAfter(parseTrigger('after Recipe letter'), { name: 'Recipe letter', file: 'workflows/recipe-letter.md' }) && firesAfter(parseTrigger('after recipe-letter'), { name: 'Other', file: 'workflows/recipe-letter.md' }) && !firesAfter(parseTrigger('after Weekly report'), { name: 'Recipe letter' }));
+// A window (T-204): a random time in it, every tick equally likely; a window not run by its end runs at its end; the draw follows the tick
 const win = (w: string) => JSON.stringify(parseTrigger(w));
 check('a window is read: "between 9 and 12 a.m." is the morning, and "11 and 2pm", "2 and 5pm", the days as for a time',
   win('anytime between 9 and 12 a.m.') === '{"kind":"window","days":[],"from":540,"to":720}' && win('every weekday between 9am and 12pm') === '{"kind":"window","days":[1,2,3,4,5],"from":540,"to":720}'
@@ -96,7 +95,7 @@ for (const tick of [SCHEDULE_TICK_MS, 60_000, 5_000]) {
 }
 const rec = formatRun({ ...parseRun('# Run 3\nstarted: 2026-09-29 06:37\nresult: running\n'), by: 'its schedule, every weekday 6:32' }, parseWorkflow('# T\n\n## 1. A → X\n'));
 check('a run keeps what started it', /^started: 2026-09-29 06:37\nby: its schedule, every weekday 6:32$/m.test(rec) && parseRun(rec).by === 'its schedule, every weekday 6:32', rec);
-// A schedule missed while the app was closed (T-208; the user, 2026-09-29: "it should at least be prompted"): the latest slot between the
+// A schedule missed while the app was closed (T-208): the person is asked; the latest slot between the
 // app's last look and now, that the schedule itself no longer runs, with no run since. Tuesday 2026-09-29; the app last looked on Monday evening.
 const at = (d: number, h: number, m: number) => new Date(2026, 8, d, h, m); /* day 31 is 1 October */ const t = (x: Date) => x.getTime(); const iso = (x: Date | null) => (x ? `${x.getDate()} ${x.toTimeString().slice(0, 5)}` : 'null');
 const daily = parseTrigger('every weekday 6:32'); const monEve = t(at(28, 20, 0));
@@ -111,32 +110,34 @@ check('a window that ended while the app was closed is missed; one still open, o
   iso(missedSlot(win9, null, t(at(29, 8, 0)), at(29, 12, 30))) === '29 09:00' && missedSlot(win9, null, t(at(29, 8, 0)), at(29, 11, 0)) === null && missedSlot(win9, null, t(at(29, 8, 0)), at(29, 12, 5)) === null);
 check('...closed in the middle of the window, before it ran: missed; open at its end (the last draw is sure): not',
   iso(missedSlot(win9, null, t(at(29, 10, 0)), at(29, 13, 0))) === '29 09:00' && missedSlot(win9, null, t(at(29, 12, 1)), at(29, 13, 0)) === null && missedSlot(win9, '2026-09-29 09:40', t(at(29, 10, 0)), at(29, 13, 0)) === null);
-check('manual and "after" workflows are never missed', missedSlot(parseTrigger('manual'), null, monEve, at(29, 8, 0)) === null && missedSlot(parseTrigger('after News video'), null, monEve, at(29, 8, 0)) === null);
+check('manual and "after" workflows are never missed', missedSlot(parseTrigger('manual'), null, monEve, at(29, 8, 0)) === null && missedSlot(parseTrigger('after Recipe letter'), null, monEve, at(29, 8, 0)) === null);
 check('the setting\'s options: run it first, ask (the default), nothing last', MISSED_OPTIONS.map(([k]) => k).join(' ') === 'run alert nothing' && MISSED_DEFAULT === 'alert');
 check('a missed run started when the app opens says so in its record', missedBy('every weekday 6:32', at(29, 6, 32), at(29, 8, 0)) === 'its schedule (every weekday 6:32), missed today 06:32 while the app was closed', missedBy('every weekday 6:32', at(29, 6, 32), at(29, 8, 0)));
 const note = missedNote([{ name: 'Test', file: 'workflows/test.md', folder: 'acme', when: 'every weekday 6:32', slot: at(29, 6, 32) }, { name: 'Digest', file: 'workflows/digest.md', folder: 'acme', when: 'every day at 7am', slot: at(29, 7, 0) }], at(29, 8, 0));
 check('the note to the Jauvex agent names each missed workflow, its time and how to run it, and asks first',
   /^\(from the app\) While the app was closed/.test(note) && /"Test" in the folder acme \(every weekday 6:32; due today 06:32\)/.test(note) && /run --folder "acme" --workflow "workflows\/digest.md"/.test(note) && /ask whether to run them now/.test(note) && /On a yes/.test(note), note);
-// the sidebar's order (the user, 2026-09-29: "when it needs a human supervision, it should be on top, 100% ... when a workflow is running, that is
-// considered as an update. It should move to the top ... then by those that were last modified, not created or last run")
+// the sidebar's order: a workflow waiting for a person on top, then the running ones (a run counts as an update), then by last change, not by creation or last run
 { const { sortWorkflows } = await import('../shared/workflow.ts');
   const wf = (name: string, modified: number, latest: { result: string; waiting?: boolean } | null = null) => ({ file: `workflows/${name}.md`, name, when: 'manual', steps: 2, runs: latest ? 1 : 0, latest: latest ? { n: 1, took: null, started: '2026-09-01 10:00', ...latest } : null, modified });
   const list = [wf('Old, run yesterday', 100, { result: 'done' }), wf('Edited now', 900), wf('Running', 50, { result: 'running: step 2' }), wf('Waits for you', 10, { result: 'running: step 3', waiting: true }), wf('Edited before', 500), wf('Running too', 60, { result: 'running: step 1' })];
   const order = sortWorkflows(list).map((w) => w.name);
   check('workflows waiting for a person first, then the running ones, then the rest by their last change, the newest first (not by their last run)',
     JSON.stringify(order) === JSON.stringify(['Waits for you', 'Running too', 'Running', 'Edited now', 'Edited before', 'Old, run yesterday']), JSON.stringify(order)); }
-// T-251 (a report from a server, 2026-09-30: a shared rules file, workflows/video-rules.md, was listed as a fourth workflow, and "runs"
-// answered for it): a file of workflows/ is a workflow when it has steps, or at least a `when:` line; notes and rules beside them are not
+// T-251 (a shared rules file beside the workflows, workflows/letter-rules.md, was listed as a workflow, and "runs" answered for it): a file of workflows/ is a workflow when it has steps, or at least a `when:` line; notes and rules beside them are not
 { const { isWorkflow: isW } = await import('../shared/workflow.ts');
-  const rules = parseWorkflow('# Rules for the video workflows (News video research, News video creation, YouTube upload)\n\nEvery step reads these first.\n\n## Voice\n\nShort sentences.\n');
+  const rules = parseWorkflow('# Rules for the letter workflows (Recipe letter research, Recipe letter draft, Site post)\n\nEvery step reads these first.\n\n## Voice\n\nShort sentences.\n');
   const started = parseWorkflow('# Launch\n\nwhen: manual\n');
   const full = parseWorkflow('# Launch\n\nwhen: manual\n\n## 1. [Draft](launch/draft.md) → Writer\n');
   check("a rules or notes file (no `when:`, no `## N. step → agent`) is not a workflow; one with steps is, and one whose steps are not written yet but says when it runs stays one",
     !isW(rules) && isW(full) && isW(started), JSON.stringify([isW(rules), isW(full), isW(started)])); }
 { const { mkdirSync, rmSync, writeFileSync } = await import('node:fs'); const { listWorkflows } = await import('../electron/workfiles.ts');
   const dir = path.resolve('tmp/testrun/workflow-parse/work'); rmSync(dir, { recursive: true, force: true }); mkdirSync(path.join(dir, 'workflows'), { recursive: true });
-  writeFileSync(path.join(dir, 'workflows', 'video-rules.md'), '# Rules for the video workflows\n\nEvery step reads these first.\n');
-  writeFileSync(path.join(dir, 'workflows', 'news.md'), '# News video creation\n\nwhen: manual\n\n## 1. [Build](news/build.md) → Video Agent\n');
+  writeFileSync(path.join(dir, 'workflows', 'letter-rules.md'), '# Rules for the letter workflows\n\nEvery step reads these first.\n');
+  writeFileSync(path.join(dir, 'workflows', 'letter.md'), '# Recipe letter draft\n\nwhen: manual\n\n## 1. [Build](letter/build.md) → Writer Agent\n');
   const listed = (await listWorkflows(dir)).map((w) => w.file).join(', ');
-  check('the folder lists its workflows only: the rules file beside them is left out', listed === 'workflows/news.md', listed); }
+  check('the folder lists its workflows only: the rules file beside them is left out', listed === 'workflows/letter.md', listed); }
+// A trailing OUTCOME line is the runner's, not the person's (from Pro): the chat, the voice and an answer going back leave it out; the runner reads the raw reply
+check('a trailing OUTCOME line is taken off what a person reads, bold or plain, blank lines after it too', withoutOutcome('All set.\n\nOUTCOME: done\n') === 'All set.' && withoutOutcome('Sent.\n**OUTCOME: changes**') === 'Sent.' && withoutOutcome('A.\nOUTCOME: x\nOUTCOME: y') === 'A.');
+check('...a reply that is only the line shows as the word given ("Done"), or as nothing when none is', withoutOutcome('OUTCOME: done', 'Done') === 'Done' && withoutOutcome('OUTCOME: done') === '');
+check('...a mention inside a sentence, or a line not at the end, stays', withoutOutcome('The OUTCOME: line is odd. Fine.') === 'The OUTCOME: line is odd. Fine.' && withoutOutcome('OUTCOME: done\nThen more words.') === 'OUTCOME: done\nThen more words.' && withoutOutcome('Plain.') === 'Plain.');
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

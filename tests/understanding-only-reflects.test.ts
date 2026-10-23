@@ -1,7 +1,7 @@
 // llm
 import path from 'node:path'; process.env.CVC_ROOT = path.resolve('.'); process.env.CVC_DATA_DIR ??= path.resolve('tmp/testdata');
-// Stage two is a reflection and nothing else (T-201; the user, 2026-09-28: it "should not attempt to solve the user's problem or answer the
-// question"), from the prompt alone: the voice model's own line, before the check that runs on it, has nothing that check would take out
+// Stage two is a reflection and nothing else (T-201: it never solves the problem or answers the question),
+// from the prompt alone: the voice model's own line, before the check that runs on it, has nothing that check would take out
 // (no plan, promise, request, question or judgement), answers nothing (a question it could answer, a "what happens if"), guesses no pronoun,
 // and names what was said; a greeting gets no stage two at all. On both small voice models, Claude's and Codex's: Codex's wrote most of the
 // plans in the log. CVC_VOICE_PROVIDERS=claude (or codex) runs one.
@@ -15,7 +15,7 @@ const cases: { name: string; said: string; names: RegExp; never?: RegExp; recent
     recent: 'User: can the importer retry a failed row?\nAssistant: Yes: a failed row is tried again, and it stops after six retries.' },
   { name: 'a request is said back as what they want, with no plan', said: 'Please move the export button next to the save button and ship it to staging.', names: /export|button|staging/i },
   { name: 'a problem is said back with concern, no cheer, no cause', said: 'The orb is gone from the left pane again after the reload, it was there a minute ago.', names: /orb/i, never: /^\W*(great|sure|okay|ok|perfect)\b|because|probably|must be/i },
-  { name: 'no pronoun guessed for someone the user named', said: 'Ask the design agent to screenshot the sample board with the fake company agents for the launch.', names: /screenshot|sample board|design agent/i, never: /\b(he|him|his|she|her|hers)\b/i },
+  { name: 'no pronoun guessed for someone the user named', said: 'Ask the photo agent to shoot the sample menu with the new bakery logo for the launch.', names: /shoot|photo|sample menu|photo agent/i, never: /\b(he|him|his|she|her|hers)\b/i },
 ];
 const main = (p: string) => (p === 'codex' ? 'Codex, model gpt-5.5' : 'Claude, model claude-opus-5');
 for (const p of providers) {

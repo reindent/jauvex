@@ -16,9 +16,9 @@ check('"yes" is a yes', answerIs('Yes.') === 'yes');
 check('"yeah, do it" is a yes', answerIs('Yeah, do it') === 'yes');
 check('"no" is a no', answerIs('No.') === 'no');
 check('"no, that was for the agent" is a no', answerIs('No, that was for the agent') === 'no');
-check('a new sentence is neither', answerIs('I want the handoff written in the README with the next steps for the other agent') === null);
+check('a new sentence is neither', answerIs('I want the steps written in the notes file so the other agent can pick this up') === null);
 check('"not that" is a no', answerIs('Not that.') === 'no');
-// A stop's words (2026-09-23): "list, list, list, before you do anything, stop" was dropped whole, and never shown.
-check('a stop that asks for something carries its words on', stopSaysMore('Okay, wait a second. List, list, list. Before you do anything, stop.') && stopSaysMore('Stop, use the other folder instead.'));
+// A stop's words: "check, check, check, before you do anything, stop" was dropped whole, and never shown.
+check('a stop that asks for something carries its words on', stopSaysMore('Okay, wait a second. Check, check, check. Before you do anything, stop.') && stopSaysMore('Stop, use the other folder instead.'));
 check('a bare stop carries nothing', !stopSaysMore('Stop.') && !stopSaysMore('Stop, stop!') && !stopSaysMore('Hold on, stop that.') && !stopSaysMore('Okay, wait a second. Before you do anything, stop.') && !stopSaysMore('No no no, stop it now'));
 console.log(failed ? `${failed} FAILED` : 'ALL PASS'); process.exit(failed ? 1 : 0);

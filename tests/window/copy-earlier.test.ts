@@ -1,7 +1,7 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/copy-earlier/claude MOCK_DELAY_MS=5
 // The Jauvex agent's chat, which the app keeps its own copy of, loads what came before that copy from the agent's own session (T-272, from the
-// other edition's fix; the user, 2026-10-01, of an agent there: "the workspace agent chat history is cut. There's not even a load earlier
-// messages. At least there should be a load earlier messages button": saves that overlapped had cut its copy to the last 12 messages, T-269,
+// other edition's fix: an agent's chat history there was cut short, with no way to
+// load earlier messages; saves that overlapped had cut its copy to the last 12 messages, T-269,
 // while its session kept them all). Six questions to the Jauvex agent (the Claude stand-in), its copy cut to the last two, the window loaded
 // again: the chat shows those two, "Load earlier messages" counts what the session has before them, and brings it back, each question once,
 // in order.

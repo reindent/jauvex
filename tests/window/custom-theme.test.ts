@@ -1,7 +1,6 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/custom-theme/claude MOCK_DELAY_MS=5
-// The app's own colours, made with the Jauvex agent (T-278; the user, 2026-10-01: "We have right now Auto, Dark, Light, and then one more that
-// says Custom. And when you do custom ... You're going to talk with the Jauvex agent ... it will give you three ideas ... of colors. And then
-// once you select one, You will be able to ... modify ... to the colors that you want"): Settings, Appearance has a fourth choice, Custom; it
+// The app's own colours, made with the Jauvex agent (T-278: colours you settle with the Jauvex agent from a few
+// ideas it proposes, then adjust): Settings, Appearance has a fourth choice, Custom; it
 // opens the Jauvex agent's chat and tells the agent to ask and propose; the agent's `theme --custom` puts a palette on at once, kept after a
 // reload; one whose text would be hard to read is refused and changes nothing; `theme --set` goes back to one of the app's themes.
 import { connect, sleep, check, done } from './lib.ts';

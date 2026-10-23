@@ -1,6 +1,6 @@
 // env: CVC_CLAUDE_BIN=__ROOT__/tests/mock/claude CVC_CODEX_BIN=__ROOT__/tests/mock/codex CLAUDE_CONFIG_DIR=__ROOT__/tmp/testrun/workflow-missed/claude MOCK_DELAY_MS=5
-// A schedule missed while the app was closed (T-208; the user, 2026-09-29: "if a workflow was missed because the app was closed, it should at
-// least be prompted"): a setting, under Workflows, says what the app does when it opens again: run it (the first option), tell the user and
+// A schedule missed while the app was closed (T-208: a run missed while the app was closed is at least offered): a
+// setting, under Workflows, says what the app does when it opens again: run it (the first option), tell the user and
 // ask (the default: the Jauvex agent asks, in words), or nothing (the last). The app keeps, on this computer, when it last looked at
 // each folder's schedules; the check sets that look an hour back and reloads the window, as an app that was closed for an hour and opened.
 import { connect, sleep, check, done, useWork } from './lib.ts'; import { execFileSync } from 'node:child_process';

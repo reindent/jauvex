@@ -2,13 +2,18 @@
 // an older one, asks the user in words, through its own agent, whether to update. Pure: tests/update.test.ts.
 import { t } from './i18n/index.js';
 export const VERSION_RE = /^\d+\.\d+\.\d+$/;
+/** A version in the making (AGENTS.md rule 11): x.y.z-dev, older than x.y.z itself and newer than every version before it. Only this copy's own
+ *  version takes it: the site never offers one. */
+export const DEV_VERSION_RE = /^\d+\.\d+\.\d+-dev$/;
+/** x.y.z of a version or of a version in the making; null for anything else. */
+export const baseVersion = (v: string | null | undefined): string | null => (v && (VERSION_RE.test(v) || DEV_VERSION_RE.test(v)) ? v.replace(/-dev$/, '') : null);
 
-/** a is a newer version than b (both x.y.z); false when either is not a version. */
+/** a is a newer version than b (each x.y.z or x.y.z-dev); false when either is not a version. 1.8.0-dev is newer than 1.7.2 and older than 1.8.0. */
 export function newer(a: string | null | undefined, b: string | null | undefined): boolean {
-  if (!a || !b || !VERSION_RE.test(a) || !VERSION_RE.test(b)) return false;
-  const x = a.split('.').map(Number), y = b.split('.').map(Number);
+  const ba = baseVersion(a), bb = baseVersion(b); if (!ba || !bb) return false;
+  const x = ba.split('.').map(Number), y = bb.split('.').map(Number);
   for (let i = 0; i < 3; i++) { const d = (x[i] ?? 0) - (y[i] ?? 0); if (d) return d > 0; }
-  return false;
+  return !a!.endsWith('-dev') && b!.endsWith('-dev'); // the same x.y.z: only the release is newer than its version in the making
 }
 
 /** current: this copy's version; latest: the site's, once known; installed: a copy that can update itself (the Mac app the install
@@ -19,11 +24,12 @@ export type UpdateStatus = { current: string; latest?: string; available: boolea
 export const INSTALL_UNIX = 'curl -fsSL https://jauvex.ai/install | sh';
 export const INSTALL_WINDOWS = 'irm https://jauvex.ai/install/windows | iex';
 /** The install command that made this copy, when the Linux or Windows installer made it (it updates by running that command again): on Linux
- *  the source in the data folder's app/, on Windows in %LOCALAPPDATA%\Jauvex\app\jauvex. Undefined on a Mac (Jauvex.app updates itself) and
- *  for a clone (git). */
+ *  the source in the data folder's app/, on Windows in %LOCALAPPDATA%\Jauvex\app\jauvex; on a Mac a Jauvex.app from a disk image (the one the
+ *  install command made updates itself, and is asked first). Undefined for a clone (git). */
 export function reinstallCommand(platform: string, appRoot: string, dataDir: string, localAppData?: string): string | undefined {
   const plain = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
   if (platform === 'linux') return plain(appRoot) === plain(`${dataDir}/app`) ? INSTALL_UNIX : undefined;
+  if (platform === 'darwin') return /\/Jauvex\.app\/Contents\/Resources\/app$/.test(plain(appRoot)) ? INSTALL_UNIX : undefined; // a Jauvex.app from a disk image (packaging/mac): the install command makes it one that updates itself
   if (platform === 'win32' && localAppData) return plain(appRoot).toLowerCase() === plain(`${localAppData}/Jauvex/app/jauvex`).toLowerCase() ? INSTALL_WINDOWS : undefined;
   return undefined;
 }
@@ -32,7 +38,7 @@ export function reinstallCommand(platform: string, appRoot: string, dataDir: str
 export const shouldAsk = (s: UpdateStatus | null | undefined, asked: string | undefined): boolean =>
   !!s && s.available && s.installed && !!s.latest && asked !== s.latest;
 
-/** What a click on What's new found (T-245; the user, 2026-09-30: "when you click what's new, it should check if there's a new version"): the
+/** What a click on What's new found (T-245: a click on What's new checks for a new version): the
  *  status after the app asked the site right then, and whether the site answered. */
 export type CheckedStatus = UpdateStatus & { reached: boolean };
 /** A click on What's new with a newer version out, on the copy that updates itself: the Jauvex agent says what it brings and asks, as the
@@ -58,14 +64,14 @@ export const updateNote = (current: string, latest: string, notes = ''): string 
  *  kept its last version, when the version it runs is the one the user agreed to update to (from: unknown). Only the copy the install
  *  command made updates itself: a clone never says so. */
 export function justUpdated(s: UpdateStatus | null | undefined, ui: { lastVersion?: string; updateAsked?: string } | undefined): { from: string | null } | null {
-  if (!s || !s.installed || !VERSION_RE.test(s.current)) return null;
+  if (!s || !s.installed || !baseVersion(s.current)) return null; // a version in the making (x.y.z-dev) too: it said nothing after an update
   const last = ui?.lastVersion;
   if (last) return newer(s.current, last) ? { from: last } : null;
   return ui?.updateAsked === s.current ? { from: null } : null;
 }
 
-/** What the app tells its own agent when it opens on a new version (T-218; the user, 2026-09-30: "the app should notify what the change log
- *  is about"): say it is updated, what the new version brings, from its changelog, then check the app and report. */
+/** What the app tells its own agent when it opens on a new version (T-218): say it is
+ *  updated, what the new version brings, from its changelog, then check the app and report. */
 export const updatedNote = (from: string | null, to: string, notes = ''): string =>
   `(from the app) The app has just been updated${from ? ` from ${from}` : ''} to Jauvex ${to} and opened again. Tell the user in one short ` +
   `line that it is updated to ${to}${notes.trim() ? ', then in two or three short lines what it brings, the main change first, in plain words (its changelog is below; the whole list is at jauvex.ai/changelog)' : ''}. ` +

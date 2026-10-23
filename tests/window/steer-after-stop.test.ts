@@ -2,8 +2,8 @@
 import { connect, sleep, check, done, V } from './lib.ts';
 import { execFileSync } from 'node:child_process';
 const { js, close } = await connect(); await sleep(2500);
-// A message handed to a running turn, then a stop. A stop is the person's (2026-10-07, as Jauvex Pro; the user, 2026-09-25: "When I click
-// stop, it doesn't really stop"): what they handed to the stopped turn is not sent again, and nothing starts on its own. Only another agent's
+// A message handed to a running turn, then a stop. A stop is the person's (2026-10-07, as Jauvex Pro; a stop did not
+// really stop): what they handed to the stopped turn is not sent again, and nothing starts on its own. Only another agent's
 // message handed to it waits again for its answer. The Claude stand-in drops what waits when a turn is interrupted, as Claude Code does.
 const run = (...args) => { try { return JSON.parse(execFileSync('node', ['scripts/jauvex.ts', ...args], { env: { ...process.env }, encoding: 'utf8' })); } catch (e) { return { ok: false, raw: `${e.stdout ?? ''}${e.stderr ?? ''}` }; } };
 const until = async (expr, ms = 15000) => { for (let t = 0; t < ms; t += 200) { if (await js(expr)) return true; await sleep(200); } return false; };

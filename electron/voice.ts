@@ -5,7 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { query, type Query, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AppCommand, BusyTriage, CommandDetails, Provider, SetupCheck, Transcript, VoiceStatus } from '../shared/types.js';
-import { PROVIDER_LABEL, withAppWords } from '../shared/types.js';
+import { APP_WORDS, PROVIDER_LABEL, withAppWords } from '../shared/types.js';
 import { wakeMatch } from '../shared/transcript.js';
 import { JEV_MIN_CONFIDENCE, orderVerdict } from '../shared/orders.js';
 import { reflectionOnly, smallTalk, weak } from '../shared/reflection.js';
@@ -70,11 +70,20 @@ export const netstatListeners = (out: string, port: number): number[] => [...new
 const viaPowerShell = (command: string) => capture('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command]);
 const listening = async (port: number): Promise<number[]> => WIN ? netstatListeners(await capture('netstat', ['-ano']), port) : (await capture('lsof', ['-nP', '-t', `-iTCP:${port}`, '-sTCP:LISTEN'])).split(/\s+/).map(Number).filter((p) => p > 0);
 const commandOf = (pid: number): Promise<string> => WIN ? viaPowerShell(`(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`) : capture('ps', ['-o', 'command=', '-p', String(pid)]);
+/** Another install's server that no copy of the app runs any more (2026-10-17: a dev copy's, left on the app's port by a restart, kept the
+ *  installed copy's voice from starting): started by a copy of this app (its vocabulary holds every one of the app's own words) and taken
+ *  over by launchd or systemd, its app gone. One a running copy owns, or a person started by hand, is left alone. Not on Windows, where an
+ *  orphan keeps the number of its parent. */
+async function orphanedAppServer(pid: number, cmd: string): Promise<boolean> {
+  if (WIN || !/--prompt\b/.test(cmd) || !APP_WORDS.every((w) => cmd.includes(w))) return false;
+  const ppid = Number((await capture('ps', ['-o', 'ppid=', '-p', String(pid)])).trim()) || 0; if (ppid === 1) return true;
+  return ppid > 1 && /(^|\/)(launchd|systemd)\b/.test(await capture('ps', ['-o', 'command=', '-p', String(ppid)]));
+}
 const nameOf = (pid: number): Promise<string> => WIN ? viaPowerShell(`(Get-Process -Id ${pid}).ProcessName`) : capture('ps', ['-o', 'comm=', '-p', String(pid)]);
 export async function stopLeftovers(port: number): Promise<number[]> {
   const pids = (await listening(port)).filter((p) => p !== process.pid && p !== whisper?.pid && p !== live?.pid);
   const stopped: number[] = [];
-  for (const pid of pids) { const cmd = await commandOf(pid); if (!/(^|[\\/])whisper-server\b/.test(cmd) || !cmd.includes(`--port ${port}`)) continue; if (!ownModel(cmd)) { debug.log('note', `port ${port} is taken by another install's whisper-server (pid ${pid}): left alone`, { by: 'app' }); continue; } try { process.kill(pid, 'SIGTERM'); stopped.push(pid); } catch { /* already gone */ } }
+  for (const pid of pids) { const cmd = await commandOf(pid); if (!/(^|[\\/])whisper-server\b/.test(cmd) || !cmd.includes(`--port ${port}`)) continue; if (!ownModel(cmd)) { if (!(await orphanedAppServer(pid, cmd))) { debug.log('note', `port ${port} is taken by another install's whisper-server (pid ${pid}): left alone`, { by: 'app' }); continue; } debug.log('note', `port ${port} is taken by another install's whisper-server (pid ${pid}), which no copy of the app runs any more: stopped`, { by: 'app' }); } try { process.kill(pid, 'SIGTERM'); stopped.push(pid); } catch { /* already gone */ } }
   if (stopped.length) { debug.log('note', `stopped ${stopped.length} whisper-server${stopped.length > 1 ? 's' : ''} left on port ${port} by a previous run (pid ${stopped.join(', ')})`, { by: 'app' }); await new Promise((r) => setTimeout(r, 300)); }
   return stopped;
 }
@@ -261,8 +270,10 @@ type Kokoro = { proc: ChildProcess; ready: Promise<boolean>; voices: string[]; p
 let kokoro: Kokoro | null = null;
 let kokoroVoices: string[] = []; // its voices, once it has loaded: the settings list them without starting it (its model is 325 MB)
 // Once it has stopped by itself (or is not installed), it is not started again at every sentence, each paying seconds of loading and a line
-// in the log: only at the next voice-on or welcome check (retry).
+// in the log: only at the next voice-on or welcome check (retry). One that had loaded and then stopped (after a crash the voice stayed
+// silent in every chat until voice was switched on again) is started again at once, at most KOKORO_RESTARTS times an hour.
 let kokoroFailed = false;
+const KOKORO_RESTARTS = 3; let kokoroRestarts: number[] = []; // when it was started again after stopping by itself
 function ensureKokoro(retry = false): Kokoro | null {
   if (kokoro) return kokoro;
   if (kokoroFailed && !retry) return null;
@@ -271,7 +282,10 @@ function ensureKokoro(retry = false): Kokoro | null {
   // Electron's own Node runs it (process.execPath is the Electron binary in the app, node in the backend checks).
   const proc = spawn(process.execPath, [path.join(KOKORO_DIR, 'server.mjs'), path.join(ROOT, 'models')], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
   let err = ''; proc.stderr?.on('data', (d: Buffer) => { err = (err + d.toString()).slice(-4000); });
+  // A sentence (or a cancel) written just as it dies fails on its stdin with EPIPE: unheard, that is an uncaught exception in the main process.
+  proc.stdin?.on('error', () => { /* its exit says what happened */ });
   const k: Kokoro = { proc, voices: [], pending: new Map(), next: 1, ready: Promise.resolve(false) };
+  let loaded = false;
   k.ready = new Promise<boolean>((resolve) => {
     let buf = '';
     proc.stdout?.on('data', (d: Buffer) => {
@@ -279,7 +293,7 @@ function ensureKokoro(retry = false): Kokoro | null {
       while ((i = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, i); buf = buf.slice(i + 1); let m: { ready?: boolean; voices?: string[]; id?: number; wav?: string; error?: string };
         try { m = JSON.parse(line); } catch { continue; }
-        if (m.ready) { k.voices = m.voices ?? []; kokoroVoices = k.voices; resolve(true); continue; }
+        if (m.ready) { k.voices = m.voices ?? []; kokoroVoices = k.voices; loaded = true; resolve(true); continue; }
         if (m.id === undefined) { if (m.error) debug.log('note', m.error, { by: 'app' }); continue; }
         const done = k.pending.get(m.id); k.pending.delete(m.id);
         if (m.wav) { const b = Buffer.from(m.wav, 'base64'); done?.(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer); } else done?.(null);
@@ -287,7 +301,11 @@ function ensureKokoro(retry = false): Kokoro | null {
     });
     proc.on('exit', (code, signal) => {
       resolve(false); if (kokoro === k) kokoro = null; if (!stopping) kokoroFailed = true; for (const done of k.pending.values()) done(null); k.pending.clear();
-      if (!stopping) debug.log('note', `Kokoro stopped (${signal ?? `exit ${code}`})`, { by: 'app', ...(err ? { detail: err } : {}) });
+      if (stopping) return;
+      // started again if it had loaded (a crash after minutes of speech), else at the next voice-on (a model that cannot load)
+      const now = Date.now(); kokoroRestarts = kokoroRestarts.filter((t) => now - t < 3_600_000); const again = loaded && kokoroRestarts.length < KOKORO_RESTARTS;
+      debug.log('note', `Kokoro stopped (${signal ?? `exit ${code}`})${again ? ': started again' : loaded ? `: stopped ${KOKORO_RESTARTS} times this hour, so it starts again at the next voice-on` : ''}`, { by: 'app', ...(err ? { detail: err } : {}) });
+      if (again) { kokoroRestarts.push(now); ensureKokoro(true); }
     });
     proc.on('error', () => resolve(false));
   });
@@ -403,7 +421,11 @@ function pump(model: string): void {
   s.waiters.push((t) => { if (inFlight?.session === s) { clearTimeout(timer); inFlight = null; } debug.log('model', `voice model (${voiceSession?.model ?? model}): ${next.kind} -> ${JSON.stringify(t.slice(0, 160))}`, { by: 'voice model', ms: Date.now() - t0, detail: `SENT\n${next.message}\n\nREPLY\n${t || '(nothing)'}` }); next.resolve(t); pump(model); });
   s.push(next.message);
 }
-function ask(message: string, provider: Provider, model: string, timeoutMs: number): Promise<string> {
+// An open-models chat (1.8.0): the voice's small helper is Claude's when it is signed in (the user's server is the agent's, not the voice's);
+// without it, the rules decide, as whenever the helper does not answer.
+const helperOf = (provider: Provider, model: string): [Provider, string] => (provider === 'open' ? ['claude', ''] : [provider, model]);
+function ask(message: string, providerIn: Provider, modelIn: string, timeoutMs: number): Promise<string> {
+  const [provider, model] = helperOf(providerIn, modelIn);
   if (provider !== 'claude') { const own = provider === 'grok' ? grok : codex; const t0 = Date.now(); const kind = /^(HEARD|BUSY|DONE|COMMAND):/m.exec(message)?.[1] ?? 'OTHER'; return own.voiceAsk(VOICE_PROMPT, message, model, timeoutMs + 1500).then(async (t) => { const used = await own.voiceModel(model).catch(() => model); debug.log('model', `voice model (${PROVIDER_LABEL[provider]} ${used || model || 'default'}): ${kind} -> ${JSON.stringify(t.slice(0, 160))}`, { by: 'voice model', ms: Date.now() - t0, detail: `SENT\n${message}\n\nREPLY\n${t || '(nothing)'}` }); return t; }); } // a Codex or Grok session speaks through its own provider's model (each has its own one-at-a-time queue)
   const kind = /^(HEARD|BUSY|DONE):/m.exec(message)?.[1] ?? 'OTHER';
   return new Promise<string>((resolve) => {
@@ -414,7 +436,8 @@ function ask(message: string, provider: Provider, model: string, timeoutMs: numb
   });
 }
 /** Start the small model before the first utterance so its first answer is not paying process start-up. */
-export function warmAck(provider: Provider, model: string): void {
+export function warmAck(providerIn: Provider, modelIn: string): void {
+  const [provider, model] = helperOf(providerIn, modelIn);
   jev.warm();
   if (provider === 'codex') { codex.voiceWarm(VOICE_PROMPT, model); return; }
   if (provider === 'grok') { grok.voiceWarm(VOICE_PROMPT, model); return; }
@@ -432,7 +455,7 @@ export async function acknowledge(utterance: string): Promise<string> {
   debug.log('ack', `"${fast}"  <- ${utterance}`, { by: 'jev', ms: Date.now() - t0 }); return fast;
 }
 /** The second line: what was understood, in the voice model's own words from the recent context. Empty when it has nothing in time.
- * A reflection and nothing else (T-201; the user, 2026-09-28: it "should not attempt to solve the user's problem or answer the question";
+ * A reflection and nothing else (T-201: it never solves the problem or answers the question;
  * the resolution is stage three's): the prompt says so, and the line is checked before it is said (`reflectionOnly`). A greeting, small
  * talk or thanks has nothing to reflect: stage two says nothing (Jev first, then a rule; stage one's own question to Jev is left as it is). */
 export async function understand(utterance: string, provider: Provider, model: string, main: string, recent = '', said = ''): Promise<string> {
@@ -554,7 +577,8 @@ const confirmOrder = (cmd: AppCommand, text: string, question: string): AppComma
 let detailsSink: (d: CommandDetails) => void = () => {};
 export function setDetailsSink(fn: (d: CommandDetails) => void): void { detailsSink = fn; }
 type Details = { kind?: Provider | 'jev' | null; name?: string | null; purpose?: string | null; folder?: string | null; kickoff?: string | null };
-async function oneShot(provider: Provider, model: string | undefined, prompt: string, timeoutMs: number): Promise<string> {
+async function oneShot(providerIn: Provider, modelIn: string | undefined, prompt: string, timeoutMs: number): Promise<string> {
+  const [provider, model] = helperOf(providerIn, modelIn ?? '');
   const run = async (): Promise<string> => {
     if (provider === 'codex') return codex.runOnce(prompt, model ? { model } : {});
     if (provider === 'grok') return grok.runOnce(prompt, model ?? '');
@@ -647,7 +671,7 @@ export async function command(full: string, projects: { id: string; name: string
     if (!named && a.folder && a.folder.confidence >= JEV_MIN_CONFIDENCE && a.folder.choice !== '__current') projectId = a.folder.choice; }
   const where = projects.find((p) => p.id === (projectId ?? currentId))?.name ?? 'this folder'; const what = provider === 'jev' ? 'Jev' : provider ? PROVIDER_LABEL[provider] : '';
   let name = agentName(text); let purpose = agentPurpose(text, name); let kickoff: string | undefined;
-  const target = r?.answers.target; const verdict = orderVerdict({ jev: target ? { forApp: target.choice === 'app', confidence: target.confidence } : null, model: modelSays });
+  const target = r?.answers.target; const verdict = orderVerdict({ exact: !!named /* a folder named in the order ("under webapp"): done at once, never a question */, jev: target ? { forApp: target.choice === 'app', confidence: target.confidence } : null, model: modelSays });
   if (verdict !== 'act') { const how = `${target ? `Jev: ${target.choice} ${target.confidence.toFixed(2)}` : 'no Jev'}${modelSays ? `, voice model: ${modelSays}` : ''}`;
     if (verdict === 'pass') { debug.log('note', `not an app command (${how}): it is for the main thread  <- ${text}`, { by, ms: Date.now() - t0 }); return null; }
     debug.log('note', `maybe an order for the app, nobody sure (${how}): asking first  <- ${text}`, { by, ms: Date.now() - t0 });
@@ -725,7 +749,7 @@ export async function setupCheck(): Promise<SetupCheck> { if (process.env.CVC_SE
 async function voiceQuality(): Promise<SetupCheck['voice']> {
   try { const [a, b] = await Promise.all([speak('Hi.', '', 185), speak('Hi.', 'Samantha', 185)]); if (!a || !b) return 'unknown'; if (a.byteLength !== b.byteLength) return 'natural'; const x = new Uint8Array(a), y = new Uint8Array(b); for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return 'natural'; return 'basic'; } catch { return 'unknown'; }
 }
-export async function status(): Promise<VoiceStatus> { return { jev: await jev.available(), jevKey: await jev.hasKey(), whisper: whisperState, detail: whisperDetail, voices: await voices(), models: listModels(), model: whisperDetail.endsWith('.bin') ? whisperDetail : '', voiceModels: { claude: (claudeModelCache ?? []).map(({ id, label, resolved }) => ({ id, label, ...(resolved ? { resolved } : {}) })), codex: (await codex.models().catch(() => [])).map(({ id, label }) => ({ id, label })), grok: (grok.installed() ? await grok.models().catch(() => []) : []).map(({ id, label }) => ({ id, label })) } }; }
+export async function status(): Promise<VoiceStatus> { return { jev: await jev.available(), jevKey: await jev.hasKey(), whisper: whisperState, detail: whisperDetail, voices: await voices(), models: listModels(), model: whisperDetail.endsWith('.bin') ? whisperDetail : '', voiceModels: { claude: (claudeModelCache ?? []).map(({ id, label, resolved }) => ({ id, label, ...(resolved ? { resolved } : {}) })), codex: (await codex.models().catch(() => [])).map(({ id, label }) => ({ id, label })), grok: (grok.installed() ? await grok.models().catch(() => []) : []).map(({ id, label }) => ({ id, label })), open: [] /* the voice helper of an open-models chat is Claude's */ } }; }
 /** The model the voice would use now for a provider and a preference (for the settings' "in use" line). */
 export async function voiceModelInUse(provider: Provider, preferred: string): Promise<string> { if (provider === 'codex') return codex.voiceModel(preferred).catch(() => preferred); if (provider === 'grok') return grok.voiceModel(preferred).catch(() => preferred); await claudeModels().catch(() => undefined); return resolveVoiceModel('claude', preferred); }
 export function shutdown(): void { cancelSpeech(); stopping = true; kokoro?.proc.kill('SIGTERM'); kokoro = null; voiceSession?.close(); voiceSession = null; if (whisper) { whisper.kill('SIGTERM'); whisper = null; } if (live) { live.kill('SIGTERM'); live = null; } }
