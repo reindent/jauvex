@@ -3,6 +3,8 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.ai/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
+## 1.8.1-dev (in the making)
+
 ## 1.8.0: 2026-10-23
 
 - **Open models**: run an agent on a model of your own: Ollama, LM Studio or vLLM on your computer, or OpenRouter. Set it up in
