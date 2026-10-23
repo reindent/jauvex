@@ -80,7 +80,8 @@ feature and why it works the way it does: read the relevant part before changing
    dashboards, sessions or boards, or from client folders: a real case may only shape a reproduction, and every value in it is invented. The
    author's name stays where it belongs (git author, copyright, licence); what goes is only citing him as the one behind a change, his quotes
    and his personal data. The clone's hooks (the owner's names guard: pre-commit, commit-msg, pre-push) refuse a change holding a word of the private
-   list kept outside the repository, a personal email, a 100.x address or a home path; they are never bypassed (`--no-verify` is forbidden).
+   list kept outside the repository, a personal email, a 100.x address or a home path; they are never bypassed (`--no-verify` is forbidden). The published history up to 1.7.2 keeps the comments it had that cite the owner by name and date: by the owner's decision
+   (2026-10-23) that history is never rewritten or force-pushed over; the rule applies to everything new.
 
 14. **Development happens privately, on the owner's machines; GitHub gets only what the owner authorises.** No branch, tag or release
    upload goes to `origin` without the owner's explicit word for that push. A signed Mac disk image is made on the owner's Mac from a git bundle of the release commit, by an
