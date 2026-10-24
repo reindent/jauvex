@@ -67,6 +67,8 @@ feature and why it works the way it does: read the relevant part before changing
    line without the owner's explicit word (the workspace conventions, CONVENTIONS.md §5, Licences). When unsure, ask before committing.
 11. **A version in the making carries -dev**, so it can be told apart from a release: while it is built or tested, its branch has the next number with -dev
    (1.7.3-dev) in `package.json` and the lock file, so the foot of the sidebar shows it. The plain number goes in only when it is packaged.
+   A version that has been tagged or built is never re-cut, and its tag is never force-pushed: any change after that takes the next number,
+   always (once v1.8.1 is tagged or built, a further fix is 1.8.2).
 12. **Keep everything organized** (the first rule after security): every file, folder, branch and note has one right home,
    used the first time; no stray copies, test leftovers, empty folders or loose files; one branch per piece of work, deleted once merged or
    abandoned; temporary work in `tmp/`, cleaned when done. The agents running inside the app are told the same (`clientBriefing`).
