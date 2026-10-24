@@ -5,6 +5,12 @@ always builds the latest one, and from 1.1.0 on the app offers each new version 
 
 ## 1.8.1-dev (in the making)
 
+- **Up to date and safer**: the app now runs on Electron 44.9.3, with the latest security fixes from Chromium and V8 and safer secure
+  connections.
+- **Outside pages kept apart**: pages opened in the right pane always run in their own sandbox, cut off from the app.
+- **Claude agents on the latest Claude Code** (2.1.310), with its security fixes.
+- **Fresher building blocks**: the app's other packages updated to their patched versions.
+
 ## 1.8.0: 2026-10-23
 
 - **Open models**: run an agent on a model of your own: Ollama, LM Studio or vLLM on your computer, or OpenRouter. Set it up in
