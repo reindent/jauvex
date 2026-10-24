@@ -888,6 +888,8 @@ Press the white round button in the message box. All local except the two Claude
   through `electron/webget.ts`, not Node's `fetch`: it asks for gzip or deflate only and refuses any other encoding before reading it, so
   a Brotli answer never reaches Node's Brotli decoder (a flaw there, CVE-2026-111497, let a hostile server run code; fixed in Node 24.22.1).
   The pages themselves load in Chromium, not Node. `tests/webget.test.ts`.
+- Every page runs sandboxed (`sandbox: true` on the window and the mini window), and a page framed in the right pane, an outside page,
+  is attached sandboxed and isolated with no preload and no Node, whatever its tag asks for (`will-attach-webview` in `electron/main.ts`).
 - `electron/chat.ts` routes each turn by the session's provider; every provider sends the UI the same `ChatEvent`s.
 - Two threads per chat. The main thread is the session itself (Claude or Codex, the model in the picker). The voice
   thread is a small model **from the same provider** (Haiku for Claude sessions; for Codex sessions the account's fast,
