@@ -17,7 +17,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..'); process.chdir(ROOT);
 const log = (s: string) => process.stderr.write(`${s}\n`);
-const fail = (s: string): never => { log(`\nStopped: ${s}`); process.exit(1); };
+// What leaves this Mac (the Stopped line, the report) names files, never the folders they sit in: a path would carry the home folder.
+const bare = (s: string): string => s.replace(/[^\s:'"]*\//g, '');
+const fail = (s: string): never => { log(`\nStopped: ${bare(s)}`); process.exit(1); };
 const run = (cmd: string, args: string[]): string => execFileSync(cmd, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
 const both = (cmd: string, args: string[], env?: NodeJS.ProcessEnv): { ok: boolean; out: string } => {
   const r = spawnSync(cmd, args, { cwd: ROOT, encoding: 'utf8', env: env ?? process.env }); return { ok: r.status === 0, out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim() }; };
@@ -149,9 +151,9 @@ if (NOTARIZE && (!gateDmg.ok || !/source=Notarized Developer ID/.test(gateDmg.ou
 const REPORT = path.join(OUT, `mac-${VERSION}-report.md`);
 writeFileSync(REPORT, [`# Jauvex Personal ${VERSION} for macOS (${ARCH})`, '', `- Commit: ${COMMIT}`, `- Signed as: ${IDENTITY}`, `- Node inside: ${nodeVersion}`, '',
   '| File | Size | SHA-256 | Notarization | Gatekeeper |', '|---|---|---|---|---|',
-  `| ${path.basename(DMG)} | ${mb(DMG)} | ${sha256(DMG)} | ${dmgNotary.status} ${dmgNotary.id} | ${gateDmg.out.split('\n').slice(0, 2).join(' ')} |`,
-  `| Jauvex.app (inside it) | | | ${appNotary.status} ${appNotary.id} | ${gateApp.out.split('\n').slice(0, 2).join(' ')} |`, '',
-  `codesign: ${verify.out.split('\n').filter((l) => /valid on disk|satisfies its Designated Requirement/.test(l)).join('; ')}`, '',
+  `| ${path.basename(DMG)} | ${mb(DMG)} | ${sha256(DMG)} | ${dmgNotary.status} ${dmgNotary.id} | ${bare(gateDmg.out.split('\n').slice(0, 2).join(' '))} |`,
+  `| Jauvex.app (inside it) | | | ${appNotary.status} ${appNotary.id} | ${bare(gateApp.out.split('\n').slice(0, 2).join(' '))} |`, '',
+  `codesign: ${bare(verify.out.split('\n').filter((l) => /valid on disk|satisfies its Designated Requirement/.test(l)).join('; '))}`, '',
   `Kept their makers' signatures: ${kept.length ? kept.join(', ') : 'none'}`, ''].join('\n'));
 if (!KEEP) rmSync(WORK, { recursive: true, force: true });
 log(`\nDone: ${DMG}\nReport: ${REPORT}`);
