@@ -84,10 +84,12 @@ The image is for this Mac's CPU: on Apple silicon it is `arm64`.
    - Gatekeeper's `accepted` with `source=Notarized Developer ID`;
    - the Node version inside the app.
 2. **Serve it back at once**, without waiting to be asked: copy the image, its SHA-256 and the report into one folder and serve that
-   folder on this Mac's Tailscale address only, never on all addresses:
+   folder on this Mac's Tailscale address only, never on all addresses. The report must hold no path on this Mac (a path inside the app,
+   such as `Contents/Resources/...`, is fine); if the check below prints a line, serve nothing and report it:
    ```sh
    O=~/jauvex-release-<version> && mkdir -p "$O" && cp tmp/release/jauvex-personal-<version>-mac-<arch>.dmg tmp/release/mac-<version>-report.md "$O/"
    (cd "$O" && shasum -a 256 *.dmg > jauvex-personal-<version>-mac-<arch>.dmg.sha256)
+   ! grep -nE '/Users/|~/|/Volumes/|/private/' "$O/mac-<version>-report.md" || echo "STOP: the report holds a path on this Mac"
    TS=$(tailscale ip -4 2>/dev/null || /Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4)
    nohup python3 -m http.server <a free port> --bind "$TS" --directory "$O" > "$O.serve.log" 2>&1 & echo "server pid $!"
    ```
