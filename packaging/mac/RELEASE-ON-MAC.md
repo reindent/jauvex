@@ -81,8 +81,18 @@ The image is for this Mac's CPU: on Apple silicon it is `arm64`.
    - notarization `Accepted` for both the app and the image;
    - Gatekeeper's `accepted` with `source=Notarized Developer ID`;
    - the Node version inside the app.
-2. **Report back** in one message: the version and the commit, the report's table, and the image's SHA-256.
-3. **Keep the image** (`tmp/release/jauvex-personal-<version>-mac-<arch>.dmg`) where you were told to. `tmp/` is never committed.
+2. **Serve it back at once**, without waiting to be asked: copy the image, its SHA-256 and the report into one folder and serve that
+   folder on this Mac's Tailscale address only, never on all addresses:
+   ```sh
+   O=~/jauvex-release-<version> && mkdir -p "$O" && cp tmp/release/jauvex-personal-<version>-mac-<arch>.dmg tmp/release/mac-<version>-report.md "$O/"
+   (cd "$O" && shasum -a 256 *.dmg > jauvex-personal-<version>-mac-<arch>.dmg.sha256)
+   TS=$(tailscale ip -4 2>/dev/null || /Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4)
+   nohup python3 -m http.server <a free port> --bind "$TS" --directory "$O" > "$O.serve.log" 2>&1 & echo "server pid $!"
+   ```
+3. **Report back** in one message: the version and the commit, the report's table, the image's SHA-256, and the folder's address
+   (`http://<that address>:<port>/`).
+4. **Keep serving until the developers confirm** they have the files; then stop the server by its PID (never by name) and delete the
+   folder and its log. Keep the image itself where you were told to (`tmp/release/` is never committed).
 
 ## If it stops
 
