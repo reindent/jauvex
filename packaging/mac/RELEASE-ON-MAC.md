@@ -89,10 +89,18 @@ The image is for this Mac's CPU: on Apple silicon it is `arm64`.
    TS=$(tailscale ip -4 2>/dev/null || /Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4)
    nohup python3 -m http.server <a free port> --bind "$TS" --directory "$O" > "$O.serve.log" 2>&1 & echo "server pid $!"
    ```
-3. **Report back** in one message: the version and the commit, the report's table, the image's SHA-256, and the folder's address
+3. **Ping the developers at once**, one POST to the hook address they gave you (`<hook URL from the Jauvex.ai agent>`; it is never
+   written into this repository): JSON under 64 KB, with no key, token or secret in it. `status` is `done`, or `failed` with the error
+   line when the build stopped (then serve the report and the `Stopped:` line, and ping all the same):
+   ```sh
+   python3 -c 'import json,sys; print(json.dumps({"from":"Mac Personal agent","release":"Personal "+sys.argv[1],"status":sys.argv[2],"files":sys.argv[3],"notes":sys.argv[4][:2000]}))' \
+     "<version>" "done" "http://$TS:<port>/" "<one line: works, or what broke>" > "$O.ping.json"
+   curl -sS --max-time 20 -X POST -H 'Content-Type: application/json' --data @"$O.ping.json" '<hook URL from the Jauvex.ai agent>'
+   ```
+   Then report back in one message too: the version and the commit, the report's table, the image's SHA-256, and the folder's address
    (`http://<that address>:<port>/`).
 4. **Keep serving until the developers confirm** they have the files; then stop the server by its PID (never by name) and delete the
-   folder and its log. Keep the image itself where you were told to (`tmp/release/` is never committed).
+   folder, its log and the ping file. Keep the image itself where you were told to (`tmp/release/` is never committed).
 
 ## If it stops
 
