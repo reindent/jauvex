@@ -55,7 +55,7 @@ function showMini(): void {
   if ((HIDDEN && !MINI_CHECK) || !voiceActive || !win) return;
   if (!mini) {
     mini = new BrowserWindow({ width: 268, height: 72, show: false, frame: false, transparent: true, resizable: false, hasShadow: false, alwaysOnTop: true, skipTaskbar: true,
-      fullscreenable: false, minimizable: false, maximizable: false, ...(MAC ? { type: 'panel' as const } : {}), webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+      fullscreenable: false, minimizable: false, maximizable: false, ...(MAC ? { type: 'panel' as const } : {}), webPreferences: { preload: path.join(here, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
     mini.setAlwaysOnTop(true, 'floating');
     // visibleOnFullScreen alone turns the whole app into a background-only app (no Dock tile, no way back to the window from
     // the Dock): skipTransformProcessType keeps it a normal app. The controller still floats above other windows.
@@ -136,7 +136,7 @@ async function createWindow(): Promise<void> {
     // macOS: the traffic lights inset in the app's own title bar. Elsewhere the system's frame, with no menu bar (the app has no menu, and
     // Alt is push-to-talk: Electron's default menu bar would take it), and the window's icon (macOS takes it from the Dock, below).
     ...(MAC ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 15 } } : { autoHideMenuBar: true, icon: path.join(ROOT, 'assets', 'icon.png') }),
-    webPreferences: { preload: path.join(here, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required', webviewTag: true /* the right pane frames pages and PDFs in a <webview> */ },
+    webPreferences: { preload: path.join(here, 'preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required', webviewTag: true /* the right pane frames pages and PDFs in a <webview> */ },
   });
   if (!MAC) win.removeMenu();
   // The window stays muted until voice mode is switched on by the user or the welcome screen is open (and always during hidden automated checks).
@@ -144,6 +144,8 @@ async function createWindow(): Promise<void> {
   win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' }; });
   // The window never sails off to a link: a navigation the app did not catch goes to the right pane instead (a handoff link once took the window over).
   win.webContents.on('will-navigate', (e, url) => { if (url === win?.webContents.getURL()) return; e.preventDefault(); win?.webContents.send('pane:open', url); });
+  // A framed page is an outside page: it always runs sandboxed and isolated, with no preload and no Node, whatever the tag asks for.
+  win.webContents.on('will-attach-webview', (_e, prefs) => { delete prefs.preload; Object.assign(prefs, { sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: false }); });
   // Every framed page starts muted and stays so, and opens no windows of its own.
   win.webContents.on('did-attach-webview', (_e, wc) => { wc.setAudioMuted(true); wc.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' }; }); });
   if (!HIDDEN) win.once('ready-to-show', () => win?.show());
