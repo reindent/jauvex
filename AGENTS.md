@@ -90,6 +90,14 @@ feature and why it works the way it does: read the relevant part before changing
    agent that only builds, signs, notarises, checks the built app for private words, and hands back the image and its SHA-256: it never
    commits or pushes.
 
+15. **No tests of any kind unless the owner orders them.** No quick suite, no window checks, no single check, not to verify a fix and not to
+   reproduce a bug: typecheck and build only. Checking a release means `npm run typecheck` and `npm run build`. A run the owner orders covers
+   that run only; a failing check is reported, never fixed without the owner's word.
+
+16. **Never try work the owner has not ordered.** No feature, fix or dependency move (a new major Electron, for one) is tried, not on a
+   branch and not to be taken out again: ask first. A trial already made is kept only as an `archive/` tag on the board, waiting for the
+   owner's decision.
+
 ## Who decides what (the voice channel)
 
 Every choice among fixed options goes to Jev first when a key is on the Mac (about 250 ms, no LLM load): is the
@@ -124,13 +132,10 @@ session is working: do not restart.
   under `tmp/`) and ports, driven over CDP through `tests/window/lib.ts`; **backend checks** (`tests/*.test.ts`) import
   `electron/*.ts` directly. Header lines: `// needs: mic` (a fake microphone), `// env: KEY=VALUE`, `// fresh` (empty
   data folder, a first run), `// llm` (a real model turn: skipped unless `CVC_TEST_LLM=1`); in an `// env:` line
-  `__ROOT__` stands for this repository. Add a check with every feature and every bug fix (reproduce the bug first, then
-  show the same check passing), a pure one where it can be (a decision taken out into `shared/`): a fix without a
-  reproduction is a guess.
-- **How long checks may take (every agent here: the whole software is not tested for every feature, only before a release):** while building
-  a feature or a fix, run only quick checks for what changed: `npm run typecheck` and that part's checks by name
-  (`sh tests/run.sh <name>`, backend or window), or a quick look at it working. The full suite (`npm test`, `npm run check`), the
-  full app check, packaging audits and other slow checks run once, right before a release is packaged. No new checks only to satisfy this.
+  `__ROOT__` stands for this repository. A check written for a feature or a fix is a pure one where it can be (a decision taken out into `shared/`);
+  it runs only when the owner orders it (rule 15).
+- **No checks run unless the owner orders them (rule 15):** building a feature, a fix or a release means `npm run typecheck` and
+  `npm run build`, nothing more. The quick suite, window checks, the full suite and packaging audits run only on the owner's order for that run.
 - **Stand-ins:** `tests/mock/claude`, `tests/mock/codex` and `tests/mock/grok` answer like Claude Code, `codex app-server` and
   `grok agent stdio` with canned replies and no account (`CVC_CLAUDE_BIN`, `CVC_CODEX_BIN`, `CVC_GROK_BIN` point the app at them).
   When `chat.ts`, `codex.ts` or `grok.ts` starts reading a new message or method, teach the stand-in too. `run.sh` gives every check
