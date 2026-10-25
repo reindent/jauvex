@@ -14,6 +14,8 @@ handing the app to someone directly. The script is `packaging/mac/release.ts`.
   - Never print, copy, move, paste or upload them.
   - The script passes the key's path to Apple's `notarytool` and reads nothing else from it.
 - **Only the built app and the image go to Apple**, for notarization; nothing else leaves this Mac.
+- **Nothing private comes back either.** What you serve and send back is only the image, its SHA-256 and the script's short report
+  (it names files, never the folders they are in). Never logs, conversation text, a data folder, a home path, keys or tokens.
 - **A release is built from its commit, exactly.**
   - The checkout must be clean, at the commit you were given, and `package.json` must carry a plain number (`1.8.0`, never `1.8.0-dev`).
   - Never change code here, and never sign by hand. A fix comes from the developers as a new commit.
@@ -110,5 +112,5 @@ The image is for this Mac's CPU: on Apple silicon it is `arm64`.
 | … must be readable by you only | the notary key's file mode is open: `chmod 600` it |
 | the checkout has changes | check out the commit, exactly, with nothing changed |
 | package.json says …-dev | that commit is not a release: ask for the release commit |
-| Apple did not accept … | its log is in `tmp/release/mac-<version>-notary-<part>.json`: send it as it is |
+| Apple did not accept … | its log is in `tmp/release/mac-<version>-notary-<part>.json`: send only the `message` of each of its `issues`, never the file |
 | Gatekeeper does not accept … | send the lines it shows |

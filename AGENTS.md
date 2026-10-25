@@ -102,6 +102,13 @@ feature and why it works the way it does: read the relevant part before changing
    edition's next patch release, and those of its next line into the patch after (owner's rule, 2026-10-25: Pro 1.9.0-dev's fixes are in
    Personal 1.8.1; Pro 1.9.1-dev's, Electron 45 for the V8 flaw CVE-2026-113030, go into Personal 1.8.2).
 
+18. **No more features from the other edition.** This edition takes nothing more from the other edition: only its own bug fixes and the
+   security fixes of rule 17 (the owner's order, 2026-10-25).
+
+19. **Nothing private leaves the owner's machines.** That includes everything a release step sends or serves back: a Mac build returns only
+   the image, its SHA-256 and the script's short report, which names files, never their folders. Never logs, conversation text, a data
+   folder, a home path, keys or tokens (the owner's order, 2026-10-25).
+
 ## Who decides what (the voice channel)
 
 Every choice among fixed options goes to Jev first when a key is on the Mac (about 250 ms, no LLM load): is the
