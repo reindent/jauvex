@@ -98,6 +98,10 @@ feature and why it works the way it does: read the relevant part before changing
    branch and not to be taken out again: ask first. A trial already made is kept only as an `archive/` tag on the board, waiting for the
    owner's decision.
 
+17. **Security fixes follow the other edition's line.** The security fixes of the other edition's x.y.0 line in the making go into this
+   edition's next patch release, and those of its next line into the patch after (owner's rule, 2026-10-25: Pro 1.9.0-dev's fixes are in
+   Personal 1.8.1; Pro 1.9.1-dev's, Electron 45 for the V8 flaw CVE-2026-113030, go into Personal 1.8.2).
+
 ## Who decides what (the voice channel)
 
 Every choice among fixed options goes to Jev first when a key is on the Mac (about 250 ms, no LLM load): is the
