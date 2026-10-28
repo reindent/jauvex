@@ -3,7 +3,7 @@
 What changed in each release of Jauvex Personal. The install command (`curl -fsSL https://jauvex.ai/install | sh`)
 always builds the latest one, and from 1.1.0 on the app offers each new version itself.
 
-## 1.8.2-dev (in the making)
+## 1.8.2: 2026-10-28
 
 - **Safer under the hood**: the app now runs on Electron 45.1.0, with Chromium 156 and Node.js 24.22.1, closing a flaw in Chromium's
   JavaScript engine and the flaw in Node.js's handling of compressed downloads.
