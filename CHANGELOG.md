@@ -5,6 +5,9 @@ always builds the latest one, and from 1.1.0 on the app offers each new version 
 
 ## 1.8.2-dev (in the making)
 
+- **Safer under the hood**: the app now runs on Electron 45.1.0, with Chromium 156 and Node.js 24.22.1, closing a flaw in Chromium's
+  JavaScript engine and the flaw in Node.js's handling of compressed downloads.
+
 ## 1.8.1: 2026-10-25
 
 - **Up to date and safer**: the app now runs on Electron 44.9.3, with the latest security fixes from Chromium and V8 and safer secure
