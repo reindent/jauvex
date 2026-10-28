@@ -32,7 +32,7 @@
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
     "concurrently": "^10.0.6",
-    "electron": "^44.9.3",
+    "electron": "^45.1.0",
     "esbuild": "^0.28.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

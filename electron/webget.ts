@@ -1,5 +1,5 @@
 // Every download from the web through Node goes here, never through Node's own fetch: fetch decodes a Brotli answer by itself, and Node's
-// Brotli decoder had a flaw a hostile server could use to run code (CVE-2026-111497, fixed in Node 24.22.1; Electron 44.9.3 still carries 24.22.0).
+// Brotli decoder had a flaw a hostile server could use to run code (CVE-2026-111497, fixed in Node 24.22.1, which Electron 45.1.0 carries; this stays as a second guard).
 // This asks for gzip or deflate only, decodes those itself, and refuses any other encoding before a byte of it is read: a Brotli (or zstd)
 // answer never reaches a decoder. It answers like fetch (a Response), so the callers keep their code.
 import http from 'node:http';
